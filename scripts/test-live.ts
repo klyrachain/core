@@ -5,12 +5,13 @@
  * order actions (buy, sell, request, claim) and fetch API calls.
  *
  * Usage: pnpm test:live
- * Env: CORE_URL (default http://localhost:4000), INTERVAL_MIN_MS, INTERVAL_MAX_MS
+ * Env: CORE_URL (default http://localhost:4000), CORE_API_KEY (required for protected routes), INTERVAL_MIN_MS, INTERVAL_MAX_MS
  */
 
 import "dotenv/config";
 
 const CORE_URL = process.env.CORE_URL ?? "http://localhost:4000";
+const CORE_API_KEY = process.env.CORE_API_KEY ?? "";
 const INTERVAL_MIN_MS = parseInt(process.env.INTERVAL_MIN_MS ?? "3000", 10) || 3000; // 3s default
 const INTERVAL_MAX_MS = parseInt(process.env.INTERVAL_MAX_MS ?? "60000", 10) || 60000; // 1 min default
 
@@ -47,9 +48,11 @@ async function fetchJson(
   options?: RequestInit
 ): Promise<{ ok: boolean; status: number; data?: unknown; error?: string }> {
   try {
+    const headers: Record<string, string> = { "Content-Type": "application/json", ...(options?.headers as Record<string, string>) };
+    if (CORE_API_KEY) headers["x-api-key"] = CORE_API_KEY;
     const res = await fetch(`${CORE_URL}${path}`, {
       ...options,
-      headers: { "Content-Type": "application/json", ...options?.headers },
+      headers,
     });
     const body = await res.json().catch(() => ({}));
     return {
@@ -160,6 +163,11 @@ async function runAction(action: Action): Promise<void> {
 
 async function main(): Promise<void> {
   console.log(`Live test → ${CORE_URL} (interval ${INTERVAL_MIN_MS}–${INTERVAL_MAX_MS} ms). Ctrl+C to stop.\n`);
+
+  if (!CORE_API_KEY) {
+    console.error("CORE_API_KEY is not set. Protected routes require x-api-key. Add it to .env (e.g. from pnpm key:generate).");
+    process.exit(1);
+  }
 
   // Quick health check
   const health = await fetchJson("/health");

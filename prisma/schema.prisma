@@ -191,3 +191,26 @@ model InventoryHistory {
   initialPurchasePrice Decimal @db.Decimal(18, 8)
   providerQuotePrice   Decimal @db.Decimal(18, 8)
 }
+
+// --------------------------------------
+// API Key Management
+// --------------------------------------
+
+model ApiKey {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  keyHash    String   @unique // SHA-256 hash of the raw key; never store the raw key
+  keyPrefix  String   // First 7 characters of the key (e.g. "pk_live") for identification
+  name       String   // e.g. "Backend Server", "Partner X"
+  domains    String[] // Allowed origins, e.g. ["admin.myapp.com"]; use ["*"] for all
+  permissions String[] // Scopes, e.g. ["READ_ONLY", "ADMIN"]; use ["*"] for super admin
+
+  isActive   Boolean   @default(true)
+  expiresAt  DateTime?
+  lastUsedAt DateTime?
+
+  @@index([keyHash])
+  @@index([isActive])
+}

@@ -24,6 +24,7 @@ core/
 │   ├── config/
 │   │   └── env.ts         # Env validation (Zod), load on startup
 │   ├── lib/
+│   │   ├── auth.guard.ts  # requireApiKey preHandler (x-api-key, domains, isActive, lastUsedAt)
 │   │   ├── prisma.ts      # Singleton Prisma client
 │   │   ├── redis.ts       # Redis client, balance keys balance:{chain}:{token}
 │   │   └── queue.ts       # BullMQ "Poll" queue for transaction jobs
@@ -31,6 +32,7 @@ core/
 │   │   └── webhook/
 │   │       └── order.ts   # POST /webhook/order (buy, sell, request, claim)
 │   ├── services/
+│   │   ├── api-key.service.ts    # generateKey, hashApiKey, findApiKeyByRawKey (SHA-256, never store raw)
 │   │   ├── inventory.service.ts  # Deduct inventory on BUY, Redis cache
 │   │   └── pusher.service.ts     # Stub: trigger on transaction status change
 │   ├── utils/
@@ -58,7 +60,11 @@ core/
    - `pnpm db:push` or `pnpm db:migrate` — apply schema (uses `prisma.config.ts`; migrations use `DIRECT_URL`)
    - `pnpm db:seed` — seed DB (no longer auto-runs after migrate in v7)
 
-3. **Run**
+3. **API Key (optional, for authenticating Backend / partners)**
+   - After migrating, run `pnpm key:generate` to create a master key named "Backend Server Primary" (permissions `["*"]`, domains `["*"]`). Copy the printed key into `.env` as `CORE_API_KEY=sk_live_...`.
+   - Use the `requireApiKey` preHandler from `src/lib/auth.guard.ts` on routes that must require the `x-api-key` header; the guard validates the key, checks `isActive`/`expiresAt`/domains (Origin), updates `lastUsedAt`, and attaches `request.apiKey`.
+
+4. **Run**
    - `npm run dev` — development (tsx watch)
    - `npm run build && npm run start` — production
 

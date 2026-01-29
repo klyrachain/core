@@ -17,6 +17,7 @@ import { queueApiRoutes } from "./routes/api/queue.js";
 import { quoteApiRoutes } from "./routes/api/quote.js";
 import { logsApiRoutes } from "./routes/api/logs.js";
 import { onRequestLog, onResponseLog } from "./lib/request-log-hooks.js";
+import { requireApiKey } from "./lib/auth.guard.js";
 
 loadEnv();
 
@@ -36,6 +37,13 @@ app.addContentTypeParser("application/json", { parseAs: "string" }, (_, body, do
 
 app.addHook("preValidation", onRequestLog);
 app.addHook("onResponse", onResponseLog);
+
+// Require x-api-key for all routes except health and ready
+app.addHook("preHandler", async (request, reply) => {
+  const path = (request.url ?? "").split("?")[0];
+  if (path === "/health" || path === "/ready") return;
+  await requireApiKey(request, reply);
+});
 
 app.get("/health", async (_, reply) => {
   return reply.status(200).send({ ok: true });
