@@ -1,0 +1,193 @@
+// Prisma schema - Crypto Payment System (Central Point)
+// See md/rules for conventions.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// --------------------------------------
+// Enums
+// --------------------------------------
+
+enum TransactionType {
+  BUY
+  SELL
+  TRANSFER
+  REQUEST
+  CLAIM
+}
+
+enum TransactionStatus {
+  ACTIVE
+  PENDING
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum ClaimStatus {
+  ACTIVE
+  CLAIMED
+  CANCELLED
+  FAIL
+}
+
+enum PaymentProvider {
+  NONE
+  ANY
+  SQUID
+  LIFI
+  PAYSTACK
+}
+
+enum IdentityType {
+  ADDRESS
+  EMAIL
+  NUMBER
+}
+
+enum SupportedChain {
+  ETHEREUM
+  BNB
+  BASE
+  SOLANA
+}
+
+// --------------------------------------
+// Core Models
+// --------------------------------------
+
+model User {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  email    String  @unique
+  address  String? @unique
+  number   String? // e.g. 233...
+  username String?
+
+  transactionsFrom Transaction[] @relation("FromUser")
+  transactionsTo   Transaction[] @relation("ToUser")
+
+  @@index([email, address, username])
+}
+
+model Transaction {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  type   TransactionType
+  status TransactionStatus @default(ACTIVE)
+
+  fromIdentifier String?
+  fromType       IdentityType?
+  fromUserId     String?
+  fromUser       User?         @relation("FromUser", fields: [fromUserId], references: [id])
+
+  toIdentifier String?
+  toType       IdentityType?
+  toUserId     String?
+  toUser       User?         @relation("ToUser", fields: [toUserId], references: [id])
+
+  f_amount Decimal @db.Decimal(18, 8)
+  t_amount Decimal @db.Decimal(18, 8)
+  f_price  Decimal @db.Decimal(18, 8)
+  t_price  Decimal @db.Decimal(18, 8)
+
+  f_token String
+  t_token String
+
+  f_provider PaymentProvider @default(NONE)
+  t_provider PaymentProvider @default(NONE)
+
+  request   Request?
+  requestId String?  @unique
+
+  @@index([status, type])
+}
+
+model Request {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  code       String @unique
+  linkId     String @unique
+
+  transactionId String      @unique
+  transaction   Transaction @relation(fields: [transactionId], references: [id])
+
+  claim Claim?
+}
+
+model Claim {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  requestId String  @unique
+  request   Request @relation(fields: [requestId], references: [id])
+
+  status ClaimStatus @default(ACTIVE)
+
+  value Decimal @db.Decimal(18, 8)
+  price Decimal @db.Decimal(18, 8)
+  token String
+
+  payerIdentifier String
+  toIdentifier    String
+
+  code String
+}
+
+// --------------------------------------
+// Internal System Models
+// --------------------------------------
+
+model Wallet {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  address       String   @unique
+  encryptedKey  String
+  supportedTokens String[]
+}
+
+model InventoryAsset {
+  id        String   @id @default(uuid())
+  updatedAt DateTime @updatedAt
+
+  chain        String
+  tokenAddress String
+  symbol       String
+
+  currentBalance Decimal @default(0) @db.Decimal(28, 8)
+
+  history InventoryHistory[]
+
+  @@unique([chain, tokenAddress])
+}
+
+model InventoryHistory {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  assetId String
+  asset   InventoryAsset @relation(fields: [assetId], references: [id])
+
+  type     String
+  amount   Decimal @db.Decimal(28, 8)
+  quantity Decimal @db.Decimal(28, 8)
+
+  initialPurchasePrice Decimal @db.Decimal(18, 8)
+  providerQuotePrice   Decimal @db.Decimal(18, 8)
+}
