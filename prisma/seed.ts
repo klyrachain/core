@@ -1,9 +1,17 @@
 import "dotenv/config";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "./generated/prisma/client.js";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { WalletManager } from "../src/utils/wallet-manager.js";
 import { loadEnv } from "../src/config/env.js";
 
-const prisma = new PrismaClient();
+try {
+  loadEnv();
+} catch {
+  // Env validation may fail; use process.env for seed
+}
+const connectionString = process.env.DIRECT_URL ?? process.env.DATABASE_URL ?? "";
+const adapter = new PrismaPg({ connectionString });
+const prisma = new PrismaClient({ adapter });
 
 function hex(byteLength: number): string {
   return Buffer.from(Array.from({ length: byteLength }, () => Math.floor(Math.random() * 256))).toString("hex");

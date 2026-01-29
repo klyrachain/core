@@ -5,6 +5,18 @@ import { getRedis, disconnectRedis } from "./lib/redis.js";
 import { createPollWorker, closeQueue } from "./lib/queue.js";
 import { processPollJob } from "./workers/poll.worker.js";
 import { orderWebhookRoutes } from "./routes/webhook/order.js";
+import { adminWebhookRoutes } from "./routes/webhook/admin.js";
+import { usersApiRoutes } from "./routes/api/users.js";
+import { transactionsApiRoutes } from "./routes/api/transactions.js";
+import { requestsApiRoutes } from "./routes/api/requests.js";
+import { claimsApiRoutes } from "./routes/api/claims.js";
+import { walletsApiRoutes } from "./routes/api/wallets.js";
+import { inventoryApiRoutes } from "./routes/api/inventory.js";
+import { cacheApiRoutes } from "./routes/api/cache.js";
+import { queueApiRoutes } from "./routes/api/queue.js";
+import { quoteApiRoutes } from "./routes/api/quote.js";
+import { logsApiRoutes } from "./routes/api/logs.js";
+import { onRequestLog, onResponseLog } from "./lib/request-log-hooks.js";
 
 loadEnv();
 
@@ -22,6 +34,9 @@ app.addContentTypeParser("application/json", { parseAs: "string" }, (_, body, do
   }
 });
 
+app.addHook("preValidation", onRequestLog);
+app.addHook("onResponse", onResponseLog);
+
 app.get("/health", async (_, reply) => {
   return reply.status(200).send({ ok: true });
 });
@@ -38,6 +53,17 @@ app.get("/ready", async (_, reply) => {
 });
 
 await app.register(orderWebhookRoutes, { prefix: "" });
+await app.register(adminWebhookRoutes, { prefix: "" });
+await app.register(usersApiRoutes, { prefix: "" });
+await app.register(transactionsApiRoutes, { prefix: "" });
+await app.register(requestsApiRoutes, { prefix: "" });
+await app.register(claimsApiRoutes, { prefix: "" });
+await app.register(walletsApiRoutes, { prefix: "" });
+await app.register(inventoryApiRoutes, { prefix: "" });
+await app.register(cacheApiRoutes, { prefix: "" });
+await app.register(queueApiRoutes, { prefix: "" });
+await app.register(quoteApiRoutes, { prefix: "" });
+await app.register(logsApiRoutes, { prefix: "" });
 
 const pollWorker = createPollWorker(processPollJob);
 

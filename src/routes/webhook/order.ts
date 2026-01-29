@@ -1,8 +1,10 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
-import { PaymentProvider, IdentityType, TransactionType } from "@prisma/client";
+import { PaymentProvider, IdentityType, TransactionType } from "../../../prisma/generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { addPollJob } from "../../lib/queue.js";
+import { getFeeForOrder } from "../../services/fee.service.js";
+import { sendToAdminDashboard } from "../../services/admin-dashboard.service.js";
 
 const OrderWebhookSchema = z.object({
   action: z.enum(["buy", "sell", "request", "claim"]),
@@ -70,6 +72,37 @@ export async function orderWebhookRoutes(app: FastifyInstance): Promise<void> {
       });
 
       await addPollJob(transaction.id);
+
+      const feeQuote = getFeeForOrder({
+        action: body.action,
+        f_amount: body.f_amount,
+        t_amount: body.t_amount,
+        f_price: body.f_price,
+        t_price: body.t_price,
+        f_token: body.f_token,
+        t_token: body.t_token,
+      });
+      await sendToAdminDashboard({
+        event: "order.created",
+        data: {
+          transactionId: transaction.id,
+          action: body.action,
+          type: transaction.type,
+          status: transaction.status,
+          fromIdentifier: body.fromIdentifier ?? null,
+          toIdentifier: body.toIdentifier ?? null,
+          f_amount: body.f_amount,
+          t_amount: body.t_amount,
+          f_price: body.f_price,
+          t_price: body.t_price,
+          f_token: body.f_token,
+          t_token: body.t_token,
+          feeAmount: feeQuote.feeAmount,
+          feePercent: feeQuote.feePercent,
+          totalCost: feeQuote.totalCost,
+          profit: feeQuote.profit,
+        },
+      }).catch((err) => req.log.warn({ err }, "Admin webhook order.created failed"));
 
       return reply.status(201).send({
         success: true,

@@ -64,6 +64,32 @@ export async function setBalance(
   await r.expire(key, BALANCE_TTL_SECONDS);
 }
 
+export type BalanceKeyEntry = BalanceEntry & { chain: string; token: string };
+
+export async function listBalanceKeys(limit = 100): Promise<BalanceKeyEntry[]> {
+  const r = getRedis();
+  const keys: string[] = [];
+  const stream = r.scanStream({ match: "balance:*", count: limit });
+  for await (const batch of stream) {
+    keys.push(...(batch as string[]));
+    if (keys.length >= limit) break;
+  }
+  const result: BalanceKeyEntry[] = [];
+  for (const key of keys.slice(0, limit)) {
+    const raw = await r.hgetall(key);
+    if (!raw || Object.keys(raw).length === 0) continue;
+    const m = key.match(/^balance:(.+):(.+)$/);
+    if (m) {
+      result.push({
+        ...(raw as unknown as BalanceEntry),
+        chain: m[1],
+        token: m[2],
+      });
+    }
+  }
+  return result;
+}
+
 export async function disconnectRedis(): Promise<void> {
   if (redis) {
     await redis.quit();

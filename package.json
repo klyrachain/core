@@ -4,11 +4,11 @@
   "description": "Central Point (Webhook + Redis) - Crypto Payment System",
   "license": "ISC",
   "type": "module",
-  "main": "dist/server.js",
+  "main": "dist/src/server.js",
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/server.ts",
-    "start": "node dist/server.js",
+    "start": "node dist/src/server.js",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
@@ -16,10 +16,12 @@
     "db:studio": "prisma studio",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:ci": "pnpm db:generate && vitest run"
+    "test:ci": "pnpm db:generate && vitest run",
+    "test:live": "tsx scripts/test-live.ts"
   },
   "dependencies": {
-    "@prisma/client": "^6.0.0",
+    "@prisma/adapter-pg": "^7.3.0",
+    "@prisma/client": "^7.3.0",
     "bullmq": "^5.0.0",
     "dotenv": "^16.4.5",
     "fastify": "^5.0.0",
@@ -29,15 +31,12 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "prisma": "^6.0.0",
+    "prisma": "7",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.9"
   },
   "engines": {
-    "node": ">=20"
-  },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
+    "node": ">=20.19.0"
   }
 }

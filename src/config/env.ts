@@ -16,6 +16,8 @@ const envSchema = z.object({
   PUSHER_KEY: z.string().optional().default(""),
   PUSHER_SECRET: z.string().optional().default(""),
   PUSHER_CLUSTER: z.string().optional().default("mt1"),
+
+  ADMIN_WEBHOOK_URL: z.string().optional().default(""),
 });
 
 export type Env = z.infer<typeof envSchema>;

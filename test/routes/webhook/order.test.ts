@@ -4,6 +4,7 @@ import { orderWebhookRoutes } from "../../../src/routes/webhook/order.js";
 
 const mockCreate = vi.fn();
 const mockAddPollJob = vi.fn();
+const mockSendToAdminDashboard = vi.fn();
 
 vi.mock("../../../src/lib/prisma.js", () => ({
   prisma: {
@@ -15,6 +16,10 @@ vi.mock("../../../src/lib/prisma.js", () => ({
 
 vi.mock("../../../src/lib/queue.js", () => ({
   addPollJob: (...args: unknown[]) => mockAddPollJob(...args),
+}));
+
+vi.mock("../../../src/services/admin-dashboard.service.js", () => ({
+  sendToAdminDashboard: (...args: unknown[]) => mockSendToAdminDashboard(...args),
 }));
 
 const validBody = {
@@ -37,6 +42,8 @@ describe("webhook order", () => {
   beforeEach(async () => {
     mockCreate.mockReset();
     mockAddPollJob.mockReset();
+    mockSendToAdminDashboard.mockReset();
+    mockSendToAdminDashboard.mockResolvedValue(undefined);
     app = Fastify();
     app.addContentTypeParser("application/json", { parseAs: "string" }, (_, body, done) => {
       try {
@@ -143,6 +150,59 @@ describe("webhook order", () => {
 
       expect(res.statusCode).toBe(500);
       expect((res.json() as { success: boolean; error: string }).error).toBe("Something went wrong.");
+    });
+
+    it("should send order.created to admin with prices, fee, totalCost and profit", async () => {
+      mockCreate.mockResolvedValue({ id: "tx-admin", type: "BUY", status: "PENDING" });
+      mockAddPollJob.mockResolvedValue({});
+
+      await app.inject({
+        method: "POST",
+        url: "/webhook/order",
+        payload: validBody,
+        headers: { "content-type": "application/json" },
+      });
+
+      expect(mockSendToAdminDashboard).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "order.created",
+          data: expect.objectContaining({
+            transactionId: "tx-admin",
+            action: "buy",
+            status: "PENDING",
+            f_amount: 100,
+            t_amount: 0.05,
+            f_price: 2000,
+            t_price: 2000,
+            f_token: "USDC",
+            t_token: "ETH",
+          }),
+        })
+      );
+      const call = mockSendToAdminDashboard.mock.calls[0][0];
+      expect(call.data).toHaveProperty("feeAmount");
+      expect(call.data).toHaveProperty("feePercent");
+      expect(call.data).toHaveProperty("totalCost");
+      expect(call.data).toHaveProperty("profit");
+      expect(call.data.feeAmount).toBe(1); // 1% of 100
+      expect(call.data.totalCost).toBe(101);
+      expect(call.data.profit).toBe(1);
+    });
+
+    it("should reflect correct fee and profit for sell (1% fee on f_amount)", async () => {
+      mockCreate.mockResolvedValue({ id: "tx-2", type: "SELL", status: "PENDING" });
+      mockAddPollJob.mockResolvedValue({});
+
+      await app.inject({
+        method: "POST",
+        url: "/webhook/order",
+        payload: { ...validBody, action: "sell", f_amount: 200 },
+        headers: { "content-type": "application/json" },
+      });
+
+      const call = mockSendToAdminDashboard.mock.calls[0][0];
+      expect(call.data.feeAmount).toBe(2); // 1% of 200
+      expect(call.data.profit).toBe(2);
     });
   });
 });

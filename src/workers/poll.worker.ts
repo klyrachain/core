@@ -3,7 +3,9 @@ import { prisma } from "../lib/prisma.js";
 import { type PollJobData } from "../lib/queue.js";
 import { deductInventory } from "../services/inventory.service.js";
 import { triggerTransactionStatusChange } from "../services/pusher.service.js";
-import type { TransactionStatus } from "@prisma/client";
+import { getFeeForOrder } from "../services/fee.service.js";
+import { sendToAdminDashboard } from "../services/admin-dashboard.service.js";
+import type { TransactionStatus } from "../../prisma/generated/prisma/client.js";
 
 const DEFAULT_CHAIN = "ETHEREUM";
 
@@ -44,6 +46,34 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
       data: { status: "COMPLETED" },
     });
 
+    const feeQuote = getFeeForOrder({
+      action: tx.type.toLowerCase() as "buy" | "sell" | "request" | "claim",
+      f_amount: Number(tx.f_amount),
+      t_amount: Number(tx.t_amount),
+      f_price: Number(tx.f_price),
+      t_price: Number(tx.t_price),
+      f_token: tx.f_token,
+      t_token: tx.t_token,
+    });
+    await sendToAdminDashboard({
+      event: "order.completed",
+      data: {
+        transactionId,
+        status: "COMPLETED",
+        type: tx.type,
+        f_amount: Number(tx.f_amount),
+        t_amount: Number(tx.t_amount),
+        f_price: Number(tx.f_price),
+        t_price: Number(tx.t_price),
+        f_token: tx.f_token,
+        t_token: tx.t_token,
+        feeAmount: feeQuote.feeAmount,
+        feePercent: feeQuote.feePercent,
+        totalCost: feeQuote.totalCost,
+        profit: feeQuote.profit,
+      },
+    }).catch(() => {});
+
     await triggerTransactionStatusChange({
       transactionId,
       status: "COMPLETED" as TransactionStatus,
@@ -54,6 +84,17 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
       where: { id: transactionId },
       data: { status: "FAILED" },
     });
+    await sendToAdminDashboard({
+      event: "order.failed",
+      data: {
+        transactionId,
+        status: "FAILED",
+        type: tx.type,
+        f_token: tx.f_token,
+        t_token: tx.t_token,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    }).catch(() => {});
     await triggerTransactionStatusChange({
       transactionId,
       status: "FAILED" as TransactionStatus,
