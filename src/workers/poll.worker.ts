@@ -1,7 +1,7 @@
 import { Job } from "bullmq";
 import { prisma } from "../lib/prisma.js";
 import { type PollJobData } from "../lib/queue.js";
-import { deductInventory } from "../services/inventory.service.js";
+import { deductInventory, addInventory } from "../services/inventory.service.js";
 import { triggerTransactionStatusChange } from "../services/pusher.service.js";
 import { getFeeForOrder } from "../services/fee.service.js";
 import { sendToAdminDashboard } from "../services/admin-dashboard.service.js";
@@ -25,15 +25,59 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
   }
 
   try {
+    // BUY: user gives f_token, receives t_token. We deduct t_token (give to user), add f_token (receive).
     if (tx.type === "BUY") {
-      const asset = await prisma.inventoryAsset.findFirst({
+      const tAsset = await prisma.inventoryAsset.findFirst({
         where: { symbol: tx.t_token, chain: DEFAULT_CHAIN },
       });
-      if (asset) {
+      if (tAsset) {
         await deductInventory({
-          chain: asset.chain,
-          tokenAddress: asset.tokenAddress,
-          symbol: asset.symbol,
+          chain: tAsset.chain,
+          tokenAddress: tAsset.tokenAddress,
+          symbol: tAsset.symbol,
+          amount: tx.t_amount,
+          type: "SALE",
+          providerQuotePrice: tx.t_price,
+        });
+      }
+      const fAsset = await prisma.inventoryAsset.findFirst({
+        where: { symbol: tx.f_token, chain: DEFAULT_CHAIN },
+      });
+      if (fAsset) {
+        await addInventory({
+          chain: fAsset.chain,
+          tokenAddress: fAsset.tokenAddress,
+          symbol: fAsset.symbol,
+          amount: tx.f_amount,
+          type: "PURCHASE",
+          providerQuotePrice: tx.f_price,
+        });
+      }
+    }
+
+    // SELL: user gives f_token, receives t_token. We add f_token (receive), deduct t_token (give to user).
+    if (tx.type === "SELL") {
+      const fAsset = await prisma.inventoryAsset.findFirst({
+        where: { symbol: tx.f_token, chain: DEFAULT_CHAIN },
+      });
+      if (fAsset) {
+        await addInventory({
+          chain: fAsset.chain,
+          tokenAddress: fAsset.tokenAddress,
+          symbol: fAsset.symbol,
+          amount: tx.f_amount,
+          type: "PURCHASE",
+          providerQuotePrice: tx.f_price,
+        });
+      }
+      const tAsset = await prisma.inventoryAsset.findFirst({
+        where: { symbol: tx.t_token, chain: DEFAULT_CHAIN },
+      });
+      if (tAsset) {
+        await deductInventory({
+          chain: tAsset.chain,
+          tokenAddress: tAsset.tokenAddress,
+          symbol: tAsset.symbol,
           amount: tx.t_amount,
           type: "SALE",
           providerQuotePrice: tx.t_price,

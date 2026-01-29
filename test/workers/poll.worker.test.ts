@@ -22,8 +22,11 @@ vi.mock("../../src/lib/prisma.js", () => ({
 const mockDeductInventory = vi.fn();
 const mockTriggerTransactionStatusChange = vi.fn();
 
+const mockAddInventory = vi.fn();
+
 vi.mock("../../src/services/inventory.service.js", () => ({
   deductInventory: (...args: unknown[]) => mockDeductInventory(...args),
+  addInventory: (...args: unknown[]) => mockAddInventory(...args),
 }));
 
 vi.mock("../../src/services/pusher.service.js", () => ({
@@ -41,6 +44,7 @@ describe("poll.worker processPollJob", () => {
     mockFindFirst.mockReset();
     mockUpdate.mockReset();
     mockDeductInventory.mockReset();
+    mockAddInventory.mockReset();
     mockTriggerTransactionStatusChange.mockReset();
   });
 
@@ -63,34 +67,46 @@ describe("poll.worker processPollJob", () => {
     expect(mockTriggerTransactionStatusChange).not.toHaveBeenCalled();
   });
 
-  it("should complete BUY transaction and deduct inventory when asset exists", async () => {
+  it("should complete BUY: deduct t_token and add f_token when assets exist", async () => {
     const tx = {
       id: "tx-1",
       type: "BUY",
       status: "PENDING",
-      t_token: "USDC",
-      t_amount: 10,
-      t_price: 1,
+      f_token: "USDC",
+      f_amount: 1000,
+      f_price: 1,
+      t_token: "ETH",
+      t_amount: 0.5,
+      t_price: 3000,
     };
     mockFindUnique.mockResolvedValue(tx);
-    mockFindFirst.mockResolvedValue({
-      id: "asset-1",
-      chain: "ETHEREUM",
-      tokenAddress: "0xusdc",
-      symbol: "USDC",
-    });
+    const tAsset = { id: "asset-eth", chain: "ETHEREUM", tokenAddress: "0xeth", symbol: "ETH" };
+    const fAsset = { id: "asset-usdc", chain: "ETHEREUM", tokenAddress: "0xusdc", symbol: "USDC" };
+    mockFindFirst.mockResolvedValueOnce(tAsset).mockResolvedValueOnce(fAsset);
     mockUpdate.mockResolvedValue({});
     mockDeductInventory.mockResolvedValue(undefined);
+    mockAddInventory.mockResolvedValue(undefined);
     mockTriggerTransactionStatusChange.mockResolvedValue(undefined);
 
     await processPollJob(createJob("tx-1"));
 
+    expect(mockDeductInventory).toHaveBeenCalledTimes(1);
     expect(mockDeductInventory).toHaveBeenCalledWith(
       expect.objectContaining({
         chain: "ETHEREUM",
-        symbol: "USDC",
-        amount: 10,
+        symbol: "ETH",
+        amount: 0.5,
         type: "SALE",
+        providerQuotePrice: 3000,
+      })
+    );
+    expect(mockAddInventory).toHaveBeenCalledTimes(1);
+    expect(mockAddInventory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chain: "ETHEREUM",
+        symbol: "USDC",
+        amount: 1000,
+        type: "PURCHASE",
         providerQuotePrice: 1,
       })
     );
@@ -107,19 +123,45 @@ describe("poll.worker processPollJob", () => {
     );
   });
 
-  it("should complete non-BUY transaction without deducting inventory", async () => {
+  it("should complete SELL: add f_token and deduct t_token when assets exist", async () => {
     const tx = {
       id: "tx-2",
       type: "SELL",
       status: "PENDING",
+      f_token: "ETH",
+      f_amount: 0.5,
+      f_price: 3000,
+      t_token: "USDC",
+      t_amount: 1500,
+      t_price: 1,
     };
     mockFindUnique.mockResolvedValue(tx);
+    const fAsset = { id: "asset-eth", chain: "ETHEREUM", tokenAddress: "0xeth", symbol: "ETH" };
+    const tAsset = { id: "asset-usdc", chain: "ETHEREUM", tokenAddress: "0xusdc", symbol: "USDC" };
+    mockFindFirst.mockResolvedValueOnce(fAsset).mockResolvedValueOnce(tAsset);
     mockUpdate.mockResolvedValue({});
+    mockAddInventory.mockResolvedValue(undefined);
+    mockDeductInventory.mockResolvedValue(undefined);
+    mockTriggerTransactionStatusChange.mockResolvedValue(undefined);
 
     await processPollJob(createJob("tx-2"));
 
-    expect(mockFindFirst).not.toHaveBeenCalled();
-    expect(mockDeductInventory).not.toHaveBeenCalled();
+    expect(mockAddInventory).toHaveBeenCalledTimes(1);
+    expect(mockAddInventory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: "ETH",
+        amount: 0.5,
+        type: "PURCHASE",
+      })
+    );
+    expect(mockDeductInventory).toHaveBeenCalledTimes(1);
+    expect(mockDeductInventory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        symbol: "USDC",
+        amount: 1500,
+        type: "SALE",
+      })
+    );
     expect(mockUpdate).toHaveBeenCalledWith({
       where: { id: "tx-2" },
       data: { status: "COMPLETED" },
@@ -134,17 +176,15 @@ describe("poll.worker processPollJob", () => {
       id: "tx-3",
       type: "BUY",
       status: "PENDING",
-      t_token: "USDC",
+      f_token: "USDC",
+      f_amount: 1000,
+      f_price: 1,
+      t_token: "ETH",
       t_amount: 10,
-      t_price: 1,
+      t_price: 3000,
     };
     mockFindUnique.mockResolvedValue(tx);
-    mockFindFirst.mockResolvedValue({
-      id: "asset-1",
-      chain: "ETHEREUM",
-      tokenAddress: "0xusdc",
-      symbol: "USDC",
-    });
+    mockFindFirst.mockResolvedValueOnce({ id: "asset-eth", chain: "ETHEREUM", tokenAddress: "0xeth", symbol: "ETH" });
     mockDeductInventory.mockRejectedValue(new Error("Insufficient inventory"));
     mockUpdate.mockResolvedValue({});
 
@@ -159,11 +199,12 @@ describe("poll.worker processPollJob", () => {
     );
   });
 
-  it("should not deduct inventory when BUY but no asset found for symbol/chain", async () => {
+  it("should not deduct/add inventory when BUY but no assets found for symbol/chain", async () => {
     const tx = {
       id: "tx-4",
       type: "BUY",
       status: "PENDING",
+      f_token: "X",
       t_token: "UNKNOWN",
       t_amount: 1,
       t_price: 1,
@@ -175,6 +216,7 @@ describe("poll.worker processPollJob", () => {
     await processPollJob(createJob("tx-4"));
 
     expect(mockDeductInventory).not.toHaveBeenCalled();
+    expect(mockAddInventory).not.toHaveBeenCalled();
     expect(mockUpdate).toHaveBeenCalledWith({
       where: { id: "tx-4" },
       data: { status: "COMPLETED" },

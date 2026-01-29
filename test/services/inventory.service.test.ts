@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   deductInventory,
+  addInventory,
   getCachedBalance,
   refreshBalanceCache,
 } from "../../src/services/inventory.service.js";
@@ -112,6 +113,63 @@ describe("inventory.service", () => {
         "USDC",
         expect.objectContaining({
           amount: "80",
+          status: "updated",
+        })
+      );
+    });
+  });
+
+  describe("addInventory", () => {
+    it("should throw when InventoryAsset is not found", async () => {
+      mockFindUnique.mockResolvedValue(null);
+      await expect(
+        addInventory({
+          chain: "ETHEREUM",
+          tokenAddress: "0xeth",
+          symbol: "ETH",
+          amount: 1,
+        })
+      ).rejects.toThrow("InventoryAsset not found");
+      expect(mockTransaction).not.toHaveBeenCalled();
+    });
+
+    it("should update asset, create history, and set Redis balance on success", async () => {
+      const asset = {
+        id: "asset-eth",
+        chain: "ETHEREUM",
+        tokenAddress: "0xeth",
+        symbol: "ETH",
+        currentBalance: 10,
+      };
+      mockFindUnique.mockResolvedValue(asset);
+      mockUpdate.mockResolvedValue({});
+      mockCreate.mockResolvedValue({});
+      mockTransaction.mockImplementation((promises: Promise<unknown>[]) => Promise.all(promises));
+
+      await addInventory({
+        chain: "ETHEREUM",
+        tokenAddress: "0xeth",
+        symbol: "ETH",
+        amount: 2,
+        type: "PURCHASE",
+        providerQuotePrice: 3000,
+      });
+
+      expect(mockTransaction).toHaveBeenCalledWith([
+        expect.any(Promise),
+        expect.any(Promise),
+      ]);
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "asset-eth" },
+          data: { currentBalance: expect.anything() },
+        })
+      );
+      expect(mockSetBalance).toHaveBeenCalledWith(
+        "ETHEREUM",
+        "ETH",
+        expect.objectContaining({
+          amount: "12",
           status: "updated",
         })
       );

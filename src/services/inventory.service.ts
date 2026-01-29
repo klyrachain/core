@@ -12,9 +12,19 @@ export type InventoryDeductionInput = {
   providerQuotePrice?: Decimal | string | number;
 };
 
+export type InventoryAdditionInput = {
+  chain: string;
+  tokenAddress: string;
+  symbol: string;
+  amount: Decimal | string | number;
+  type?: "PURCHASE" | "SALE" | "REBALANCE";
+  initialPurchasePrice?: Decimal | string | number;
+  providerQuotePrice?: Decimal | string | number;
+};
+
 /**
- * Tracks internal inventory. On BUY we deduct from InventoryAsset balance.
- * Uses DB for source of truth and optionally updates Redis cache.
+ * Deduct from inventory (we give token to user). Used when we deliver t_token on BUY or t_token on SELL.
+ * Uses DB for source of truth and updates Redis cache.
  */
 export async function deductInventory(input: InventoryDeductionInput): Promise<void> {
   const amount = typeof input.amount === "object" ? new Decimal(input.amount) : new Decimal(input.amount);
@@ -38,6 +48,53 @@ export async function deductInventory(input: InventoryDeductionInput): Promise<v
   }
 
   const newBalance = current.minus(amount);
+  const quantity = amount;
+
+  await prisma.$transaction([
+    prisma.inventoryAsset.update({
+      where: { id: asset.id },
+      data: { currentBalance: newBalance },
+    }),
+    prisma.inventoryHistory.create({
+      data: {
+        assetId: asset.id,
+        type,
+        amount,
+        quantity,
+        initialPurchasePrice: input.initialPurchasePrice ?? 0,
+        providerQuotePrice: input.providerQuotePrice ?? 0,
+      },
+    }),
+  ]);
+
+  const entry: BalanceEntry = {
+    amount: newBalance.toString(),
+    status: "updated",
+    updatedAt: new Date().toISOString(),
+  };
+  await setBalance(input.chain, input.symbol, entry);
+}
+
+/**
+ * Add to inventory (we receive token from user). Used when we receive f_token on BUY or f_token on SELL.
+ * Each token is in its own currency (e.g. USDC in USDC, ETH in ETH); no conversion between tokens here.
+ */
+export async function addInventory(input: InventoryAdditionInput): Promise<void> {
+  const amount = typeof input.amount === "object" ? new Decimal(input.amount) : new Decimal(input.amount);
+  const type = input.type ?? "PURCHASE";
+
+  const asset = await prisma.inventoryAsset.findUnique({
+    where: {
+      chain_tokenAddress: { chain: input.chain, tokenAddress: input.tokenAddress },
+    },
+  });
+
+  if (!asset) {
+    throw new Error(`InventoryAsset not found: ${input.chain}/${input.tokenAddress}`);
+  }
+
+  const current = new Decimal(asset.currentBalance);
+  const newBalance = current.plus(amount);
   const quantity = amount;
 
   await prisma.$transaction([

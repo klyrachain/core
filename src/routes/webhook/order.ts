@@ -34,10 +34,32 @@ const actionToType: Record<OrderWebhookBody["action"], TransactionType> = {
   claim: TransactionType.CLAIM,
 };
 
+/** Notify admin dashboard for every incoming order (accepted or rejected). Never throws. */
+function notifyAdminOrder(
+  payload: { event: string; data: Record<string, unknown> },
+  log: FastifyRequest["log"]
+): void {
+  sendToAdminDashboard(payload).catch((err) =>
+    log.warn({ err, event: payload.event }, "Admin webhook failed")
+  );
+}
+
 export async function orderWebhookRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: unknown }>("/webhook/order", async (req: FastifyRequest<{ Body: unknown }>, reply: FastifyReply) => {
     const parse = OrderWebhookSchema.safeParse(req.body);
     if (!parse.success) {
+      notifyAdminOrder(
+        {
+          event: "order.rejected",
+          data: {
+            reason: "validation_failed",
+            error: "Validation failed",
+            details: parse.error.flatten(),
+            body: req.body,
+          },
+        },
+        req.log
+      );
       return reply.status(400).send({
         success: false,
         error: "Validation failed",
@@ -82,27 +104,34 @@ export async function orderWebhookRoutes(app: FastifyInstance): Promise<void> {
         f_token: body.f_token,
         t_token: body.t_token,
       });
-      await sendToAdminDashboard({
-        event: "order.created",
-        data: {
-          transactionId: transaction.id,
-          action: body.action,
-          type: transaction.type,
-          status: transaction.status,
-          fromIdentifier: body.fromIdentifier ?? null,
-          toIdentifier: body.toIdentifier ?? null,
-          f_amount: body.f_amount,
-          t_amount: body.t_amount,
-          f_price: body.f_price,
-          t_price: body.t_price,
-          f_token: body.f_token,
-          t_token: body.t_token,
-          feeAmount: feeQuote.feeAmount,
-          feePercent: feeQuote.feePercent,
-          totalCost: feeQuote.totalCost,
-          profit: feeQuote.profit,
+
+      notifyAdminOrder(
+        {
+          event: "order.created",
+          data: {
+            transactionId: transaction.id,
+            action: body.action,
+            type: transaction.type,
+            status: transaction.status,
+            fromIdentifier: body.fromIdentifier ?? null,
+            toIdentifier: body.toIdentifier ?? null,
+            fromUserId: body.fromUserId ?? null,
+            toUserId: body.toUserId ?? null,
+            requestId: body.requestId ?? null,
+            f_amount: body.f_amount,
+            t_amount: body.t_amount,
+            f_price: body.f_price,
+            t_price: body.t_price,
+            f_token: body.f_token,
+            t_token: body.t_token,
+            feeAmount: feeQuote.feeAmount,
+            feePercent: feeQuote.feePercent,
+            totalCost: feeQuote.totalCost,
+            profit: feeQuote.profit,
+          },
         },
-      }).catch((err) => req.log.warn({ err }, "Admin webhook order.created failed"));
+        req.log
+      );
 
       return reply.status(201).send({
         success: true,
@@ -113,6 +142,22 @@ export async function orderWebhookRoutes(app: FastifyInstance): Promise<void> {
         },
       });
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Something went wrong.";
+      notifyAdminOrder(
+        {
+          event: "order.rejected",
+          data: {
+            reason: "server_error",
+            error: errorMessage,
+            action: body.action,
+            f_token: body.f_token,
+            t_token: body.t_token,
+            f_amount: body.f_amount,
+            t_amount: body.t_amount,
+          },
+        },
+        req.log
+      );
       req.log.error({ err }, "Webhook order create failed");
       return reply.status(500).send({
         success: false,

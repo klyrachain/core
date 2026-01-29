@@ -56,7 +56,7 @@ describe("webhook order", () => {
   });
 
   describe("POST /webhook/order", () => {
-    it("should return 400 when body fails validation (invalid action)", async () => {
+    it("should return 400 and send order.rejected to admin when body fails validation (invalid action)", async () => {
       const res = await app.inject({
         method: "POST",
         url: "/webhook/order",
@@ -68,9 +68,18 @@ describe("webhook order", () => {
       expect(json.success).toBe(false);
       expect(json.error).toBe("Validation failed");
       expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockSendToAdminDashboard).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "order.rejected",
+          data: expect.objectContaining({
+            reason: "validation_failed",
+            error: "Validation failed",
+          }),
+        })
+      );
     });
 
-    it("should return 400 when required fields are missing", async () => {
+    it("should return 400 and send order.rejected to admin when required fields are missing", async () => {
       const res = await app.inject({
         method: "POST",
         url: "/webhook/order",
@@ -80,6 +89,12 @@ describe("webhook order", () => {
       expect(res.statusCode).toBe(400);
       expect((res.json() as { success: boolean }).success).toBe(false);
       expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockSendToAdminDashboard).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "order.rejected",
+          data: expect.objectContaining({ reason: "validation_failed" }),
+        })
+      );
     });
 
     it("should return 201 and create transaction and add poll job on valid payload", async () => {
@@ -138,7 +153,7 @@ describe("webhook order", () => {
       );
     });
 
-    it("should return 500 when prisma.transaction.create throws", async () => {
+    it("should return 500 and send order.rejected to admin when prisma.transaction.create throws", async () => {
       mockCreate.mockRejectedValue(new Error("DB error"));
 
       const res = await app.inject({
@@ -150,6 +165,18 @@ describe("webhook order", () => {
 
       expect(res.statusCode).toBe(500);
       expect((res.json() as { success: boolean; error: string }).error).toBe("Something went wrong.");
+      expect(mockSendToAdminDashboard).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "order.rejected",
+          data: expect.objectContaining({
+            reason: "server_error",
+            error: "DB error",
+            action: "buy",
+            f_token: "USDC",
+            t_token: "ETH",
+          }),
+        })
+      );
     });
 
     it("should send order.created to admin with prices, fee, totalCost and profit", async () => {

@@ -138,11 +138,12 @@ Use these when building request bodies or handling responses/realtime payloads.
 
 **Endpoint:** `POST /webhook/admin` — Manual admin event (same as before).
 
-**Live tracking (automatic):** Core sends events to the admin dashboard for all orders:
+**Live tracking (automatic):** Core sends events to the admin dashboard for every incoming order and for logs:
 
 | Event | When | Data (includes) |
 |-------|------|------------------|
-| `order.created` | After `POST /webhook/order` creates a transaction | `transactionId`, `action`, `type`, `status`, `f_amount`, `t_amount`, `f_price`, `t_price`, `f_token`, `t_token`, `feeAmount`, `feePercent`, `totalCost`, `profit` |
+| `order.created` | After `POST /webhook/order` creates a transaction | `transactionId`, `action`, `type`, `status`, `fromIdentifier`, `toIdentifier`, `fromUserId`, `toUserId`, `requestId`, `f_amount`, `t_amount`, `f_price`, `t_price`, `f_token`, `t_token`, `feeAmount`, `feePercent`, `totalCost`, `profit` |
+| `order.rejected` | When `POST /webhook/order` returns 400 (validation) or 500 (server error) | `reason` (`validation_failed` or `server_error`), `error`, `details` (if validation), `body` (if validation), or `action`, `f_token`, `t_token`, `f_amount`, `t_amount` (if server error) |
 | `order.completed` | When poll worker sets transaction to COMPLETED | Same + `status: "COMPLETED"` |
 | `order.failed` | When poll worker sets transaction to FAILED | `transactionId`, `status`, `type`, `f_token`, `t_token`, `error` |
 | `logs.viewed` | When `GET /api/logs` is called | Full response data: `success`, `data` (log entries, same as API), `meta` (page, limit, total), `filters` (method, path, since, page, limit), `requestLogId` |
