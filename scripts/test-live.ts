@@ -23,6 +23,14 @@ const TEST_USERS = [
 
 const TOKENS = ["USDC", "ETH", "GHS", "DAI"];
 
+/** Token prices (e.g. 1 USDC = 1, 1 ETH = 3000). Used with /api/quote to build consistent order payloads. */
+const TOKEN_PRICES: Record<string, number> = {
+  USDC: 1,
+  ETH: 3000,
+  GHS: 1,
+  DAI: 1,
+};
+
 function randomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
@@ -66,6 +74,41 @@ async function fetchJson(
   }
 }
 
+type QuoteData = {
+  feeAmount: number;
+  feePercent: number;
+  totalCost: number;
+  totalReceived: number;
+  rate: number;
+  grossValue: number;
+  profit: number;
+};
+
+/** Fetch quote from /api/quote; used to set t_price, t_amount etc. consistently. */
+async function fetchQuote(params: {
+  action: string;
+  f_amount: number;
+  t_amount: number;
+  f_price: number;
+  t_price: number;
+  f_token: string;
+  t_token: string;
+}): Promise<{ ok: boolean; quote?: QuoteData; error?: string }> {
+  const q = new URLSearchParams({
+    action: params.action,
+    f_amount: String(params.f_amount),
+    t_amount: String(params.t_amount),
+    f_price: String(params.f_price),
+    t_price: String(params.t_price),
+    f_token: params.f_token,
+    t_token: params.t_token,
+  });
+  const res = await fetchJson(`/api/quote?${q.toString()}`);
+  if (!res.ok) return { ok: false, error: res.error };
+  const quote = res.data as QuoteData | undefined;
+  return quote ? { ok: true, quote } : { ok: false, error: "No quote data" };
+}
+
 type Action =
   | { type: "order"; action: "buy" | "sell" | "request" | "claim" }
   | { type: "fetch"; path: string; name: string }
@@ -86,6 +129,10 @@ function pickRandomAction(): Action {
       { path: "/api/requests?limit=5", name: "requests" },
       { path: "/api/claims?limit=5", name: "claims" },
       { path: "/api/wallets?limit=5", name: "wallets" },
+      {
+        path: "/api/quote?action=buy&f_amount=100&t_amount=0.033&f_price=1&t_price=3000&f_token=USDC&t_token=ETH",
+        name: "quote",
+      },
     ];
     const f = randomChoice(fetches);
     return { type: "fetch", path: f.path, name: f.name };
@@ -93,45 +140,89 @@ function pickRandomAction(): Action {
   return { type: "admin", event: randomChoice(["test.ping", "test.order.placed", "alert.low_balance"]) };
 }
 
-function buildOrderPayload(action: "buy" | "sell" | "request" | "claim"): Record<string, unknown> {
+/**
+ * Build order payload using token prices and /api/quote.
+ * Fetches a quote first; uses quote-derived f_price, t_price, f_amount, t_amount for the order.
+ */
+async function buildOrderPayloadWithQuote(
+  action: "buy" | "sell" | "request" | "claim"
+): Promise<{ payload: Record<string, unknown>; quote?: QuoteData }> {
   const from = randomChoice(TEST_USERS);
   const to = randomChoice(TEST_USERS);
-  const fToken = randomChoice(TOKENS);
-  const tToken = randomChoice(TOKENS.filter((t) => t !== fToken));
-  const fAmount = randomAmount(1, 500);
-  const tAmount = randomAmount(0.001, 2);
-  const price = randomAmount(1000, 3500);
 
-  const base = {
+  let fToken: string;
+  let tToken: string;
+  let fAmount: number;
+  let tAmount: number;
+  let fPrice: number;
+  let tPrice: number;
+
+  if (action === "request" || action === "claim") {
+    fToken = "GHS";
+    tToken = "GHS";
+    fAmount = randomAmount(10, 100);
+    tAmount = randomAmount(10, 100);
+    fPrice = TOKEN_PRICES[fToken] ?? 1;
+    tPrice = TOKEN_PRICES[tToken] ?? 1;
+  } else {
+    fToken = randomChoice(TOKENS);
+    tToken = randomChoice(TOKENS.filter((t) => t !== fToken));
+    fPrice = TOKEN_PRICES[fToken] ?? 1;
+    tPrice = TOKEN_PRICES[tToken] ?? 1;
+    if (action === "buy") {
+      fAmount = randomAmount(10, 500);
+      tAmount = (fAmount * fPrice) / tPrice;
+    } else {
+      tAmount = randomAmount(0.001, 2);
+      fAmount = (tAmount * tPrice) / fPrice;
+    }
+    tAmount = Math.round(tAmount * 1e8) / 1e8;
+    fAmount = Math.round(fAmount * 1e8) / 1e8;
+  }
+
+  const quoteResult = await fetchQuote({
     action,
-    fromIdentifier: "email" in from ? from.email : from.number ?? from.address,
+    f_amount: fAmount,
+    t_amount: tAmount,
+    f_price: fPrice,
+    t_price: tPrice,
+    f_token: fToken,
+    t_token: tToken,
+  });
+
+  const getIdentifier = (u: (typeof TEST_USERS)[number]): string => {
+    const o = u as { email?: string; number?: string; address?: string };
+    return o.email ?? o.number ?? o.address ?? "";
+  };
+
+  const payload: Record<string, unknown> = {
+    action,
+    fromIdentifier: getIdentifier(from),
     fromType: from.type,
-    toIdentifier: "email" in to ? to.email : to.number ?? to.address,
+    toIdentifier: getIdentifier(to),
     toType: to.type,
     f_amount: fAmount,
     t_amount: tAmount,
-    f_price: price,
-    t_price: price,
+    f_price: fPrice,
+    t_price: tPrice,
     f_token: fToken,
     t_token: tToken,
   };
 
-  if (action === "request" || action === "claim") {
-    return { ...base, f_token: "GHS", t_token: "GHS", f_amount: randomAmount(10, 100), t_amount: randomAmount(10, 100) };
-  }
-  return base;
+  return { payload, quote: quoteResult.quote };
 }
 
 async function runAction(action: Action): Promise<void> {
   const ts = new Date().toISOString();
   if (action.type === "order") {
-    const payload = buildOrderPayload(action.action);
+    const { payload, quote } = await buildOrderPayloadWithQuote(action.action);
     const result = await fetchJson("/webhook/order", {
       method: "POST",
       body: JSON.stringify(payload),
     });
     if (result.ok && result.data && typeof result.data === "object" && "id" in result.data) {
-      console.log(`[${ts}] ORDER ${action.action.toUpperCase()} → 201 id=${(result.data as { id: string }).id}`);
+      const quoteInfo = quote ? ` fee=${quote.feeAmount.toFixed(2)} totalCost=${quote.totalCost.toFixed(2)}` : "";
+      console.log(`[${ts}] ORDER ${action.action.toUpperCase()} → 201 id=${(result.data as { id: string }).id}${quoteInfo}`);
     } else {
       console.log(`[${ts}] ORDER ${action.action.toUpperCase()} → ${result.status} ${result.error ?? "error"}`);
     }
