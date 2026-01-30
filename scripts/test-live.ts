@@ -5,17 +5,86 @@
  * order actions (buy, sell, request, claim), Paystack API calls (prioritized),
  * quote API calls (fee + swap), and other fetch API calls.
  *
- * Usage: pnpm test:live
+ * Usage: pnpm test:live [options]
+ *   -f, --from <cats>  Only run actions in these "from" categories (comma-separated).
+ *   -t, --to <cats>    Only run actions in these "to" categories (comma-separated).
+ *   -f paystack -t klyra  → run only paystack and order (klyra) actions.
+ *   Categories: paystack, order, klyra (alias of order), quote, fetch, admin.
+ *   --help             Show this help and exit.
+ *
  * Env: CORE_URL (default http://localhost:4000), CORE_API_KEY (required for protected routes),
  *      INTERVAL_MIN_MS, INTERVAL_MAX_MS. Paystack routes return 503 if PAYSTACK_SECRET_KEY is not set.
  */
 
 import "dotenv/config";
 
+const VALID_CATEGORIES = ["paystack", "order", "klyra", "quote", "fetch", "admin"] as const;
+const CATEGORY_ALIASES: Record<string, string> = { klyra: "order" };
+
+function parseArgs(): { from: string[]; to: string[]; help: boolean } {
+  const argv = process.argv.slice(2);
+  let from: string[] = [];
+  let to: string[] = [];
+  let help = false;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--help" || arg === "-h") {
+      help = true;
+      continue;
+    }
+    if (arg === "-f" || arg === "--from") {
+      const val = argv[++i];
+      if (val) from.push(...val.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean));
+      continue;
+    }
+    if (arg === "-t" || arg === "--to") {
+      const val = argv[++i];
+      if (val) to.push(...val.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean));
+      continue;
+    }
+  }
+
+  from = from.map((c) => CATEGORY_ALIASES[c] ?? c);
+  to = to.map((c) => CATEGORY_ALIASES[c] ?? c);
+  const validSet = new Set(VALID_CATEGORIES);
+  const validFrom = from.filter((c) => validSet.has(c as (typeof VALID_CATEGORIES)[number]));
+  const validTo = to.filter((c) => validSet.has(c as (typeof VALID_CATEGORIES)[number]));
+  if (validFrom.length !== from.length || validTo.length !== to.length) {
+    const unknown = [...from.filter((c) => !validSet.has(c as (typeof VALID_CATEGORIES)[number])), ...to.filter((c) => !validSet.has(c as (typeof VALID_CATEGORIES)[number]))];
+    if (unknown.length > 0) {
+      console.warn(`Unknown category(ies) ignored: ${[...new Set(unknown)].join(", ")}. Valid: ${VALID_CATEGORIES.join(", ")}`);
+    }
+  }
+  return { from: validFrom, to: validTo, help };
+}
+
+function printHelp(): void {
+  console.log(`
+Live test — hit Core API at random intervals.
+
+Usage: pnpm test:live [options]
+
+Options:
+  -f, --from <categories>   Only run actions in these "from" categories (comma-separated).
+  -t, --to <categories>     Only run actions in these "to" categories (comma-separated).
+  -h, --help                Show this help.
+
+Categories: ${VALID_CATEGORIES.join(", ")}
+
+Examples:
+  pnpm test:live                    Run all action types (default mix).
+  pnpm test:live -f paystack        Run only Paystack API calls.
+  pnpm test:live -t klyra            Run only order webhooks (KLYRA provider).
+  pnpm test:live -f paystack -t klyra   Run Paystack + order actions only.
+  pnpm test:live -f quote,fetch     Run only quote (fee + swap) and fetch APIs.
+`);
+}
+
 const CORE_URL = process.env.CORE_URL ?? "http://localhost:4000";
 const CORE_API_KEY = process.env.CORE_API_KEY ?? "";
-const INTERVAL_MIN_MS = parseInt(process.env.INTERVAL_MIN_MS ?? "3000", 10) || 3000; // 3s default
-const INTERVAL_MAX_MS = parseInt(process.env.INTERVAL_MAX_MS ?? "60000", 10) || 60000; // 1 min default
+const INTERVAL_MIN_MS = parseInt(process.env.INTERVAL_MIN_MS ?? "3000", 10) || 2000; // 2s default
+const INTERVAL_MAX_MS = parseInt(process.env.INTERVAL_MAX_MS ?? "60000", 10) || 3000; // 1/2 min default
 
 const TEST_USERS = [
   { email: "alice@example.com", address: "0x1111111111111111111111111111111111111111", type: "EMAIL" as const },
@@ -173,9 +242,73 @@ type Action =
   | { type: "fetch"; path: string; name: string }
   | { type: "admin"; event: string };
 
-function pickRandomAction(): Action {
+function getActionCategory(action: Action): string {
+  switch (action.type) {
+    case "paystack":
+      return "paystack";
+    case "order":
+      return "order";
+    case "quote":
+    case "quoteSwap":
+      return "quote";
+    case "fetch":
+      return "fetch";
+    case "admin":
+      return "admin";
+    default:
+      return "fetch";
+  }
+}
+
+/** Build full list of action "templates" for filtering. One entry per concrete option. */
+function buildAllActionTemplates(): Action[] {
+  const templates: Action[] = [];
+  for (const a of PAYSTACK_ACTIONS) {
+    templates.push({ type: "paystack", path: a.path, name: a.name });
+  }
+  for (const action of ["buy", "sell", "request", "claim"] as const) {
+    templates.push({ type: "order", action });
+  }
+  for (const a of QUOTE_FETCH_ACTIONS) {
+    templates.push({ type: "quote", path: a.path, name: a.name });
+  }
+  templates.push({ type: "quoteSwap" });
+  for (const a of OTHER_FETCH_ACTIONS) {
+    templates.push({ type: "fetch", path: a.path, name: a.name });
+  }
+  for (const event of ["test.ping", "test.order.placed", "alert.low_balance"]) {
+    templates.push({ type: "admin", event });
+  }
+  return templates;
+}
+
+const ALL_ACTION_TEMPLATES = buildAllActionTemplates();
+
+/** When filter is active, only these templates are used; never the default mix. */
+let FILTERED_TEMPLATES: Action[] | null = null;
+
+function setFilteredTemplates(filterFrom: string[], filterTo: string[]): void {
+  const hasFilter = filterFrom.length > 0 || filterTo.length > 0;
+  if (!hasFilter) {
+    FILTERED_TEMPLATES = null;
+    return;
+  }
+  const union = [...new Set([...filterFrom, ...filterTo])];
+  const filtered = ALL_ACTION_TEMPLATES.filter((a) => union.includes(getActionCategory(a)));
+  if (filtered.length === 0) {
+    console.warn("Filter matched no actions; valid categories: " + VALID_CATEGORIES.join(", "));
+    FILTERED_TEMPLATES = null;
+    return;
+  }
+  FILTERED_TEMPLATES = filtered;
+}
+
+function pickRandomAction(filterFrom: string[], filterTo: string[]): Action {
+  if (FILTERED_TEMPLATES && FILTERED_TEMPLATES.length > 0) {
+    return randomChoice(FILTERED_TEMPLATES);
+  }
+
   const roll = Math.random();
-  // Prioritize Paystack (45%)
   if (roll < 0.45) {
     const a = randomChoice(PAYSTACK_ACTIONS);
     return { type: "paystack", path: a.path, name: a.name };
@@ -183,13 +316,11 @@ function pickRandomAction(): Action {
   if (roll < 0.65) {
     return { type: "order", action: randomChoice(["buy", "sell", "request", "claim"]) };
   }
-  // Quote API: fee (GET) and other fetches
   if (roll < 0.78) {
     const pool = [...QUOTE_FETCH_ACTIONS, ...OTHER_FETCH_ACTIONS];
     const f = randomChoice(pool);
     return f.path.startsWith("/api/quote") ? { type: "quote", path: f.path, name: f.name } : { type: "fetch", path: f.path, name: f.name };
   }
-  // POST /api/quote/swap (0x same-chain)
   if (roll < 0.88) {
     return { type: "quoteSwap" };
   }
@@ -200,11 +331,19 @@ function pickRandomAction(): Action {
  * Build order payload using token+chain and /api/quote.
  * Supports cross-chain (e.g. USDC on BASE → ETH on ETHEREUM). Fetches quote then sends f_chain, t_chain, f_token, t_token.
  */
+const TEST_USERS_WITH_ADDRESS = TEST_USERS.filter((u) => "address" in u && (u as { address?: string }).address);
+
 async function buildOrderPayloadWithQuote(
   action: "buy" | "sell" | "request" | "claim"
 ): Promise<{ payload: Record<string, unknown>; quote?: QuoteData }> {
+  const providers = providersForAction(action);
   const from = randomChoice(TEST_USERS);
-  const to = randomChoice(TEST_USERS);
+  const to =
+    providers.t_provider === "KLYRA" && TEST_USERS_WITH_ADDRESS.length > 0
+      ? randomChoice(TEST_USERS_WITH_ADDRESS)
+      : action === "request" || action === "claim"
+        ? randomChoice(TEST_USERS_WITH_ADDRESS.length > 0 ? TEST_USERS_WITH_ADDRESS : TEST_USERS)
+        : randomChoice(TEST_USERS);
 
   let fToken: string;
   let tToken: string;
@@ -262,12 +401,18 @@ async function buildOrderPayloadWithQuote(
     return o.email ?? o.number ?? o.address ?? "";
   };
 
+  const toUser = to as { email?: string; number?: string; address?: string; type?: string };
+  const toIdentifier =
+    providers.t_provider === "KLYRA" && toUser.address ? toUser.address : getIdentifier(to);
+  const toType =
+    providers.t_provider === "KLYRA" && toUser.address ? "ADDRESS" : (to as { type: string }).type;
+
   const payload: Record<string, unknown> = {
     action,
     fromIdentifier: getIdentifier(from),
     fromType: from.type,
-    toIdentifier: getIdentifier(to),
-    toType: to.type,
+    toIdentifier,
+    toType,
     f_amount: fAmount,
     t_amount: tAmount,
     f_price: fPrice,
@@ -276,9 +421,27 @@ async function buildOrderPayloadWithQuote(
     t_chain: tChain,
     f_token: fToken,
     t_token: tToken,
+    f_provider: providers.f_provider,
+    t_provider: providers.t_provider,
   };
 
   return { payload, quote: quoteResult.quote };
+}
+
+/** Use available providers per action; required for all transactions. */
+function providersForAction(action: "buy" | "sell" | "request" | "claim"): {
+  f_provider: "KLYRA" | "ANY";
+  t_provider: "KLYRA";
+} {
+  switch (action) {
+    case "request":
+    case "claim":
+      return { f_provider: "ANY", t_provider: "KLYRA" };
+    case "buy":
+    case "sell":
+    default:
+      return { f_provider: "KLYRA", t_provider: "KLYRA" };
+  }
 }
 
 async function runAction(action: Action): Promise<void> {
@@ -329,6 +492,7 @@ async function runAction(action: Action): Promise<void> {
         amount: "1000000",
         from_chain: 1,
         to_chain: 1,
+        from_address: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
       }),
     });
     if (result.ok) {
@@ -356,14 +520,29 @@ async function runAction(action: Action): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  console.log(`Live test → ${CORE_URL} (interval ${INTERVAL_MIN_MS}–${INTERVAL_MAX_MS} ms). Ctrl+C to stop.\n`);
+  const { from: filterFrom, to: filterTo, help } = parseArgs();
+  if (help) {
+    printHelp();
+    process.exit(0);
+  }
+
+  setFilteredTemplates(filterFrom, filterTo);
+  const filterActive = filterFrom.length > 0 || filterTo.length > 0;
+  const filterLabel = filterActive
+    ? ` (filter: from=[${filterFrom.join(",") || "any"}] to=[${filterTo.join(",") || "any"}])`
+    : "";
+  const onlyRunning =
+    filterActive && FILTERED_TEMPLATES && FILTERED_TEMPLATES.length > 0
+      ? ` Only running: ${[...new Set(FILTERED_TEMPLATES.map(getActionCategory))].join(", ")} (${FILTERED_TEMPLATES.length} actions).`
+      : "";
+
+  console.log(`Live test → ${CORE_URL} (interval ${INTERVAL_MIN_MS}–${INTERVAL_MAX_MS} ms)${filterLabel}.${onlyRunning} Ctrl+C to stop.\n`);
 
   if (!CORE_API_KEY) {
     console.error("CORE_API_KEY is not set. Protected routes require x-api-key. Add it to .env (e.g. from pnpm key:generate).");
     process.exit(1);
   }
 
-  // Quick health check
   const health = await fetchJson("/health");
   if (!health.ok) {
     console.error("Health check failed. Is the server running at", CORE_URL, "?");
@@ -377,7 +556,7 @@ async function main(): Promise<void> {
   });
 
   while (run) {
-    const action = pickRandomAction();
+    const action = pickRandomAction(filterFrom, filterTo);
     await runAction(action);
     const wait = randomDelayMs();
     if (run) {
