@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
-import { PaymentProvider, IdentityType, TransactionType } from "../../../generated/prisma/client.js";
+import { PaymentProvider, IdentityType, TransactionType } from "../../../prisma/generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { addPollJob } from "../../lib/queue.js";
 import { getFeeForOrder } from "../../services/fee.service.js";

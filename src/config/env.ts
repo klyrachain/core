@@ -19,8 +19,17 @@ const envSchema = z.object({
 
   ADMIN_WEBHOOK_URL: z.string().optional().default(""),
 
-  /** 0x Swap API key (for GET /api/quote/swap). Optional; if missing, swap quote returns 501. */
+  /** 0x Swap API key (for POST /api/quote/swap provider 0x). Optional; if missing, 0x quotes return 503. */
   ZEROX_API_KEY: z.string().min(1).optional(),
+
+  /** Squid Router integrator ID (for POST /api/quote/swap provider squid). Optional; if missing, Squid quotes return 503. */
+  SQUID_INTEGRATOR_ID: z.string().min(1).optional(),
+
+  /** LiFi API key (for POST /api/quote/swap provider lifi). Optional; higher rate limits when set. */
+  LIFI_API_KEY: z.string().min(1).optional(),
+
+  /** Paystack secret key for account verification, banks, transfers. Optional; if missing, Paystack routes return 503. */
+  PAYSTACK_SECRET_KEY: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

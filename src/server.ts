@@ -16,6 +16,13 @@ import { cacheApiRoutes } from "./routes/api/cache.js";
 import { queueApiRoutes } from "./routes/api/queue.js";
 import { quoteApiRoutes } from "./routes/api/quote.js";
 import { logsApiRoutes } from "./routes/api/logs.js";
+import { paystackBanksApiRoutes } from "./routes/api/paystack-banks.js";
+import { paystackMobileApiRoutes } from "./routes/api/paystack-mobile.js";
+import { paystackPaymentsApiRoutes } from "./routes/api/paystack-payments.js";
+import { paystackPayoutsApiRoutes } from "./routes/api/paystack-payouts.js";
+import { paystackTransactionsApiRoutes } from "./routes/api/paystack-transactions.js";
+import { paystackTransfersApiRoutes } from "./routes/api/paystack-transfers.js";
+import { paystackWebhookRoutes } from "./routes/webhook/paystack.js";
 import { onRequestLog, onResponseLog } from "./lib/request-log-hooks.js";
 import { requireApiKey } from "./lib/auth.guard.js";
 
@@ -27,7 +34,8 @@ const app = Fastify({
   },
 });
 
-app.addContentTypeParser("application/json", { parseAs: "string" }, (_, body, done) => {
+app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
+  (req as { rawBody?: string }).rawBody = typeof body === "string" ? body : "";
   try {
     done(null, body ? JSON.parse(body as string) : {});
   } catch (e) {
@@ -41,7 +49,7 @@ app.addHook("onResponse", onResponseLog);
 // Require x-api-key for all routes except health and ready
 app.addHook("preHandler", async (request, reply) => {
   const path = (request.url ?? "").split("?")[0];
-  if (path === "/health" || path === "/ready" || path.startsWith("/api/quote")) return;
+  if (path === "/health" || path === "/ready" || path.startsWith("/api/quote") || path === "/webhook/paystack") return;
   await requireApiKey(request, reply);
 });
 
@@ -72,6 +80,13 @@ await app.register(cacheApiRoutes, { prefix: "" });
 await app.register(queueApiRoutes, { prefix: "" });
 await app.register(quoteApiRoutes, { prefix: "" });
 await app.register(logsApiRoutes, { prefix: "" });
+await app.register(paystackBanksApiRoutes, { prefix: "" });
+await app.register(paystackMobileApiRoutes, { prefix: "" });
+await app.register(paystackPaymentsApiRoutes, { prefix: "" });
+await app.register(paystackPayoutsApiRoutes, { prefix: "" });
+await app.register(paystackTransactionsApiRoutes, { prefix: "" });
+await app.register(paystackTransfersApiRoutes, { prefix: "" });
+await app.register(paystackWebhookRoutes, { prefix: "" });
 
 const pollWorker = createPollWorker(processPollJob);
 

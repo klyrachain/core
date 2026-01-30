@@ -5,7 +5,7 @@ import { deductInventory, addInventory } from "../services/inventory.service.js"
 import { triggerTransactionStatusChange } from "../services/pusher.service.js";
 import { getFeeForOrder } from "../services/fee.service.js";
 import { sendToAdminDashboard } from "../services/admin-dashboard.service.js";
-import type { TransactionStatus } from "../../generated/prisma/client.js";
+import type { TransactionStatus } from "../../prisma/generated/prisma/client.js";
 
 export async function processPollJob(job: Job<PollJobData>): Promise<void> {
   const { transactionId } = job.data;
