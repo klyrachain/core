@@ -1,0 +1,262 @@
+/**
+ * Fonbnk API: fiat↔crypto quotes for onramp.
+ * Docs: https://docs.fonbnk.com/
+ */
+
+import crypto from "node:crypto";
+import { getEnv } from "../config/env.js";
+import type { FonbnkQuoteRequest, FonbnkQuoteResponse } from "../lib/onramp-quote.types.js";
+
+const COUNTRY_TO_CURRENCY: Record<string, string> = {
+  GH: "GHS",
+  NG: "NGN",
+  KE: "KES",
+  TZ: "TZS",
+  UG: "UGX",
+  RW: "RWF",
+  ZM: "ZMW",
+  ZA: "ZAR",
+  CI: "XOF",
+  SN: "XOF",
+  BJ: "XOF",
+  TG: "XOF",
+  CM: "XAF",
+  BW: "BWP",
+  MZ: "MZN",
+};
+
+function getConfig(): {
+  baseUrl: string;
+  clientId: string;
+  clientSecret: string;
+  timeout: number;
+} {
+  const env = getEnv();
+  const baseUrl =
+    (env.FONBNK_API_URL && env.FONBNK_API_URL.trim()) || "https://api.fonbnk.com";
+  const clientId = env.FONBNK_CLIENT_ID?.trim() ?? "";
+  const clientSecret = env.FONBNK_CLIENT_SECRET?.trim() ?? "";
+  const timeout = env.FONBNK_TIMEOUT_MS ?? 10000;
+  return { baseUrl, clientId, clientSecret, timeout };
+}
+
+function signRequest(endpoint: string, timestamp: string, clientSecret: string): string {
+  const padBase64 = (str: string): string =>
+    str + "=".repeat((4 - (str.length % 4)) % 4);
+  const decodedSecret = Buffer.from(padBase64(clientSecret), "base64");
+  const message = `${timestamp}:${endpoint}`;
+  const hmac = crypto.createHmac("sha256", decodedSecret);
+  hmac.update(message, "utf8");
+  return hmac.digest("base64");
+}
+
+/** Map token to Fonbnk payout currency code (e.g. USDC → BASE_USDC, BASE_USDC as-is). */
+export function toPayoutCurrencyCode(token: string): string {
+  const normalized = token.trim().toUpperCase();
+  if (normalized.includes("_")) return normalized;
+  return `BASE_${normalized}`;
+}
+
+export function getCurrencyForCountry(countryCode: string): string {
+  const code = countryCode.trim().toUpperCase().slice(0, 2);
+  return COUNTRY_TO_CURRENCY[code] ?? "GHS";
+}
+
+export function isFonbnkConfigured(): boolean {
+  const { clientId, clientSecret } = getConfig();
+  return !!(clientId && clientSecret);
+}
+
+interface FonbnkCashout {
+  exchangeRate?: number;
+  amountAfterFees?: number;
+  totalChargedFees?: number;
+}
+
+interface FonbnkQuoteApiResponse {
+  deposit?: {
+    cashout?: FonbnkCashout;
+    currencyCode?: string;
+    currencyDetails?: { network?: string; asset?: string };
+  };
+  payout?: {
+    cashout?: FonbnkCashout;
+    currencyCode?: string;
+    currencyDetails?: { network?: string; asset?: string; countryIsoCode?: string };
+  };
+}
+
+/**
+ * Fetch quote from Fonbnk. Buy: fiat→crypto or "I want X crypto, how much fiat?". Sell: crypto→fiat.
+ */
+export async function getFonbnkQuote(
+  request: FonbnkQuoteRequest
+): Promise<FonbnkQuoteResponse | null> {
+  const { baseUrl, clientId, clientSecret, timeout } = getConfig();
+  if (!clientId || !clientSecret) {
+    throw new Error("Missing FONBNK_CLIENT_ID or FONBNK_CLIENT_SECRET.");
+  }
+
+  const countryCode = request.country.trim().toUpperCase().slice(0, 2);
+  const currency = getCurrencyForCountry(request.country);
+  const payoutCurrencyCode = toPayoutCurrencyCode(request.token);
+  const isBuy = request.purchaseMethod === "buy";
+  const amountIn = request.amountIn === "crypto" ? "crypto" : "fiat";
+  const defaultFiatAmount = 100;
+  const defaultCryptoAmount = 1;
+  const amount =
+    request.amount != null && Number.isFinite(request.amount) && request.amount > 0
+      ? request.amount
+      : isBuy
+        ? amountIn === "crypto"
+          ? defaultCryptoAmount
+          : defaultFiatAmount
+        : defaultCryptoAmount;
+
+  const endpoint = "/api/v2/quote";
+  const timestamp = Date.now().toString();
+  const signature = signRequest(endpoint, timestamp, clientSecret);
+
+  const requestBody = isBuy
+    ? amountIn === "crypto"
+      ? {
+          deposit: {
+            paymentChannel: "mobile_money" as const,
+            currencyType: "fiat" as const,
+            currencyCode: currency,
+            countryIsoCode: countryCode,
+          },
+          payout: {
+            paymentChannel: "crypto" as const,
+            currencyType: "crypto" as const,
+            currencyCode: payoutCurrencyCode,
+            amount,
+          },
+        }
+      : {
+          deposit: {
+            paymentChannel: "mobile_money" as const,
+            currencyType: "fiat" as const,
+            currencyCode: currency,
+            countryIsoCode: countryCode,
+            amount,
+          },
+          payout: {
+            paymentChannel: "crypto" as const,
+            currencyType: "crypto" as const,
+            currencyCode: payoutCurrencyCode,
+          },
+        }
+    : {
+        deposit: {
+          paymentChannel: "crypto" as const,
+          currencyType: "crypto" as const,
+          currencyCode: payoutCurrencyCode,
+          amount,
+        },
+        payout: {
+          paymentChannel: "mobile_money" as const,
+          currencyType: "fiat" as const,
+          currencyCode: currency,
+          countryIsoCode: countryCode,
+        },
+      };
+
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => abortController.abort(), timeout);
+
+  const httpResponse = await fetch(`${baseUrl}${endpoint}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-client-id": clientId,
+      "x-timestamp": timestamp,
+      "x-signature": signature,
+    },
+    body: JSON.stringify(requestBody),
+    signal: abortController.signal,
+  });
+
+  clearTimeout(timeoutId);
+
+  if (!httpResponse.ok) {
+    const responseText = await httpResponse.text();
+    let errorMessage: string;
+    try {
+      const parsedError = JSON.parse(responseText) as { message?: string };
+      errorMessage = parsedError.message ?? responseText;
+    } catch {
+      errorMessage = responseText || httpResponse.statusText;
+    }
+    throw new Error(`Fonbnk API error: ${errorMessage}`);
+  }
+
+  const apiResponse = (await httpResponse.json()) as FonbnkQuoteApiResponse;
+
+  if (isBuy) {
+    const depositCashout = apiResponse.deposit?.cashout;
+    const payoutCashout = apiResponse.payout?.cashout;
+    if (!depositCashout) return null;
+    const exchangeRate = depositCashout.exchangeRate;
+    if (exchangeRate == null || Number(exchangeRate) <= 0) return null;
+
+    if (amountIn === "crypto") {
+      const fiatToPay =
+        depositCashout.amountAfterFees ??
+        (exchangeRate != null ? amount * Number(exchangeRate) : null);
+      return {
+        country: countryCode,
+        currency,
+        network:
+          apiResponse.payout?.currencyDetails?.network?.toLowerCase() ?? "base",
+        asset: apiResponse.payout?.currencyDetails?.asset ?? "USDC",
+        amount,
+        rate: Number(exchangeRate),
+        fee: Number(depositCashout.totalChargedFees ?? 0),
+        total:
+          fiatToPay != null ? Number(fiatToPay) : amount * Number(exchangeRate),
+        paymentChannel: "mobile_money",
+        purchaseMethod: "buy",
+        amountIn: "crypto",
+      };
+    }
+
+    const totalCryptoReceived = payoutCashout?.amountAfterFees ?? null;
+    return {
+      country: countryCode,
+      currency,
+      network:
+        apiResponse.payout?.currencyDetails?.network?.toLowerCase() ?? "base",
+      asset: apiResponse.payout?.currencyDetails?.asset ?? "USDC",
+      amount,
+      rate: Number(exchangeRate),
+      fee: Number(depositCashout.totalChargedFees ?? 0),
+      total:
+        totalCryptoReceived != null
+          ? Number(totalCryptoReceived)
+          : amount / Number(exchangeRate),
+      paymentChannel: "mobile_money",
+      purchaseMethod: "buy",
+      amountIn: "fiat",
+    };
+  }
+
+  const payoutCashout = apiResponse.payout?.cashout;
+  if (!payoutCashout) return null;
+  const exchangeRate = payoutCashout.exchangeRate;
+  if (exchangeRate == null || Number(exchangeRate) <= 0) return null;
+  return {
+    country: countryCode,
+    currency: apiResponse.payout?.currencyCode ?? currency,
+    network:
+      apiResponse.deposit?.currencyDetails?.network?.toLowerCase() ?? "base",
+    asset: apiResponse.deposit?.currencyDetails?.asset ?? "USDC",
+    amount,
+    rate: Number(exchangeRate),
+    fee: Number(payoutCashout.totalChargedFees ?? 0),
+    total: Number(payoutCashout.amountAfterFees ?? amount),
+    paymentChannel: "mobile_money",
+    purchaseMethod: "sell",
+    amountIn: "crypto",
+  };
+}

@@ -47,6 +47,13 @@ enum PaymentProvider {
   PAYSTACK
 }
 
+enum CryptoTransactionStatus {
+  PENDING   // Quote accepted; swap not yet submitted
+  SUBMITTED // Tx sent to chain; awaiting confirmation
+  CONFIRMED // On-chain confirmed
+  FAILED    // Submit failed or chain reverted
+}
+
 enum IdentityType {
   ADDRESS
   EMAIL
@@ -126,8 +133,45 @@ model Transaction {
 
   payoutRequests PayoutRequest[]
   paystackPaymentRecords PaystackPaymentRecord[]
+  cryptoTransactions CryptoTransaction[]
 
   @@index([status, type])
+}
+
+// --------------------------------------
+// Crypto / Swap Transaction (router audit)
+// --------------------------------------
+// Tracks swap executions via 0x, Squid, LiFi. When a user picks a quote and proceeds,
+// we record the swap; when we have the on-chain tx hash we update. Enables search by
+// transaction ID and linking onramp/offramp to Paystack via transactionId.
+
+model CryptoTransaction {
+  id           String   @id @default(uuid())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  provider     String   // "0x" | "squid" | "lifi"
+  status       CryptoTransactionStatus @default(PENDING)
+
+  fromChainId  Int
+  toChainId    Int
+  fromToken    String   // Contract address or native
+  toToken      String
+  fromAmount   String   // Wei/smallest unit
+  toAmount     String
+
+  txHash       String?  // Blockchain tx hash once submitted/confirmed
+  txUrl        String?  // Block explorer link (optional)
+
+  transactionId String?  // Our business Transaction when part of onramp/offramp
+  transaction   Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  metadata     Json?    // Optional: quote snapshot, from_address, to_address, etc.
+
+  @@index([transactionId])
+  @@index([txHash])
+  @@index([provider, status])
+  @@index([createdAt])
 }
 
 model Request {

@@ -2,6 +2,8 @@
 
 This document describes the **swap quote** endpoints: a single POST endpoint that returns quotes from **0x**, **Squid Router**, or **LiFi** based on the `provider` parameter. No onramp/offramp quotes here; this is for **swap** (this token for that token) only.
 
+For **onramp quotes** (fiat↔crypto via Fonbnk, with optional swap when the requested token is not in the pool), see [onramp-quote-api.md](./onramp-quote-api.md).
+
 **Base path:** `/api/quote`  
 **Auth:** Quote endpoints are excluded from `x-api-key`; no header required.
 

@@ -6,6 +6,8 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { getFeeForOrder } from "../../services/fee.service.js";
 import { getSwapQuote, getBestQuotes } from "../../services/swap-quote.service.js";
+import { getOnrampQuote } from "../../services/onramp-quote.service.js";
+import { isFonbnkConfigured } from "../../services/fonbnk.service.js";
 import { successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
 import { SWAP_QUOTE_PROVIDERS } from "../../lib/swap-quote.types.js";
 
@@ -42,6 +44,16 @@ const BestQuoteBodySchema = z.object({
   from_address: z.string().min(1),
   to_address: z.string().optional(),
   slippage: z.coerce.number().nonnegative().optional(),
+});
+
+const OnrampQuoteBodySchema = z.object({
+  country: z.string().min(1),
+  chain_id: z.coerce.number().int().positive(),
+  token: z.string().min(1),
+  amount: z.coerce.number().positive(),
+  amount_in: z.enum(["fiat", "crypto"]),
+  from_address: z.string().min(1).optional(),
+  token_decimals: z.coerce.number().int().nonnegative().optional(),
 });
 
 export async function quoteApiRoutes(app: FastifyInstance): Promise<void> {
@@ -108,6 +120,39 @@ export async function quoteApiRoutes(app: FastifyInstance): Promise<void> {
       const result = await getBestQuotes(params);
       if (!result.ok) {
         return reply.status(502).send({
+          success: false,
+          error: result.error,
+        });
+      }
+      return successEnvelope(reply, result.data);
+    }
+  );
+
+  /**
+   * Onramp quote: fiat↔crypto for buy. If requested token is in pool (Base/Ethereum USDC or ETH),
+   * returns direct Fonbnk quote. If not, chains Fonbnk (fiat↔pool token) + swap (pool→requested token).
+   */
+  app.post<{ Body: unknown }>(
+    "/api/quote/onramp",
+    async (req: FastifyRequest<{ Body: unknown }>, reply) => {
+      if (!isFonbnkConfigured()) {
+        return reply.status(503).send({
+          success: false,
+          error: "Onramp quotes unavailable: Fonbnk not configured.",
+        });
+      }
+      const parse = OnrampQuoteBodySchema.safeParse(req.body);
+      if (!parse.success) {
+        return reply.status(400).send({
+          success: false,
+          error: "Validation failed",
+          details: parse.error.flatten(),
+        });
+      }
+      const result = await getOnrampQuote(parse.data);
+      if (!result.ok) {
+        const status = result.status ?? 502;
+        return reply.status(status).send({
           success: false,
           error: result.error,
         });

@@ -7,7 +7,7 @@ import {
   successEnvelopeWithMeta,
   errorEnvelope,
 } from "../../lib/api-helpers.js";
-import type { InvoiceStatus } from "../../../generated/prisma/enums.js";
+import type { InvoiceStatus } from "../../../prisma/generated/prisma/enums.js";
 
 // --- Types (spec §2) ---
 

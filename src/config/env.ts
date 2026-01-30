@@ -30,6 +30,12 @@ const envSchema = z.object({
 
   /** Paystack secret key for account verification, banks, transfers. Optional; if missing, Paystack routes return 503. */
   PAYSTACK_SECRET_KEY: z.string().min(1).optional(),
+
+  /** Fonbnk API for onramp fiat↔crypto quotes. Optional; if missing, onramp quote returns 503. */
+  FONBNK_API_URL: z.string().optional(),
+  FONBNK_CLIENT_ID: z.string().optional(),
+  FONBNK_CLIENT_SECRET: z.string().optional(),
+  FONBNK_TIMEOUT_MS: z.coerce.number().positive().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
