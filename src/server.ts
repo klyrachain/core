@@ -41,7 +41,7 @@ app.addHook("onResponse", onResponseLog);
 // Require x-api-key for all routes except health and ready
 app.addHook("preHandler", async (request, reply) => {
   const path = (request.url ?? "").split("?")[0];
-  if (path === "/health" || path === "/ready") return;
+  if (path === "/health" || path === "/ready" || path.startsWith("/api/quote")) return;
   await requireApiKey(request, reply);
 });
 

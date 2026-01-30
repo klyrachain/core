@@ -3,6 +3,8 @@
 **Purpose:** Single source of truth for the frontend (or any client) to integrate with the **Core** service (Central Point: Webhook + Redis).  
 **Update this file** whenever Core API, webhook contract, or realtime events change.
 
+**See also:** `md/frontend-update-chains.md` for the **f_chain / t_chain / supportedChains** update (cross-chain transactions and wallet chains).
+
 ---
 
 ## 1. Service overview
@@ -47,15 +49,15 @@ All list endpoints support `?page=1&limit=20` (default limit 20, max 100). Respo
 | `GET` | `/api/requests/:id` | Get request by ID (with transaction, claim). |
 | `GET` | `/api/claims` | List claims (paginated). Query: `?status=` optional. |
 | `GET` | `/api/claims/:id` | Get claim by ID (with request, transaction). |
-| `GET` | `/api/wallets` | List wallets (paginated). `encryptedKey` is masked. |
-| `GET` | `/api/wallets/:id` | Get wallet by ID (`encryptedKey` masked). |
+| `GET` | `/api/wallets` | List wallets (paginated). Returns `supportedChains`, `supportedTokens`; `encryptedKey` is masked. |
+| `GET` | `/api/wallets/:id` | Get wallet by ID (`supportedChains`, `supportedTokens`; `encryptedKey` masked). |
 | `GET` | `/api/inventory` | List inventory assets (paginated). Query: `?chain=` optional. |
 | `GET` | `/api/inventory/:id` | Get inventory asset by ID. |
 | `GET` | `/api/inventory/:id/history` | List inventory history for asset (paginated). |
 | `GET` | `/api/cache/balances` | List Redis balance keys (query: `?limit=50`). |
 | `GET` | `/api/cache/balances/:chain/:token` | Get Redis balance for chain/token. |
 | `GET` | `/api/queue/poll` | Poll queue stats (counts, recent waiting/active jobs). Query: `?limit=20`. |
-| `GET` | `/api/quote` | Prefetch fee and quote for an order. Query: `action`, `f_amount`, `t_amount`, `f_price`, `t_price`, `f_token`, `t_token`. Returns `{ feeAmount, feePercent, totalCost, totalReceived, rate, grossValue, profit }`. |
+| `GET` | `/api/quote` | Prefetch fee and quote for an order. Query: `action`, `f_amount`, `t_amount`, `f_price`, `t_price`, `f_chain` (optional), `t_chain` (optional), `f_token`, `t_token`. Returns `{ feeAmount, feePercent, totalCost, totalReceived, rate, grossValue, profit }`. |
 | `GET` | `/api/logs` | Request logs for monitoring. All GET/POST/etc. requests are intercepted; each log has `id`, `timestamp`, `method`, `path`, `query`, `headers` (sensitive headers redacted), `body`, `statusCode`, `responseTimeMs`. Query: `method`, `path`, `since` (ISO), `page`, `limit`. **Sends webhook to admin dashboard** with event `logs.viewed` and full data: `success`, `data` (log entries), `meta`, `filters`, `requestLogId`. |
 
 ### 3.3 Order webhook (used by Backend → Core)
@@ -79,6 +81,8 @@ All list endpoints support `?page=1&limit=20` (default limit 20, max 100). Respo
 | `t_amount` | `number` (positive) | Yes | To-amount (e.g. crypto or target token amount). |
 | `f_price` | `number` (≥ 0) | Yes | From-price (rate). |
 | `t_price` | `number` (≥ 0) | Yes | To-price (rate). |
+| `f_chain` | `string` (non-empty) | No | Source chain (e.g. `ETHEREUM`, `BASE`). Default: `ETHEREUM`. |
+| `t_chain` | `string` (non-empty) | No | Target chain. Default: `ETHEREUM`. Enables cross-chain (e.g. USDC on BASE → ETH on ETHEREUM). |
 | `f_token` | `string` (non-empty) | Yes | From-asset symbol (e.g. `USDC`, `GHS`). |
 | `t_token` | `string` (non-empty) | Yes | To-asset symbol (e.g. `ETH`). |
 | `f_provider` | `PaymentProvider` | No | Default: `NONE`. See §4. |
@@ -142,7 +146,7 @@ Use these when building request bodies or handling responses/realtime payloads.
 
 | Event | When | Data (includes) |
 |-------|------|------------------|
-| `order.created` | After `POST /webhook/order` creates a transaction | `transactionId`, `action`, `type`, `status`, `fromIdentifier`, `toIdentifier`, `fromUserId`, `toUserId`, `requestId`, `f_amount`, `t_amount`, `f_price`, `t_price`, `f_token`, `t_token`, `feeAmount`, `feePercent`, `totalCost`, `profit` |
+| `order.created` | After `POST /webhook/order` creates a transaction | `transactionId`, `action`, `type`, `status`, `fromIdentifier`, `toIdentifier`, `fromUserId`, `toUserId`, `requestId`, `f_chain`, `t_chain`, `f_amount`, `t_amount`, `f_price`, `t_price`, `f_token`, `t_token`, `feeAmount`, `feePercent`, `totalCost`, `profit` |
 | `order.rejected` | When `POST /webhook/order` returns 400 (validation) or 500 (server error) | `reason` (`validation_failed` or `server_error`), `error`, `details` (if validation), `body` (if validation), or `action`, `f_token`, `t_token`, `f_amount`, `t_amount` (if server error) |
 | `order.completed` | When poll worker sets transaction to COMPLETED | Same + `status: "COMPLETED"` |
 | `order.failed` | When poll worker sets transaction to FAILED | `transactionId`, `status`, `type`, `f_token`, `t_token`, `error` |

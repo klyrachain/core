@@ -5,9 +5,7 @@ import { deductInventory, addInventory } from "../services/inventory.service.js"
 import { triggerTransactionStatusChange } from "../services/pusher.service.js";
 import { getFeeForOrder } from "../services/fee.service.js";
 import { sendToAdminDashboard } from "../services/admin-dashboard.service.js";
-import type { TransactionStatus } from "../../prisma/generated/prisma/client.js";
-
-const DEFAULT_CHAIN = "ETHEREUM";
+import type { TransactionStatus } from "../../generated/prisma/client.js";
 
 export async function processPollJob(job: Job<PollJobData>): Promise<void> {
   const { transactionId } = job.data;
@@ -24,11 +22,14 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
     return;
   }
 
+  const fChain = tx.f_chain ?? "ETHEREUM";
+  const tChain = tx.t_chain ?? "ETHEREUM";
+
   try {
-    // BUY: user gives f_token, receives t_token. We deduct t_token (give to user), add f_token (receive).
+    // BUY: user gives f_token on f_chain, receives t_token on t_chain. We deduct t_token on t_chain (give to user), add f_token on f_chain (receive).
     if (tx.type === "BUY") {
       const tAsset = await prisma.inventoryAsset.findFirst({
-        where: { symbol: tx.t_token, chain: DEFAULT_CHAIN },
+        where: { symbol: tx.t_token, chain: tChain },
       });
       if (tAsset) {
         await deductInventory({
@@ -41,7 +42,7 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
         });
       }
       const fAsset = await prisma.inventoryAsset.findFirst({
-        where: { symbol: tx.f_token, chain: DEFAULT_CHAIN },
+        where: { symbol: tx.f_token, chain: fChain },
       });
       if (fAsset) {
         await addInventory({
@@ -55,10 +56,10 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
       }
     }
 
-    // SELL: user gives f_token, receives t_token. We add f_token (receive), deduct t_token (give to user).
+    // SELL: user gives f_token on f_chain, receives t_token on t_chain. We add f_token on f_chain (receive), deduct t_token on t_chain (give to user).
     if (tx.type === "SELL") {
       const fAsset = await prisma.inventoryAsset.findFirst({
-        where: { symbol: tx.f_token, chain: DEFAULT_CHAIN },
+        where: { symbol: tx.f_token, chain: fChain },
       });
       if (fAsset) {
         await addInventory({
@@ -71,7 +72,7 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
         });
       }
       const tAsset = await prisma.inventoryAsset.findFirst({
-        where: { symbol: tx.t_token, chain: DEFAULT_CHAIN },
+        where: { symbol: tx.t_token, chain: tChain },
       });
       if (tAsset) {
         await deductInventory({
@@ -105,6 +106,8 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
         transactionId,
         status: "COMPLETED",
         type: tx.type,
+        f_chain: fChain,
+        t_chain: tChain,
         f_amount: Number(tx.f_amount),
         t_amount: Number(tx.t_amount),
         f_price: Number(tx.f_price),
@@ -134,6 +137,8 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
         transactionId,
         status: "FAILED",
         type: tx.type,
+        f_chain: fChain,
+        t_chain: tChain,
         f_token: tx.f_token,
         t_token: tx.t_token,
         error: err instanceof Error ? err.message : String(err),

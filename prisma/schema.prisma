@@ -41,6 +41,7 @@ enum ClaimStatus {
 enum PaymentProvider {
   NONE
   ANY
+  KLYRA   // On-chain same-chain; we have balance and send to user
   SQUID
   LIFI
   PAYSTACK
@@ -102,11 +103,15 @@ model Transaction {
   f_price  Decimal @db.Decimal(18, 8)
   t_price  Decimal @db.Decimal(18, 8)
 
-  f_token String
-  t_token String
+  f_chain  String  // Source chain (e.g. ETHEREUM, BASE)
+  t_chain  String  // Target chain (e.g. ETHEREUM, BASE) — enables cross-chain e.g. USDC on BASE → USDT on ETHEREUM
+  f_token  String
+  t_token  String
 
   f_provider PaymentProvider @default(NONE)
   t_provider PaymentProvider @default(NONE)
+
+  providerSessionId String? // External provider session (e.g. PayStack); link for session-based providers
 
   request   Request?
   requestId String?  @unique
@@ -157,9 +162,10 @@ model Wallet {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  address       String   @unique
-  encryptedKey  String
-  supportedTokens String[]
+  address          String   @unique
+  encryptedKey     String
+  supportedChains  String[] // e.g. ["ETHEREUM", "BASE"]
+  supportedTokens  String[] // e.g. ["ETH", "USDC"]
 }
 
 model InventoryAsset {

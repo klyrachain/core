@@ -44,6 +44,7 @@ export type ClaimStatus = (typeof ClaimStatus)[keyof typeof ClaimStatus]
 export const PaymentProvider = {
   NONE: 'NONE',
   ANY: 'ANY',
+  KLYRA: 'KLYRA',
   SQUID: 'SQUID',
   LIFI: 'LIFI',
   PAYSTACK: 'PAYSTACK'

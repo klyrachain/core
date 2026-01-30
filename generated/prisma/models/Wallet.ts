@@ -46,6 +46,7 @@ export type WalletCountAggregateOutputType = {
   updatedAt: number
   address: number
   encryptedKey: number
+  supportedChains: number
   supportedTokens: number
   _all: number
 }
@@ -73,6 +74,7 @@ export type WalletCountAggregateInputType = {
   updatedAt?: true
   address?: true
   encryptedKey?: true
+  supportedChains?: true
   supportedTokens?: true
   _all?: true
 }
@@ -155,6 +157,7 @@ export type WalletGroupByOutputType = {
   updatedAt: Date
   address: string
   encryptedKey: string
+  supportedChains: string[]
   supportedTokens: string[]
   _count: WalletCountAggregateOutputType | null
   _min: WalletMinAggregateOutputType | null
@@ -185,6 +188,7 @@ export type WalletWhereInput = {
   updatedAt?: Prisma.DateTimeFilter<"Wallet"> | Date | string
   address?: Prisma.StringFilter<"Wallet"> | string
   encryptedKey?: Prisma.StringFilter<"Wallet"> | string
+  supportedChains?: Prisma.StringNullableListFilter<"Wallet">
   supportedTokens?: Prisma.StringNullableListFilter<"Wallet">
 }
 
@@ -194,6 +198,7 @@ export type WalletOrderByWithRelationInput = {
   updatedAt?: Prisma.SortOrder
   address?: Prisma.SortOrder
   encryptedKey?: Prisma.SortOrder
+  supportedChains?: Prisma.SortOrder
   supportedTokens?: Prisma.SortOrder
 }
 
@@ -206,6 +211,7 @@ export type WalletWhereUniqueInput = Prisma.AtLeast<{
   createdAt?: Prisma.DateTimeFilter<"Wallet"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Wallet"> | Date | string
   encryptedKey?: Prisma.StringFilter<"Wallet"> | string
+  supportedChains?: Prisma.StringNullableListFilter<"Wallet">
   supportedTokens?: Prisma.StringNullableListFilter<"Wallet">
 }, "id" | "address">
 
@@ -215,6 +221,7 @@ export type WalletOrderByWithAggregationInput = {
   updatedAt?: Prisma.SortOrder
   address?: Prisma.SortOrder
   encryptedKey?: Prisma.SortOrder
+  supportedChains?: Prisma.SortOrder
   supportedTokens?: Prisma.SortOrder
   _count?: Prisma.WalletCountOrderByAggregateInput
   _max?: Prisma.WalletMaxOrderByAggregateInput
@@ -230,6 +237,7 @@ export type WalletScalarWhereWithAggregatesInput = {
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"Wallet"> | Date | string
   address?: Prisma.StringWithAggregatesFilter<"Wallet"> | string
   encryptedKey?: Prisma.StringWithAggregatesFilter<"Wallet"> | string
+  supportedChains?: Prisma.StringNullableListFilter<"Wallet">
   supportedTokens?: Prisma.StringNullableListFilter<"Wallet">
 }
 
@@ -239,6 +247,7 @@ export type WalletCreateInput = {
   updatedAt?: Date | string
   address: string
   encryptedKey: string
+  supportedChains?: Prisma.WalletCreatesupportedChainsInput | string[]
   supportedTokens?: Prisma.WalletCreatesupportedTokensInput | string[]
 }
 
@@ -248,6 +257,7 @@ export type WalletUncheckedCreateInput = {
   updatedAt?: Date | string
   address: string
   encryptedKey: string
+  supportedChains?: Prisma.WalletCreatesupportedChainsInput | string[]
   supportedTokens?: Prisma.WalletCreatesupportedTokensInput | string[]
 }
 
@@ -257,6 +267,7 @@ export type WalletUpdateInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   address?: Prisma.StringFieldUpdateOperationsInput | string
   encryptedKey?: Prisma.StringFieldUpdateOperationsInput | string
+  supportedChains?: Prisma.WalletUpdatesupportedChainsInput | string[]
   supportedTokens?: Prisma.WalletUpdatesupportedTokensInput | string[]
 }
 
@@ -266,6 +277,7 @@ export type WalletUncheckedUpdateInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   address?: Prisma.StringFieldUpdateOperationsInput | string
   encryptedKey?: Prisma.StringFieldUpdateOperationsInput | string
+  supportedChains?: Prisma.WalletUpdatesupportedChainsInput | string[]
   supportedTokens?: Prisma.WalletUpdatesupportedTokensInput | string[]
 }
 
@@ -275,6 +287,7 @@ export type WalletCreateManyInput = {
   updatedAt?: Date | string
   address: string
   encryptedKey: string
+  supportedChains?: Prisma.WalletCreatesupportedChainsInput | string[]
   supportedTokens?: Prisma.WalletCreatesupportedTokensInput | string[]
 }
 
@@ -284,6 +297,7 @@ export type WalletUpdateManyMutationInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   address?: Prisma.StringFieldUpdateOperationsInput | string
   encryptedKey?: Prisma.StringFieldUpdateOperationsInput | string
+  supportedChains?: Prisma.WalletUpdatesupportedChainsInput | string[]
   supportedTokens?: Prisma.WalletUpdatesupportedTokensInput | string[]
 }
 
@@ -293,6 +307,7 @@ export type WalletUncheckedUpdateManyInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   address?: Prisma.StringFieldUpdateOperationsInput | string
   encryptedKey?: Prisma.StringFieldUpdateOperationsInput | string
+  supportedChains?: Prisma.WalletUpdatesupportedChainsInput | string[]
   supportedTokens?: Prisma.WalletUpdatesupportedTokensInput | string[]
 }
 
@@ -310,6 +325,7 @@ export type WalletCountOrderByAggregateInput = {
   updatedAt?: Prisma.SortOrder
   address?: Prisma.SortOrder
   encryptedKey?: Prisma.SortOrder
+  supportedChains?: Prisma.SortOrder
   supportedTokens?: Prisma.SortOrder
 }
 
@@ -329,8 +345,17 @@ export type WalletMinOrderByAggregateInput = {
   encryptedKey?: Prisma.SortOrder
 }
 
+export type WalletCreatesupportedChainsInput = {
+  set: string[]
+}
+
 export type WalletCreatesupportedTokensInput = {
   set: string[]
+}
+
+export type WalletUpdatesupportedChainsInput = {
+  set?: string[]
+  push?: string | string[]
 }
 
 export type WalletUpdatesupportedTokensInput = {
@@ -346,6 +371,7 @@ export type WalletSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   updatedAt?: boolean
   address?: boolean
   encryptedKey?: boolean
+  supportedChains?: boolean
   supportedTokens?: boolean
 }, ExtArgs["result"]["wallet"]>
 
@@ -355,6 +381,7 @@ export type WalletSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extens
   updatedAt?: boolean
   address?: boolean
   encryptedKey?: boolean
+  supportedChains?: boolean
   supportedTokens?: boolean
 }, ExtArgs["result"]["wallet"]>
 
@@ -364,6 +391,7 @@ export type WalletSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extens
   updatedAt?: boolean
   address?: boolean
   encryptedKey?: boolean
+  supportedChains?: boolean
   supportedTokens?: boolean
 }, ExtArgs["result"]["wallet"]>
 
@@ -373,10 +401,11 @@ export type WalletSelectScalar = {
   updatedAt?: boolean
   address?: boolean
   encryptedKey?: boolean
+  supportedChains?: boolean
   supportedTokens?: boolean
 }
 
-export type WalletOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "address" | "encryptedKey" | "supportedTokens", ExtArgs["result"]["wallet"]>
+export type WalletOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "address" | "encryptedKey" | "supportedChains" | "supportedTokens", ExtArgs["result"]["wallet"]>
 
 export type $WalletPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Wallet"
@@ -387,6 +416,7 @@ export type $WalletPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     updatedAt: Date
     address: string
     encryptedKey: string
+    supportedChains: string[]
     supportedTokens: string[]
   }, ExtArgs["result"]["wallet"]>
   composites: {}
@@ -816,6 +846,7 @@ export interface WalletFieldRefs {
   readonly updatedAt: Prisma.FieldRef<"Wallet", 'DateTime'>
   readonly address: Prisma.FieldRef<"Wallet", 'String'>
   readonly encryptedKey: Prisma.FieldRef<"Wallet", 'String'>
+  readonly supportedChains: Prisma.FieldRef<"Wallet", 'String[]'>
   readonly supportedTokens: Prisma.FieldRef<"Wallet", 'String[]'>
 }
     

@@ -21,7 +21,14 @@ const TEST_USERS = [
   { email: "charlie@example.com", number: "233201234567", type: "NUMBER" as const },
 ];
 
-const TOKENS = ["USDC", "ETH", "GHS", "DAI"];
+/** Token + chain options for cross-chain (e.g. USDC on BASE → ETH on ETHEREUM). */
+const TOKEN_CHAINS: { symbol: string; chain: string }[] = [
+  { symbol: "USDC", chain: "ETHEREUM" },
+  { symbol: "USDC", chain: "BASE" },
+  { symbol: "ETH", chain: "ETHEREUM" },
+  { symbol: "GHS", chain: "ETHEREUM" },
+  { symbol: "DAI", chain: "ETHEREUM" },
+];
 
 /** Token prices (e.g. 1 USDC = 1, 1 ETH = 3000). Used with /api/quote to build consistent order payloads. */
 const TOKEN_PRICES: Record<string, number> = {
@@ -91,6 +98,8 @@ async function fetchQuote(params: {
   t_amount: number;
   f_price: number;
   t_price: number;
+  f_chain: string;
+  t_chain: string;
   f_token: string;
   t_token: string;
 }): Promise<{ ok: boolean; quote?: QuoteData; error?: string }> {
@@ -100,6 +109,8 @@ async function fetchQuote(params: {
     t_amount: String(params.t_amount),
     f_price: String(params.f_price),
     t_price: String(params.t_price),
+    f_chain: params.f_chain,
+    t_chain: params.t_chain,
     f_token: params.f_token,
     t_token: params.t_token,
   });
@@ -130,7 +141,7 @@ function pickRandomAction(): Action {
       { path: "/api/claims?limit=5", name: "claims" },
       { path: "/api/wallets?limit=5", name: "wallets" },
       {
-        path: "/api/quote?action=buy&f_amount=100&t_amount=0.033&f_price=1&t_price=3000&f_token=USDC&t_token=ETH",
+        path: "/api/quote?action=buy&f_amount=100&t_amount=0.033&f_price=1&t_price=3000&f_chain=BASE&t_chain=ETHEREUM&f_token=USDC&t_token=ETH",
         name: "quote",
       },
     ];
@@ -141,8 +152,8 @@ function pickRandomAction(): Action {
 }
 
 /**
- * Build order payload using token prices and /api/quote.
- * Fetches a quote first; uses quote-derived f_price, t_price, f_amount, t_amount for the order.
+ * Build order payload using token+chain and /api/quote.
+ * Supports cross-chain (e.g. USDC on BASE → ETH on ETHEREUM). Fetches quote then sends f_chain, t_chain, f_token, t_token.
  */
 async function buildOrderPayloadWithQuote(
   action: "buy" | "sell" | "request" | "claim"
@@ -152,21 +163,30 @@ async function buildOrderPayloadWithQuote(
 
   let fToken: string;
   let tToken: string;
+  let fChain: string;
+  let tChain: string;
   let fAmount: number;
   let tAmount: number;
   let fPrice: number;
   let tPrice: number;
 
   if (action === "request" || action === "claim") {
-    fToken = "GHS";
-    tToken = "GHS";
+    const ghs = TOKEN_CHAINS.find((x) => x.symbol === "GHS") ?? { symbol: "GHS", chain: "ETHEREUM" };
+    fToken = ghs.symbol;
+    tToken = ghs.symbol;
+    fChain = ghs.chain;
+    tChain = ghs.chain;
     fAmount = randomAmount(10, 100);
     tAmount = randomAmount(10, 100);
     fPrice = TOKEN_PRICES[fToken] ?? 1;
     tPrice = TOKEN_PRICES[tToken] ?? 1;
   } else {
-    fToken = randomChoice(TOKENS);
-    tToken = randomChoice(TOKENS.filter((t) => t !== fToken));
+    const fromOpt = randomChoice(TOKEN_CHAINS);
+    const toOpt = randomChoice(TOKEN_CHAINS.filter((x) => x.symbol !== fromOpt.symbol || x.chain !== fromOpt.chain));
+    fToken = fromOpt.symbol;
+    fChain = fromOpt.chain;
+    tToken = toOpt.symbol;
+    tChain = toOpt.chain;
     fPrice = TOKEN_PRICES[fToken] ?? 1;
     tPrice = TOKEN_PRICES[tToken] ?? 1;
     if (action === "buy") {
@@ -186,6 +206,8 @@ async function buildOrderPayloadWithQuote(
     t_amount: tAmount,
     f_price: fPrice,
     t_price: tPrice,
+    f_chain: fChain,
+    t_chain: tChain,
     f_token: fToken,
     t_token: tToken,
   });
@@ -205,6 +227,8 @@ async function buildOrderPayloadWithQuote(
     t_amount: tAmount,
     f_price: fPrice,
     t_price: tPrice,
+    f_chain: fChain,
+    t_chain: tChain,
     f_token: fToken,
     t_token: tToken,
   };

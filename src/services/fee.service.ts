@@ -11,6 +11,8 @@ export type FeeQuoteInput = {
   t_amount: number;
   f_price: number;
   t_price: number;
+  f_chain?: string;
+  t_chain?: string;
   f_token: string;
   t_token: string;
 };

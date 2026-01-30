@@ -56,10 +56,13 @@ export type TransactionMinAggregateOutputType = {
   t_amount: runtime.Decimal | null
   f_price: runtime.Decimal | null
   t_price: runtime.Decimal | null
+  f_chain: string | null
+  t_chain: string | null
   f_token: string | null
   t_token: string | null
   f_provider: $Enums.PaymentProvider | null
   t_provider: $Enums.PaymentProvider | null
+  providerSessionId: string | null
   requestId: string | null
 }
 
@@ -79,10 +82,13 @@ export type TransactionMaxAggregateOutputType = {
   t_amount: runtime.Decimal | null
   f_price: runtime.Decimal | null
   t_price: runtime.Decimal | null
+  f_chain: string | null
+  t_chain: string | null
   f_token: string | null
   t_token: string | null
   f_provider: $Enums.PaymentProvider | null
   t_provider: $Enums.PaymentProvider | null
+  providerSessionId: string | null
   requestId: string | null
 }
 
@@ -102,10 +108,13 @@ export type TransactionCountAggregateOutputType = {
   t_amount: number
   f_price: number
   t_price: number
+  f_chain: number
+  t_chain: number
   f_token: number
   t_token: number
   f_provider: number
   t_provider: number
+  providerSessionId: number
   requestId: number
   _all: number
 }
@@ -141,10 +150,13 @@ export type TransactionMinAggregateInputType = {
   t_amount?: true
   f_price?: true
   t_price?: true
+  f_chain?: true
+  t_chain?: true
   f_token?: true
   t_token?: true
   f_provider?: true
   t_provider?: true
+  providerSessionId?: true
   requestId?: true
 }
 
@@ -164,10 +176,13 @@ export type TransactionMaxAggregateInputType = {
   t_amount?: true
   f_price?: true
   t_price?: true
+  f_chain?: true
+  t_chain?: true
   f_token?: true
   t_token?: true
   f_provider?: true
   t_provider?: true
+  providerSessionId?: true
   requestId?: true
 }
 
@@ -187,10 +202,13 @@ export type TransactionCountAggregateInputType = {
   t_amount?: true
   f_price?: true
   t_price?: true
+  f_chain?: true
+  t_chain?: true
   f_token?: true
   t_token?: true
   f_provider?: true
   t_provider?: true
+  providerSessionId?: true
   requestId?: true
   _all?: true
 }
@@ -297,10 +315,13 @@ export type TransactionGroupByOutputType = {
   t_amount: runtime.Decimal
   f_price: runtime.Decimal
   t_price: runtime.Decimal
+  f_chain: string
+  t_chain: string
   f_token: string
   t_token: string
   f_provider: $Enums.PaymentProvider
   t_provider: $Enums.PaymentProvider
+  providerSessionId: string | null
   requestId: string | null
   _count: TransactionCountAggregateOutputType | null
   _avg: TransactionAvgAggregateOutputType | null
@@ -343,10 +364,13 @@ export type TransactionWhereInput = {
   t_amount?: Prisma.DecimalFilter<"Transaction"> | runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price?: Prisma.DecimalFilter<"Transaction"> | runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price?: Prisma.DecimalFilter<"Transaction"> | runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain?: Prisma.StringFilter<"Transaction"> | string
+  t_chain?: Prisma.StringFilter<"Transaction"> | string
   f_token?: Prisma.StringFilter<"Transaction"> | string
   t_token?: Prisma.StringFilter<"Transaction"> | string
   f_provider?: Prisma.EnumPaymentProviderFilter<"Transaction"> | $Enums.PaymentProvider
   t_provider?: Prisma.EnumPaymentProviderFilter<"Transaction"> | $Enums.PaymentProvider
+  providerSessionId?: Prisma.StringNullableFilter<"Transaction"> | string | null
   requestId?: Prisma.StringNullableFilter<"Transaction"> | string | null
   fromUser?: Prisma.XOR<Prisma.UserNullableScalarRelationFilter, Prisma.UserWhereInput> | null
   toUser?: Prisma.XOR<Prisma.UserNullableScalarRelationFilter, Prisma.UserWhereInput> | null
@@ -369,10 +393,13 @@ export type TransactionOrderByWithRelationInput = {
   t_amount?: Prisma.SortOrder
   f_price?: Prisma.SortOrder
   t_price?: Prisma.SortOrder
+  f_chain?: Prisma.SortOrder
+  t_chain?: Prisma.SortOrder
   f_token?: Prisma.SortOrder
   t_token?: Prisma.SortOrder
   f_provider?: Prisma.SortOrder
   t_provider?: Prisma.SortOrder
+  providerSessionId?: Prisma.SortOrderInput | Prisma.SortOrder
   requestId?: Prisma.SortOrderInput | Prisma.SortOrder
   fromUser?: Prisma.UserOrderByWithRelationInput
   toUser?: Prisma.UserOrderByWithRelationInput
@@ -399,10 +426,13 @@ export type TransactionWhereUniqueInput = Prisma.AtLeast<{
   t_amount?: Prisma.DecimalFilter<"Transaction"> | runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price?: Prisma.DecimalFilter<"Transaction"> | runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price?: Prisma.DecimalFilter<"Transaction"> | runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain?: Prisma.StringFilter<"Transaction"> | string
+  t_chain?: Prisma.StringFilter<"Transaction"> | string
   f_token?: Prisma.StringFilter<"Transaction"> | string
   t_token?: Prisma.StringFilter<"Transaction"> | string
   f_provider?: Prisma.EnumPaymentProviderFilter<"Transaction"> | $Enums.PaymentProvider
   t_provider?: Prisma.EnumPaymentProviderFilter<"Transaction"> | $Enums.PaymentProvider
+  providerSessionId?: Prisma.StringNullableFilter<"Transaction"> | string | null
   fromUser?: Prisma.XOR<Prisma.UserNullableScalarRelationFilter, Prisma.UserWhereInput> | null
   toUser?: Prisma.XOR<Prisma.UserNullableScalarRelationFilter, Prisma.UserWhereInput> | null
   request?: Prisma.XOR<Prisma.RequestNullableScalarRelationFilter, Prisma.RequestWhereInput> | null
@@ -424,10 +454,13 @@ export type TransactionOrderByWithAggregationInput = {
   t_amount?: Prisma.SortOrder
   f_price?: Prisma.SortOrder
   t_price?: Prisma.SortOrder
+  f_chain?: Prisma.SortOrder
+  t_chain?: Prisma.SortOrder
   f_token?: Prisma.SortOrder
   t_token?: Prisma.SortOrder
   f_provider?: Prisma.SortOrder
   t_provider?: Prisma.SortOrder
+  providerSessionId?: Prisma.SortOrderInput | Prisma.SortOrder
   requestId?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.TransactionCountOrderByAggregateInput
   _avg?: Prisma.TransactionAvgOrderByAggregateInput
@@ -455,10 +488,13 @@ export type TransactionScalarWhereWithAggregatesInput = {
   t_amount?: Prisma.DecimalWithAggregatesFilter<"Transaction"> | runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price?: Prisma.DecimalWithAggregatesFilter<"Transaction"> | runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price?: Prisma.DecimalWithAggregatesFilter<"Transaction"> | runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain?: Prisma.StringWithAggregatesFilter<"Transaction"> | string
+  t_chain?: Prisma.StringWithAggregatesFilter<"Transaction"> | string
   f_token?: Prisma.StringWithAggregatesFilter<"Transaction"> | string
   t_token?: Prisma.StringWithAggregatesFilter<"Transaction"> | string
   f_provider?: Prisma.EnumPaymentProviderWithAggregatesFilter<"Transaction"> | $Enums.PaymentProvider
   t_provider?: Prisma.EnumPaymentProviderWithAggregatesFilter<"Transaction"> | $Enums.PaymentProvider
+  providerSessionId?: Prisma.StringNullableWithAggregatesFilter<"Transaction"> | string | null
   requestId?: Prisma.StringNullableWithAggregatesFilter<"Transaction"> | string | null
 }
 
@@ -476,10 +512,13 @@ export type TransactionCreateInput = {
   t_amount: runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price: runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price: runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain: string
+  t_chain: string
   f_token: string
   t_token: string
   f_provider?: $Enums.PaymentProvider
   t_provider?: $Enums.PaymentProvider
+  providerSessionId?: string | null
   requestId?: string | null
   fromUser?: Prisma.UserCreateNestedOneWithoutTransactionsFromInput
   toUser?: Prisma.UserCreateNestedOneWithoutTransactionsToInput
@@ -502,10 +541,13 @@ export type TransactionUncheckedCreateInput = {
   t_amount: runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price: runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price: runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain: string
+  t_chain: string
   f_token: string
   t_token: string
   f_provider?: $Enums.PaymentProvider
   t_provider?: $Enums.PaymentProvider
+  providerSessionId?: string | null
   requestId?: string | null
   request?: Prisma.RequestUncheckedCreateNestedOneWithoutTransactionInput
 }
@@ -524,10 +566,13 @@ export type TransactionUpdateInput = {
   t_amount?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain?: Prisma.StringFieldUpdateOperationsInput | string
+  t_chain?: Prisma.StringFieldUpdateOperationsInput | string
   f_token?: Prisma.StringFieldUpdateOperationsInput | string
   t_token?: Prisma.StringFieldUpdateOperationsInput | string
   f_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
   t_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
+  providerSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   requestId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fromUser?: Prisma.UserUpdateOneWithoutTransactionsFromNestedInput
   toUser?: Prisma.UserUpdateOneWithoutTransactionsToNestedInput
@@ -550,10 +595,13 @@ export type TransactionUncheckedUpdateInput = {
   t_amount?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain?: Prisma.StringFieldUpdateOperationsInput | string
+  t_chain?: Prisma.StringFieldUpdateOperationsInput | string
   f_token?: Prisma.StringFieldUpdateOperationsInput | string
   t_token?: Prisma.StringFieldUpdateOperationsInput | string
   f_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
   t_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
+  providerSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   requestId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   request?: Prisma.RequestUncheckedUpdateOneWithoutTransactionNestedInput
 }
@@ -574,10 +622,13 @@ export type TransactionCreateManyInput = {
   t_amount: runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price: runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price: runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain: string
+  t_chain: string
   f_token: string
   t_token: string
   f_provider?: $Enums.PaymentProvider
   t_provider?: $Enums.PaymentProvider
+  providerSessionId?: string | null
   requestId?: string | null
 }
 
@@ -595,10 +646,13 @@ export type TransactionUpdateManyMutationInput = {
   t_amount?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain?: Prisma.StringFieldUpdateOperationsInput | string
+  t_chain?: Prisma.StringFieldUpdateOperationsInput | string
   f_token?: Prisma.StringFieldUpdateOperationsInput | string
   t_token?: Prisma.StringFieldUpdateOperationsInput | string
   f_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
   t_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
+  providerSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   requestId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
@@ -618,10 +672,13 @@ export type TransactionUncheckedUpdateManyInput = {
   t_amount?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain?: Prisma.StringFieldUpdateOperationsInput | string
+  t_chain?: Prisma.StringFieldUpdateOperationsInput | string
   f_token?: Prisma.StringFieldUpdateOperationsInput | string
   t_token?: Prisma.StringFieldUpdateOperationsInput | string
   f_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
   t_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
+  providerSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   requestId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
@@ -651,10 +708,13 @@ export type TransactionCountOrderByAggregateInput = {
   t_amount?: Prisma.SortOrder
   f_price?: Prisma.SortOrder
   t_price?: Prisma.SortOrder
+  f_chain?: Prisma.SortOrder
+  t_chain?: Prisma.SortOrder
   f_token?: Prisma.SortOrder
   t_token?: Prisma.SortOrder
   f_provider?: Prisma.SortOrder
   t_provider?: Prisma.SortOrder
+  providerSessionId?: Prisma.SortOrder
   requestId?: Prisma.SortOrder
 }
 
@@ -681,10 +741,13 @@ export type TransactionMaxOrderByAggregateInput = {
   t_amount?: Prisma.SortOrder
   f_price?: Prisma.SortOrder
   t_price?: Prisma.SortOrder
+  f_chain?: Prisma.SortOrder
+  t_chain?: Prisma.SortOrder
   f_token?: Prisma.SortOrder
   t_token?: Prisma.SortOrder
   f_provider?: Prisma.SortOrder
   t_provider?: Prisma.SortOrder
+  providerSessionId?: Prisma.SortOrder
   requestId?: Prisma.SortOrder
 }
 
@@ -704,10 +767,13 @@ export type TransactionMinOrderByAggregateInput = {
   t_amount?: Prisma.SortOrder
   f_price?: Prisma.SortOrder
   t_price?: Prisma.SortOrder
+  f_chain?: Prisma.SortOrder
+  t_chain?: Prisma.SortOrder
   f_token?: Prisma.SortOrder
   t_token?: Prisma.SortOrder
   f_provider?: Prisma.SortOrder
   t_provider?: Prisma.SortOrder
+  providerSessionId?: Prisma.SortOrder
   requestId?: Prisma.SortOrder
 }
 
@@ -859,10 +925,13 @@ export type TransactionCreateWithoutFromUserInput = {
   t_amount: runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price: runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price: runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain: string
+  t_chain: string
   f_token: string
   t_token: string
   f_provider?: $Enums.PaymentProvider
   t_provider?: $Enums.PaymentProvider
+  providerSessionId?: string | null
   requestId?: string | null
   toUser?: Prisma.UserCreateNestedOneWithoutTransactionsToInput
   request?: Prisma.RequestCreateNestedOneWithoutTransactionInput
@@ -883,10 +952,13 @@ export type TransactionUncheckedCreateWithoutFromUserInput = {
   t_amount: runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price: runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price: runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain: string
+  t_chain: string
   f_token: string
   t_token: string
   f_provider?: $Enums.PaymentProvider
   t_provider?: $Enums.PaymentProvider
+  providerSessionId?: string | null
   requestId?: string | null
   request?: Prisma.RequestUncheckedCreateNestedOneWithoutTransactionInput
 }
@@ -915,10 +987,13 @@ export type TransactionCreateWithoutToUserInput = {
   t_amount: runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price: runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price: runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain: string
+  t_chain: string
   f_token: string
   t_token: string
   f_provider?: $Enums.PaymentProvider
   t_provider?: $Enums.PaymentProvider
+  providerSessionId?: string | null
   requestId?: string | null
   fromUser?: Prisma.UserCreateNestedOneWithoutTransactionsFromInput
   request?: Prisma.RequestCreateNestedOneWithoutTransactionInput
@@ -939,10 +1014,13 @@ export type TransactionUncheckedCreateWithoutToUserInput = {
   t_amount: runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price: runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price: runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain: string
+  t_chain: string
   f_token: string
   t_token: string
   f_provider?: $Enums.PaymentProvider
   t_provider?: $Enums.PaymentProvider
+  providerSessionId?: string | null
   requestId?: string | null
   request?: Prisma.RequestUncheckedCreateNestedOneWithoutTransactionInput
 }
@@ -992,10 +1070,13 @@ export type TransactionScalarWhereInput = {
   t_amount?: Prisma.DecimalFilter<"Transaction"> | runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price?: Prisma.DecimalFilter<"Transaction"> | runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price?: Prisma.DecimalFilter<"Transaction"> | runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain?: Prisma.StringFilter<"Transaction"> | string
+  t_chain?: Prisma.StringFilter<"Transaction"> | string
   f_token?: Prisma.StringFilter<"Transaction"> | string
   t_token?: Prisma.StringFilter<"Transaction"> | string
   f_provider?: Prisma.EnumPaymentProviderFilter<"Transaction"> | $Enums.PaymentProvider
   t_provider?: Prisma.EnumPaymentProviderFilter<"Transaction"> | $Enums.PaymentProvider
+  providerSessionId?: Prisma.StringNullableFilter<"Transaction"> | string | null
   requestId?: Prisma.StringNullableFilter<"Transaction"> | string | null
 }
 
@@ -1029,10 +1110,13 @@ export type TransactionCreateWithoutRequestInput = {
   t_amount: runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price: runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price: runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain: string
+  t_chain: string
   f_token: string
   t_token: string
   f_provider?: $Enums.PaymentProvider
   t_provider?: $Enums.PaymentProvider
+  providerSessionId?: string | null
   requestId?: string | null
   fromUser?: Prisma.UserCreateNestedOneWithoutTransactionsFromInput
   toUser?: Prisma.UserCreateNestedOneWithoutTransactionsToInput
@@ -1054,10 +1138,13 @@ export type TransactionUncheckedCreateWithoutRequestInput = {
   t_amount: runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price: runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price: runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain: string
+  t_chain: string
   f_token: string
   t_token: string
   f_provider?: $Enums.PaymentProvider
   t_provider?: $Enums.PaymentProvider
+  providerSessionId?: string | null
   requestId?: string | null
 }
 
@@ -1091,10 +1178,13 @@ export type TransactionUpdateWithoutRequestInput = {
   t_amount?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain?: Prisma.StringFieldUpdateOperationsInput | string
+  t_chain?: Prisma.StringFieldUpdateOperationsInput | string
   f_token?: Prisma.StringFieldUpdateOperationsInput | string
   t_token?: Prisma.StringFieldUpdateOperationsInput | string
   f_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
   t_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
+  providerSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   requestId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fromUser?: Prisma.UserUpdateOneWithoutTransactionsFromNestedInput
   toUser?: Prisma.UserUpdateOneWithoutTransactionsToNestedInput
@@ -1116,10 +1206,13 @@ export type TransactionUncheckedUpdateWithoutRequestInput = {
   t_amount?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain?: Prisma.StringFieldUpdateOperationsInput | string
+  t_chain?: Prisma.StringFieldUpdateOperationsInput | string
   f_token?: Prisma.StringFieldUpdateOperationsInput | string
   t_token?: Prisma.StringFieldUpdateOperationsInput | string
   f_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
   t_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
+  providerSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   requestId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
@@ -1138,10 +1231,13 @@ export type TransactionCreateManyFromUserInput = {
   t_amount: runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price: runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price: runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain: string
+  t_chain: string
   f_token: string
   t_token: string
   f_provider?: $Enums.PaymentProvider
   t_provider?: $Enums.PaymentProvider
+  providerSessionId?: string | null
   requestId?: string | null
 }
 
@@ -1160,10 +1256,13 @@ export type TransactionCreateManyToUserInput = {
   t_amount: runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price: runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price: runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain: string
+  t_chain: string
   f_token: string
   t_token: string
   f_provider?: $Enums.PaymentProvider
   t_provider?: $Enums.PaymentProvider
+  providerSessionId?: string | null
   requestId?: string | null
 }
 
@@ -1181,10 +1280,13 @@ export type TransactionUpdateWithoutFromUserInput = {
   t_amount?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain?: Prisma.StringFieldUpdateOperationsInput | string
+  t_chain?: Prisma.StringFieldUpdateOperationsInput | string
   f_token?: Prisma.StringFieldUpdateOperationsInput | string
   t_token?: Prisma.StringFieldUpdateOperationsInput | string
   f_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
   t_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
+  providerSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   requestId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   toUser?: Prisma.UserUpdateOneWithoutTransactionsToNestedInput
   request?: Prisma.RequestUpdateOneWithoutTransactionNestedInput
@@ -1205,10 +1307,13 @@ export type TransactionUncheckedUpdateWithoutFromUserInput = {
   t_amount?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain?: Prisma.StringFieldUpdateOperationsInput | string
+  t_chain?: Prisma.StringFieldUpdateOperationsInput | string
   f_token?: Prisma.StringFieldUpdateOperationsInput | string
   t_token?: Prisma.StringFieldUpdateOperationsInput | string
   f_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
   t_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
+  providerSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   requestId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   request?: Prisma.RequestUncheckedUpdateOneWithoutTransactionNestedInput
 }
@@ -1228,10 +1333,13 @@ export type TransactionUncheckedUpdateManyWithoutFromUserInput = {
   t_amount?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain?: Prisma.StringFieldUpdateOperationsInput | string
+  t_chain?: Prisma.StringFieldUpdateOperationsInput | string
   f_token?: Prisma.StringFieldUpdateOperationsInput | string
   t_token?: Prisma.StringFieldUpdateOperationsInput | string
   f_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
   t_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
+  providerSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   requestId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
@@ -1249,10 +1357,13 @@ export type TransactionUpdateWithoutToUserInput = {
   t_amount?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain?: Prisma.StringFieldUpdateOperationsInput | string
+  t_chain?: Prisma.StringFieldUpdateOperationsInput | string
   f_token?: Prisma.StringFieldUpdateOperationsInput | string
   t_token?: Prisma.StringFieldUpdateOperationsInput | string
   f_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
   t_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
+  providerSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   requestId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fromUser?: Prisma.UserUpdateOneWithoutTransactionsFromNestedInput
   request?: Prisma.RequestUpdateOneWithoutTransactionNestedInput
@@ -1273,10 +1384,13 @@ export type TransactionUncheckedUpdateWithoutToUserInput = {
   t_amount?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain?: Prisma.StringFieldUpdateOperationsInput | string
+  t_chain?: Prisma.StringFieldUpdateOperationsInput | string
   f_token?: Prisma.StringFieldUpdateOperationsInput | string
   t_token?: Prisma.StringFieldUpdateOperationsInput | string
   f_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
   t_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
+  providerSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   requestId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   request?: Prisma.RequestUncheckedUpdateOneWithoutTransactionNestedInput
 }
@@ -1296,10 +1410,13 @@ export type TransactionUncheckedUpdateManyWithoutToUserInput = {
   t_amount?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   f_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
   t_price?: Prisma.DecimalFieldUpdateOperationsInput | runtime.Decimal | runtime.DecimalJsLike | number | string
+  f_chain?: Prisma.StringFieldUpdateOperationsInput | string
+  t_chain?: Prisma.StringFieldUpdateOperationsInput | string
   f_token?: Prisma.StringFieldUpdateOperationsInput | string
   t_token?: Prisma.StringFieldUpdateOperationsInput | string
   f_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
   t_provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
+  providerSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   requestId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
@@ -1321,10 +1438,13 @@ export type TransactionSelect<ExtArgs extends runtime.Types.Extensions.InternalA
   t_amount?: boolean
   f_price?: boolean
   t_price?: boolean
+  f_chain?: boolean
+  t_chain?: boolean
   f_token?: boolean
   t_token?: boolean
   f_provider?: boolean
   t_provider?: boolean
+  providerSessionId?: boolean
   requestId?: boolean
   fromUser?: boolean | Prisma.Transaction$fromUserArgs<ExtArgs>
   toUser?: boolean | Prisma.Transaction$toUserArgs<ExtArgs>
@@ -1347,10 +1467,13 @@ export type TransactionSelectCreateManyAndReturn<ExtArgs extends runtime.Types.E
   t_amount?: boolean
   f_price?: boolean
   t_price?: boolean
+  f_chain?: boolean
+  t_chain?: boolean
   f_token?: boolean
   t_token?: boolean
   f_provider?: boolean
   t_provider?: boolean
+  providerSessionId?: boolean
   requestId?: boolean
   fromUser?: boolean | Prisma.Transaction$fromUserArgs<ExtArgs>
   toUser?: boolean | Prisma.Transaction$toUserArgs<ExtArgs>
@@ -1372,10 +1495,13 @@ export type TransactionSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.E
   t_amount?: boolean
   f_price?: boolean
   t_price?: boolean
+  f_chain?: boolean
+  t_chain?: boolean
   f_token?: boolean
   t_token?: boolean
   f_provider?: boolean
   t_provider?: boolean
+  providerSessionId?: boolean
   requestId?: boolean
   fromUser?: boolean | Prisma.Transaction$fromUserArgs<ExtArgs>
   toUser?: boolean | Prisma.Transaction$toUserArgs<ExtArgs>
@@ -1397,14 +1523,17 @@ export type TransactionSelectScalar = {
   t_amount?: boolean
   f_price?: boolean
   t_price?: boolean
+  f_chain?: boolean
+  t_chain?: boolean
   f_token?: boolean
   t_token?: boolean
   f_provider?: boolean
   t_provider?: boolean
+  providerSessionId?: boolean
   requestId?: boolean
 }
 
-export type TransactionOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "type" | "status" | "fromIdentifier" | "fromType" | "fromUserId" | "toIdentifier" | "toType" | "toUserId" | "f_amount" | "t_amount" | "f_price" | "t_price" | "f_token" | "t_token" | "f_provider" | "t_provider" | "requestId", ExtArgs["result"]["transaction"]>
+export type TransactionOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "type" | "status" | "fromIdentifier" | "fromType" | "fromUserId" | "toIdentifier" | "toType" | "toUserId" | "f_amount" | "t_amount" | "f_price" | "t_price" | "f_chain" | "t_chain" | "f_token" | "t_token" | "f_provider" | "t_provider" | "providerSessionId" | "requestId", ExtArgs["result"]["transaction"]>
 export type TransactionInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   fromUser?: boolean | Prisma.Transaction$fromUserArgs<ExtArgs>
   toUser?: boolean | Prisma.Transaction$toUserArgs<ExtArgs>
@@ -1442,10 +1571,13 @@ export type $TransactionPayload<ExtArgs extends runtime.Types.Extensions.Interna
     t_amount: runtime.Decimal
     f_price: runtime.Decimal
     t_price: runtime.Decimal
+    f_chain: string
+    t_chain: string
     f_token: string
     t_token: string
     f_provider: $Enums.PaymentProvider
     t_provider: $Enums.PaymentProvider
+    providerSessionId: string | null
     requestId: string | null
   }, ExtArgs["result"]["transaction"]>
   composites: {}
@@ -1888,10 +2020,13 @@ export interface TransactionFieldRefs {
   readonly t_amount: Prisma.FieldRef<"Transaction", 'Decimal'>
   readonly f_price: Prisma.FieldRef<"Transaction", 'Decimal'>
   readonly t_price: Prisma.FieldRef<"Transaction", 'Decimal'>
+  readonly f_chain: Prisma.FieldRef<"Transaction", 'String'>
+  readonly t_chain: Prisma.FieldRef<"Transaction", 'String'>
   readonly f_token: Prisma.FieldRef<"Transaction", 'String'>
   readonly t_token: Prisma.FieldRef<"Transaction", 'String'>
   readonly f_provider: Prisma.FieldRef<"Transaction", 'PaymentProvider'>
   readonly t_provider: Prisma.FieldRef<"Transaction", 'PaymentProvider'>
+  readonly providerSessionId: Prisma.FieldRef<"Transaction", 'String'>
   readonly requestId: Prisma.FieldRef<"Transaction", 'String'>
 }
     

@@ -1,6 +1,6 @@
 import Pusher from "pusher";
 import { getEnv } from "../config/env.js";
-import type { TransactionStatus } from "../../prisma/generated/prisma/client.js";
+import type { TransactionStatus } from "../../generated/prisma/client.js";
 
 const CHANNEL_NOTIFICATIONS = "notifications";
 const CHANNEL_EMAIL = "email";

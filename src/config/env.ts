@@ -18,6 +18,9 @@ const envSchema = z.object({
   PUSHER_CLUSTER: z.string().optional().default("mt1"),
 
   ADMIN_WEBHOOK_URL: z.string().optional().default(""),
+
+  /** 0x Swap API key (for GET /api/quote/swap). Optional; if missing, swap quote returns 501. */
+  ZEROX_API_KEY: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

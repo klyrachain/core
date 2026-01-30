@@ -1,10 +1,11 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
-import { PaymentProvider, IdentityType, TransactionType } from "../../../prisma/generated/prisma/client.js";
+import { PaymentProvider, IdentityType, TransactionType } from "../../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { addPollJob } from "../../lib/queue.js";
 import { getFeeForOrder } from "../../services/fee.service.js";
 import { sendToAdminDashboard } from "../../services/admin-dashboard.service.js";
+import { validateProviderPayload } from "../../services/provider.server.js";
 
 const OrderWebhookSchema = z.object({
   action: z.enum(["buy", "sell", "request", "claim"]),
@@ -18,10 +19,13 @@ const OrderWebhookSchema = z.object({
   t_amount: z.coerce.number().positive(),
   f_price: z.coerce.number().nonnegative(),
   t_price: z.coerce.number().nonnegative(),
+  f_chain: z.string().min(1).optional().default("ETHEREUM"),
+  t_chain: z.string().min(1).optional().default("ETHEREUM"),
   f_token: z.string().min(1),
   t_token: z.string().min(1),
   f_provider: z.nativeEnum(PaymentProvider).optional().default(PaymentProvider.NONE),
   t_provider: z.nativeEnum(PaymentProvider).optional().default(PaymentProvider.NONE),
+  providerSessionId: z.string().min(1).optional().nullable(),
   requestId: z.string().uuid().optional().nullable(),
 });
 
@@ -70,6 +74,39 @@ export async function orderWebhookRoutes(app: FastifyInstance): Promise<void> {
     const body = parse.data;
     const type = actionToType[body.action];
 
+    const providerValidation = validateProviderPayload({
+      action: body.action,
+      fromIdentifier: body.fromIdentifier,
+      fromType: body.fromType,
+      toIdentifier: body.toIdentifier,
+      toType: body.toType,
+      f_provider: body.f_provider,
+      t_provider: body.t_provider,
+      f_chain: body.f_chain,
+      t_chain: body.t_chain,
+      f_token: body.f_token,
+      t_token: body.t_token,
+    });
+    if (!providerValidation.valid) {
+      notifyAdminOrder(
+        {
+          event: "order.rejected",
+          data: {
+            reason: "provider_validation_failed",
+            error: providerValidation.error,
+            code: providerValidation.code,
+            body: req.body,
+          },
+        },
+        req.log
+      );
+      return reply.status(400).send({
+        success: false,
+        error: providerValidation.error,
+        code: providerValidation.code,
+      });
+    }
+
     try {
       const transaction = await prisma.transaction.create({
         data: {
@@ -85,10 +122,13 @@ export async function orderWebhookRoutes(app: FastifyInstance): Promise<void> {
           t_amount: body.t_amount,
           f_price: body.f_price,
           t_price: body.t_price,
+          f_chain: body.f_chain,
+          t_chain: body.t_chain,
           f_token: body.f_token,
           t_token: body.t_token,
           f_provider: body.f_provider,
           t_provider: body.t_provider,
+          providerSessionId: body.providerSessionId ?? null,
           requestId: body.requestId ?? null,
         },
       });
@@ -122,6 +162,8 @@ export async function orderWebhookRoutes(app: FastifyInstance): Promise<void> {
             t_amount: body.t_amount,
             f_price: body.f_price,
             t_price: body.t_price,
+            f_chain: body.f_chain,
+            t_chain: body.t_chain,
             f_token: body.f_token,
             t_token: body.t_token,
             feeAmount: feeQuote.feeAmount,
@@ -150,6 +192,8 @@ export async function orderWebhookRoutes(app: FastifyInstance): Promise<void> {
             reason: "server_error",
             error: errorMessage,
             action: body.action,
+            f_chain: body.f_chain,
+            t_chain: body.t_chain,
             f_token: body.f_token,
             t_token: body.t_token,
             f_amount: body.f_amount,

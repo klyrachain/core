@@ -106,10 +106,13 @@ export const TransactionScalarFieldEnum = {
   t_amount: 't_amount',
   f_price: 'f_price',
   t_price: 't_price',
+  f_chain: 'f_chain',
+  t_chain: 't_chain',
   f_token: 'f_token',
   t_token: 't_token',
   f_provider: 'f_provider',
   t_provider: 't_provider',
+  providerSessionId: 'providerSessionId',
   requestId: 'requestId'
 } as const
 
@@ -151,6 +154,7 @@ export const WalletScalarFieldEnum = {
   updatedAt: 'updatedAt',
   address: 'address',
   encryptedKey: 'encryptedKey',
+  supportedChains: 'supportedChains',
   supportedTokens: 'supportedTokens'
 } as const
 

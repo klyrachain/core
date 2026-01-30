@@ -32,6 +32,8 @@ const validBody = {
   t_amount: 0.05,
   f_price: 2000,
   t_price: 2000,
+  f_chain: "ETHEREUM",
+  t_chain: "ETHEREUM",
   f_token: "USDC",
   t_token: "ETH",
 };
@@ -97,6 +99,35 @@ describe("webhook order", () => {
       );
     });
 
+    it("should return 400 and send order.rejected when provider validation fails (e.g. PayStack requires toIdentifier)", async () => {
+      const res = await app.inject({
+        method: "POST",
+        url: "/webhook/order",
+        payload: {
+          ...validBody,
+          t_provider: "PAYSTACK",
+          toIdentifier: null,
+          toType: null,
+        },
+        headers: { "content-type": "application/json" },
+      });
+      expect(res.statusCode).toBe(400);
+      const json = res.json() as { success: boolean; error: string; code?: string };
+      expect(json.success).toBe(false);
+      expect(json.error).toContain("toIdentifier");
+      expect(json.code).toBe("MISSING_TO_IDENTIFIER");
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockSendToAdminDashboard).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "order.rejected",
+          data: expect.objectContaining({
+            reason: "provider_validation_failed",
+            code: "MISSING_TO_IDENTIFIER",
+          }),
+        })
+      );
+    });
+
     it("should return 201 and create transaction and add poll job on valid payload", async () => {
       const tx = {
         id: "tx-123",
@@ -124,6 +155,8 @@ describe("webhook order", () => {
           data: expect.objectContaining({
             type: "BUY",
             status: "PENDING",
+            f_chain: "ETHEREUM",
+            t_chain: "ETHEREUM",
             f_amount: 100,
             t_amount: 0.05,
             f_token: "USDC",
@@ -172,6 +205,8 @@ describe("webhook order", () => {
             reason: "server_error",
             error: "DB error",
             action: "buy",
+            f_chain: "ETHEREUM",
+            t_chain: "ETHEREUM",
             f_token: "USDC",
             t_token: "ETH",
           }),
@@ -201,6 +236,8 @@ describe("webhook order", () => {
             t_amount: 0.05,
             f_price: 2000,
             t_price: 2000,
+            f_chain: "ETHEREUM",
+            t_chain: "ETHEREUM",
             f_token: "USDC",
             t_token: "ETH",
           }),
