@@ -1,6 +1,6 @@
-# Onramp Quote API
+# Onramp / Offramp Quote API
 
-This document describes the **onramp quote** endpoint: fiat↔crypto for **buy** (onramp). It uses **Fonbnk** for fiat↔crypto rates. When the requested token is **not** in the platform’s liquidity pool (Base/Ethereum USDC or ETH), the backend chains a Fonbnk quote (fiat↔pool token) with a **swap quote** (pool token→requested token) and returns the combined result.
+This document describes the **onramp/offramp quote** endpoint: fiat↔crypto for **buy** (onramp) or **sell** (offramp). It uses **Fonbnk** for fiat↔crypto rates. When the requested token is **not** in the platform’s liquidity pool (Base/Ethereum USDC or ETH), the backend chains a Fonbnk quote (fiat↔pool token) with a **swap quote** (pool token→requested token) and returns the combined result.
 
 **Base path:** `/api/quote`  
 **Auth:** Quote endpoints are excluded from `x-api-key`; no header required.
@@ -38,6 +38,7 @@ If the requested token is a **pool token** (Base/Ethereum USDC or ETH), the resp
 | `token`          | string | **Required.** Requested token: **symbol** (e.g. `USDC`, `ETH`) or **contract address**. For pool tokens use symbol or address; for others use contract address. |
 | `amount`         | number | **Required.** Positive number. Meaning depends on `amount_in`: fiat amount (e.g. 100 GHS) or crypto amount in **human** units (e.g. 1.5 ETH, 100 MANA). |
 | `amount_in`      | string | **Required.** `"fiat"` or `"crypto"`. |
+| `purchase_method`| string | Optional. `"buy"` (onramp) or `"sell"` (offramp). Default `"buy"`. |
 | `from_address`   | string | Optional. Wallet address used for swap routing when the requested token is not a pool token. If omitted, a zero address is used (may limit some routes). |
 | `token_decimals` | number | Optional. Decimals for the requested token when it is **not** a pool token and `amount_in` is `"crypto"`. Used to convert `amount` to wei for the swap. Default `18`. |
 

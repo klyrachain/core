@@ -52,6 +52,7 @@ const OnrampQuoteBodySchema = z.object({
   token: z.string().min(1),
   amount: z.coerce.number().positive(),
   amount_in: z.enum(["fiat", "crypto"]),
+  purchase_method: z.enum(["buy", "sell"]).optional().default("buy"),
   from_address: z.string().min(1).optional(),
   token_decimals: z.coerce.number().int().nonnegative().optional(),
 });

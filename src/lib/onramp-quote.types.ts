@@ -34,13 +34,15 @@ export type PoolToken = {
   fonbnkCode: string;
 };
 
-/** Request for onramp quote: country, chain_id, token (address or symbol), amount, amount_in. */
+/** Request for onramp/offramp quote: country, chain_id, token, amount, amount_in, purchase_method (buy = onramp, sell = offramp). */
 export type OnrampQuoteRequest = {
   country: string;
   chain_id: number;
   token: string;
   amount: number;
   amount_in: "fiat" | "crypto";
+  /** buy = onramp (fiat → crypto), sell = offramp (crypto → fiat). Default "buy". */
+  purchase_method?: "buy" | "sell";
   from_address?: string;
   /** Decimals for requested token when not a pool token (used for swap amount conversion). Default 18. */
   token_decimals?: number;

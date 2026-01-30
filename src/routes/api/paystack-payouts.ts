@@ -41,6 +41,28 @@ const HistoryQuerySchema = z.object({
   status: z.enum(["pending", "completed", "failed"]).optional(),
 });
 
+const payoutHistoryInclude = {
+  transaction: {
+    select: {
+      id: true,
+      type: true,
+      status: true,
+      f_amount: true,
+      t_amount: true,
+      f_token: true,
+      t_token: true,
+    },
+  },
+} as const;
+
+type PayoutRequestWithTransaction = Awaited<
+  ReturnType<
+    typeof prisma.payoutRequest.findMany<
+      { include: typeof payoutHistoryInclude }
+    >
+  >
+>[number];
+
 export async function paystackPayoutsApiRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: unknown }>(
     "/api/paystack/payouts/request",
@@ -216,23 +238,11 @@ export async function paystackPayoutsApiRoutes(app: FastifyInstance): Promise<vo
           orderBy: { createdAt: "desc" },
           skip,
           take: perPage,
-          include: {
-            transaction: {
-              select: {
-                id: true,
-                type: true,
-                status: true,
-                f_amount: true,
-                t_amount: true,
-                f_token: true,
-                t_token: true,
-              },
-            },
-          },
+          include: payoutHistoryInclude,
         }),
         prisma.payoutRequest.count({ where }),
       ]);
-      const data = items.map((p) => ({
+      const data = items.map((p: PayoutRequestWithTransaction) => ({
         id: p.id,
         code: p.code,
         status: p.status,

@@ -11,7 +11,9 @@ import {
   getCryptoTransactionByTxHash,
   listCryptoTransactions,
 } from "../../services/crypto-transaction.service.js";
+import { getSwapStatusFromProvider } from "../../services/swap-status.service.js";
 import { parsePagination, successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
+import { hasPermission } from "../../lib/auth.guard.js";
 
 const PROVIDERS = ["0x", "squid", "lifi"] as const;
 const STATUSES = ["PENDING", "SUBMITTED", "CONFIRMED", "FAILED"] as const;
@@ -101,6 +103,57 @@ export async function cryptoTransactionsApiRoutes(app: FastifyInstance): Promise
   );
 
   /**
+   * Admin-only: list crypto transactions (same as GET /api/crypto-transactions but requires ADMIN or * permission).
+   */
+  app.get(
+    "/api/admin/crypto-transactions",
+    async (
+      req: FastifyRequest<{
+        Querystring: { page?: string; limit?: string; provider?: string; status?: string };
+      }>,
+      reply
+    ) => {
+      if (!hasPermission(req, "ADMIN")) {
+        return reply.status(403).send({
+          success: false,
+          error: "Admin permission required. API key must have ADMIN or * permission.",
+        });
+      }
+      const { page, limit } = parsePagination(req.query);
+      const provider = req.query.provider as (typeof PROVIDERS)[number] | undefined;
+      const status = req.query.status as (typeof STATUSES)[number] | undefined;
+      if (provider && !PROVIDERS.includes(provider)) {
+        return reply.status(400).send({
+          success: false,
+          error: `provider must be one of: ${PROVIDERS.join(", ")}`,
+        });
+      }
+      if (status && !STATUSES.includes(status)) {
+        return reply.status(400).send({
+          success: false,
+          error: `status must be one of: ${STATUSES.join(", ")}`,
+        });
+      }
+      try {
+        const result = await listCryptoTransactions({
+          page,
+          limit,
+          provider,
+          status,
+        });
+        return reply.status(200).send({
+          success: true,
+          data: result.items,
+          meta: { page: result.page, limit: result.limit, total: result.total },
+        });
+      } catch (err) {
+        req.log.error({ err }, "GET /api/admin/crypto-transactions");
+        return errorEnvelope(reply, "Failed to list crypto transactions.", 500);
+      }
+    }
+  );
+
+  /**
    * List crypto transactions with pagination and optional filters.
    */
   app.get(
@@ -142,6 +195,80 @@ export async function cryptoTransactionsApiRoutes(app: FastifyInstance): Promise
         req.log.error({ err }, "GET /api/crypto-transactions");
         return errorEnvelope(reply, "Failed to list crypto transactions.", 500);
       }
+    }
+  );
+
+  /**
+   * Get status/verify from swap provider (0x, Squid, LiFi). Requires tx_hash to be set (PATCH first).
+   * Query ?update=1 updates our record with normalized status and tx_url.
+   */
+  app.get(
+    "/api/crypto-transactions/:id/status",
+    async (
+      req: FastifyRequest<{
+        Params: { id: string };
+        Querystring: { update?: string; raw?: string };
+      }>,
+      reply
+    ) => {
+      const item = await getCryptoTransactionById(req.params.id);
+      if (!item) {
+        return errorEnvelope(reply, "Crypto transaction not found.", 404);
+      }
+      const txHash = item.txHash ?? null;
+      if (!txHash || typeof txHash !== "string") {
+        return reply.status(400).send({
+          success: false,
+          error: "No tx_hash yet. Update the record with PATCH and tx_hash first.",
+        });
+      }
+      const provider = item.provider as "0x" | "squid" | "lifi";
+      if (!PROVIDERS.includes(provider)) {
+        return reply.status(400).send({
+          success: false,
+          error: `Unknown provider: ${provider}`,
+        });
+      }
+      const meta = item.metadata as Record<string, unknown> | null | undefined;
+      const zeroXTradeHash =
+        provider === "0x" &&
+        meta &&
+        typeof meta.zero_x_trade_hash === "string" &&
+        meta.zero_x_trade_hash.trim()
+          ? meta.zero_x_trade_hash.trim()
+          : null;
+      const statusHash = zeroXTradeHash ?? txHash;
+      const result = await getSwapStatusFromProvider(
+        provider,
+        statusHash,
+        item.fromChainId,
+        item.toChainId
+      );
+      if (!result.ok) {
+        const status = result.status ?? 502;
+        return reply.status(status).send({
+          success: false,
+          error: result.error,
+        });
+      }
+      const update = req.query.update === "1" || req.query.update === "true";
+      if (update) {
+        await updateCryptoTransaction(req.params.id, {
+          status: result.normalized,
+          ...(result.txUrl && { txUrl: result.txUrl }),
+        });
+      }
+      const data = {
+        id: item.id,
+        provider: result.provider,
+        normalized: result.normalized,
+        provider_status: result.providerStatus,
+        ...(result.providerMessage && { provider_message: result.providerMessage }),
+        tx_hash: result.txHash ?? txHash,
+        ...(result.txUrl && { tx_url: result.txUrl }),
+        ...(req.query.raw === "1" && result.raw && { raw: result.raw }),
+      };
+      return successEnvelope(reply, data);
     }
   );
 

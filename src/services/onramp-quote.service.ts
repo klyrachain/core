@@ -39,26 +39,29 @@ export async function getOnrampQuote(
     token,
     amount,
     amount_in,
+    purchase_method = "buy",
     from_address,
     token_decimals = 18,
   } = request;
 
   const countryCode = country.trim().toUpperCase().slice(0, 2);
   const currency = getCurrencyForCountry(country);
+  const isSell = purchase_method === "sell";
 
   const pool = findPoolToken(chain_id, token);
   if (pool) {
     const fonbnk = await getFonbnkQuote({
       country: countryCode,
       token: pool.fonbnkCode,
-      purchaseMethod: "buy",
+      purchaseMethod: isSell ? "sell" : "buy",
       amount,
       amountIn: amount_in,
     });
     if (!fonbnk) {
       return { ok: false, error: "No Fonbnk quote for this pool token.", status: 404 };
     }
-    const totalCrypto = amount_in === "fiat" ? String(fonbnk.total) : String(amount);
+    const totalCrypto =
+      amount_in === "fiat" ? String(fonbnk.total) : String(amount);
     const totalFiat = amount_in === "fiat" ? amount : fonbnk.total;
     const data: OnrampQuoteResponse = {
       country: countryCode,
@@ -83,7 +86,7 @@ export async function getOnrampQuote(
     const fonbnk = await getFonbnkQuote({
       country: countryCode,
       token: intermediate.fonbnkCode,
-      purchaseMethod: "buy",
+      purchaseMethod: isSell ? "sell" : "buy",
       amount,
       amountIn: "fiat",
     });
@@ -91,6 +94,59 @@ export async function getOnrampQuote(
       return { ok: false, error: "No Fonbnk quote for intermediate pool token.", status: 404 };
     }
     const poolAmountWei = humanToWei(fonbnk.total, poolDecimals);
+    if (isSell) {
+      const estimatePoolWei = humanToWei(1000, poolDecimals);
+      const swapEstimate = await getBestQuotes({
+        from_token: intermediate.address,
+        to_token: token,
+        amount: estimatePoolWei,
+        from_chain: intermediate.chainId,
+        to_chain: chain_id,
+        from_address: from_address ?? "0x0000000000000000000000000000000000000000",
+      });
+      if (!swapEstimate.ok) {
+        return { ok: false, error: swapEstimate.error, status: 502 };
+      }
+      const fromAmt = BigInt(swapEstimate.data.best.from_amount);
+      const toAmt = BigInt(swapEstimate.data.best.to_amount);
+      const neededRequestedWei =
+        toAmt > 0n ? (BigInt(poolAmountWei) * fromAmt) / toAmt : 0n;
+      const neededRequestedStr = neededRequestedWei > 0n ? neededRequestedWei.toString() : "1";
+      const swapResult = await getBestQuotes({
+        from_token: token,
+        to_token: intermediate.address,
+        amount: neededRequestedStr,
+        from_chain: chain_id,
+        to_chain: intermediate.chainId,
+        from_address: from_address ?? "0x0000000000000000000000000000000000000000",
+      });
+      if (!swapResult.ok) {
+        return { ok: false, error: swapResult.error, status: 502 };
+      }
+      const best = swapResult.data.best;
+      const data: OnrampQuoteResponse = {
+        country: countryCode,
+        currency,
+        chain_id,
+        token,
+        amount,
+        amount_in: "fiat",
+        rate: fonbnk.rate,
+        fee: fonbnk.fee,
+        total_crypto: best.from_amount,
+        total_fiat: amount,
+        swap: {
+          from_chain_id: best.from_chain_id,
+          from_token: token,
+          to_chain_id: best.to_chain_id,
+          to_token: intermediate.address,
+          from_amount: best.from_amount,
+          to_amount: best.to_amount,
+          provider: best.provider,
+        },
+      };
+      return { ok: true, data };
+    }
     const swapResult = await getBestQuotes({
       from_token: intermediate.address,
       to_token: token,
@@ -127,8 +183,55 @@ export async function getOnrampQuote(
     return { ok: true, data };
   }
 
-  // amount_in === "crypto": user wants `amount` of requested token; we need fiat to pay.
+  // amount_in === "crypto"
   const requestedWei = humanToWei(amount, token_decimals);
+  if (isSell) {
+    const swapResult = await getBestQuotes({
+      from_token: token,
+      to_token: intermediate.address,
+      amount: requestedWei,
+      from_chain: chain_id,
+      to_chain: intermediate.chainId,
+      from_address: from_address ?? "0x0000000000000000000000000000000000000000",
+    });
+    if (!swapResult.ok) {
+      return { ok: false, error: swapResult.error, status: 502 };
+    }
+    const best = swapResult.data.best;
+    const poolAmountHuman = weiToHuman(best.to_amount, poolDecimals);
+    const fonbnk = await getFonbnkQuote({
+      country: countryCode,
+      token: intermediate.fonbnkCode,
+      purchaseMethod: "sell",
+      amount: poolAmountHuman,
+      amountIn: "crypto",
+    });
+    if (!fonbnk) {
+      return { ok: false, error: "No Fonbnk quote for intermediate pool amount.", status: 404 };
+    }
+    const data: OnrampQuoteResponse = {
+      country: countryCode,
+      currency,
+      chain_id,
+      token,
+      amount,
+      amount_in: "crypto",
+      rate: fonbnk.rate,
+      fee: fonbnk.fee,
+      total_crypto: requestedWei,
+      total_fiat: fonbnk.total,
+      swap: {
+        from_chain_id: best.from_chain_id,
+        from_token: token,
+        to_chain_id: best.to_chain_id,
+        to_token: intermediate.address,
+        from_amount: best.from_amount,
+        to_amount: best.to_amount,
+        provider: best.provider,
+      },
+    };
+    return { ok: true, data };
+  }
   const estimatePoolWei = humanToWei(1000, poolDecimals);
   const swapResult = await getBestQuotes({
     from_token: intermediate.address,
