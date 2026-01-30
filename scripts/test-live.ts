@@ -2,10 +2,12 @@
 /**
  * Live test script — simulates user actions for testing and development.
  * Runs until Ctrl+C. After random intervals (seconds/minutes), performs
- * order actions (buy, sell, request, claim) and fetch API calls.
+ * order actions (buy, sell, request, claim), Paystack API calls (prioritized),
+ * quote API calls (fee + swap), and other fetch API calls.
  *
  * Usage: pnpm test:live
- * Env: CORE_URL (default http://localhost:4000), CORE_API_KEY (required for protected routes), INTERVAL_MIN_MS, INTERVAL_MAX_MS
+ * Env: CORE_URL (default http://localhost:4000), CORE_API_KEY (required for protected routes),
+ *      INTERVAL_MIN_MS, INTERVAL_MAX_MS. Paystack routes return 503 if PAYSTACK_SECRET_KEY is not set.
  */
 
 import "dotenv/config";
@@ -120,33 +122,76 @@ async function fetchQuote(params: {
   return quote ? { ok: true, quote } : { ok: false, error: "No quote data" };
 }
 
+/** Paystack GET endpoints for live testing. 503 when PAYSTACK_SECRET_KEY is not set. */
+const PAYSTACK_ACTIONS: { path: string; name: string }[] = [
+  { path: "/api/paystack/banks?country=ghana", name: "paystack/banks (ghana)" },
+  { path: "/api/paystack/banks?country=nigeria", name: "paystack/banks (nigeria)" },
+  { path: "/api/paystack/banks/resolve?account_number=0123456789&bank_code=060001", name: "paystack/banks/resolve" },
+  { path: "/api/paystack/mobile/providers?currency=GHS", name: "paystack/mobile (GHS)" },
+  { path: "/api/paystack/mobile/providers?currency=KES", name: "paystack/mobile (KES)" },
+  { path: "/api/paystack/transactions?perPage=5", name: "paystack/transactions" },
+  { path: "/api/paystack/transfers?perPage=5", name: "paystack/transfers" },
+  { path: "/api/paystack/payouts/history?perPage=5", name: "paystack/payouts/history" },
+];
+
+/** Quote API: fee (GET) and swap (POST) variants. */
+const QUOTE_FETCH_ACTIONS: { path: string; name: string }[] = [
+  {
+    path: "/api/quote?action=buy&f_amount=100&t_amount=0.033&f_price=1&t_price=3000&f_chain=BASE&t_chain=ETHEREUM&f_token=USDC&t_token=ETH",
+    name: "quote (buy)",
+  },
+  {
+    path: "/api/quote?action=sell&f_amount=100&t_amount=0.033&f_price=1&t_price=3000&f_chain=ETHEREUM&t_chain=BASE&f_token=USDC&t_token=ETH",
+    name: "quote (sell)",
+  },
+  {
+    path: "/api/quote?action=request&f_amount=50&t_amount=50&f_price=1&t_price=1&f_token=GHS&t_token=GHS",
+    name: "quote (request)",
+  },
+  {
+    path: "/api/quote?action=claim&f_amount=25&t_amount=25&f_price=1&t_price=1&f_token=GHS&t_token=GHS",
+    name: "quote (claim)",
+  },
+];
+
+const OTHER_FETCH_ACTIONS: { path: string; name: string }[] = [
+  { path: "/api/transactions?limit=5", name: "transactions" },
+  { path: "/api/users?limit=5", name: "users" },
+  { path: "/api/inventory?limit=5", name: "inventory" },
+  { path: "/api/queue/poll", name: "queue/poll" },
+  { path: "/api/cache/balances?limit=10", name: "cache/balances" },
+  { path: "/api/requests?limit=5", name: "requests" },
+  { path: "/api/claims?limit=5", name: "claims" },
+  { path: "/api/wallets?limit=5", name: "wallets" },
+];
+
 type Action =
   | { type: "order"; action: "buy" | "sell" | "request" | "claim" }
+  | { type: "paystack"; path: string; name: string }
+  | { type: "quote"; path: string; name: string }
+  | { type: "quoteSwap" }
   | { type: "fetch"; path: string; name: string }
   | { type: "admin"; event: string };
 
 function pickRandomAction(): Action {
   const roll = Math.random();
-  if (roll < 0.4) {
+  // Prioritize Paystack (45%)
+  if (roll < 0.45) {
+    const a = randomChoice(PAYSTACK_ACTIONS);
+    return { type: "paystack", path: a.path, name: a.name };
+  }
+  if (roll < 0.65) {
     return { type: "order", action: randomChoice(["buy", "sell", "request", "claim"]) };
   }
-  if (roll < 0.85) {
-    const fetches: { path: string; name: string }[] = [
-      { path: "/api/transactions?limit=5", name: "transactions" },
-      { path: "/api/users?limit=5", name: "users" },
-      { path: "/api/inventory?limit=5", name: "inventory" },
-      { path: "/api/queue/poll", name: "queue/poll" },
-      { path: "/api/cache/balances?limit=10", name: "cache/balances" },
-      { path: "/api/requests?limit=5", name: "requests" },
-      { path: "/api/claims?limit=5", name: "claims" },
-      { path: "/api/wallets?limit=5", name: "wallets" },
-      {
-        path: "/api/quote?action=buy&f_amount=100&t_amount=0.033&f_price=1&t_price=3000&f_chain=BASE&t_chain=ETHEREUM&f_token=USDC&t_token=ETH",
-        name: "quote",
-      },
-    ];
-    const f = randomChoice(fetches);
-    return { type: "fetch", path: f.path, name: f.name };
+  // Quote API: fee (GET) and other fetches
+  if (roll < 0.78) {
+    const pool = [...QUOTE_FETCH_ACTIONS, ...OTHER_FETCH_ACTIONS];
+    const f = randomChoice(pool);
+    return f.path.startsWith("/api/quote") ? { type: "quote", path: f.path, name: f.name } : { type: "fetch", path: f.path, name: f.name };
+  }
+  // POST /api/quote/swap (0x same-chain)
+  if (roll < 0.88) {
+    return { type: "quoteSwap" };
   }
   return { type: "admin", event: randomChoice(["test.ping", "test.order.placed", "alert.low_balance"]) };
 }
@@ -252,13 +297,47 @@ async function runAction(action: Action): Promise<void> {
     }
     return;
   }
-  if (action.type === "fetch") {
+  if (action.type === "paystack") {
+    const result = await fetchJson(action.path);
+    if (result.ok) {
+      const count = Array.isArray(result.data) ? result.data.length : result.data && typeof result.data === "object" ? "ok" : "-";
+      console.log(`[${ts}] GET ${action.name} → 200 (${count})`);
+    } else if (result.status === 503) {
+      console.log(`[${ts}] GET ${action.name} → 503 (Paystack not configured)`);
+    } else {
+      console.log(`[${ts}] GET ${action.name} → ${result.status} ${result.error ?? "error"}`);
+    }
+    return;
+  }
+  if (action.type === "quote" || action.type === "fetch") {
     const result = await fetchJson(action.path);
     if (result.ok) {
       const count = Array.isArray(result.data) ? result.data.length : result.data && typeof result.data === "object" ? "ok" : "-";
       console.log(`[${ts}] GET ${action.name} → 200 (${count})`);
     } else {
       console.log(`[${ts}] GET ${action.name} → ${result.status} ${result.error ?? "error"}`);
+    }
+    return;
+  }
+  if (action.type === "quoteSwap") {
+    const result = await fetchJson("/api/quote/swap", {
+      method: "POST",
+      body: JSON.stringify({
+        provider: "0x",
+        from_token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        to_token: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        amount: "1000000",
+        from_chain: 1,
+        to_chain: 1,
+      }),
+    });
+    if (result.ok) {
+      const data = result.data as { provider?: string; to_amount?: string } | undefined;
+      const info = data?.to_amount ? ` to_amount=${data.to_amount}` : "";
+      console.log(`[${ts}] POST quote/swap → 200${info}`);
+    } else {
+      const msg = result.status === 503 ? " (swap not configured)" : result.status === 502 ? ` ${result.error ?? ""}` : "";
+      console.log(`[${ts}] POST quote/swap → ${result.status}${msg}`);
     }
     return;
   }
