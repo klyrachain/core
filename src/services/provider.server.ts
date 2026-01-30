@@ -11,7 +11,7 @@
  *   If payer pays via Squid (USDT on Arbitrum), Squid transacts from payer wallet to requestor destination.
  */
 
-import type { PaymentProvider, IdentityType, TransactionType } from "../../generated/prisma/client.js";
+import type { PaymentProvider, IdentityType, TransactionType } from "../../prisma/generated/prisma/client.js";
 
 // ---------------------------------------------------------------------------
 // Types

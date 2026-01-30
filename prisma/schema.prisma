@@ -4,7 +4,7 @@
 
 generator client {
   provider = "prisma-client"
-  output   = "../generated/prisma"
+  output   = "generated/prisma"
 }
 
 datasource db {
@@ -124,6 +124,9 @@ model Transaction {
   request   Request?
   requestId String?  @unique
 
+  payoutRequests PayoutRequest[]
+  paystackPaymentRecords PaystackPaymentRecord[]
+
   @@index([status, type])
 }
 
@@ -227,6 +230,86 @@ model ApiKey {
 
   @@index([keyHash])
   @@index([isActive])
+}
+
+// --------------------------------------
+// Paystack Payment Record (audit / disputes)
+// --------------------------------------
+// Per Paystack: store transaction ID as unsigned 64-bit; we use String to avoid JS number precision.
+// Persisted on verify and on webhook charge.success/charge.failed for cross-checks and disputes.
+
+model PaystackPaymentRecord {
+  id               String    @id @default(uuid())
+  reference        String    @unique // Paystack reference (e.g. from initialize)
+  paystackId       String    // Paystack transaction ID (string for 64-bit safety)
+  transactionId    String?   // Our Transaction UUID
+  transaction      Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  status           String    // success | failed | abandoned
+  amount           Decimal?  @db.Decimal(18, 8)
+  currency         String?
+  paidAt           DateTime?
+  channel          String?   // card, bank, mobile_money, etc.
+  gatewayResponse  String?
+  customerEmail    String?
+  metadata         Json?     // Paystack metadata (e.g. our transaction_id)
+  rawResponse      Json?     // Full verify response for disputes
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([transactionId])
+  @@index([paystackId])
+  @@index([status])
+}
+
+// --------------------------------------
+// Paystack Payout Request (offramp)
+// --------------------------------------
+// Generated after confirming prior crypto transaction; frontend uses code to execute payout.
+
+model PayoutRequest {
+  id                 String   @id @default(uuid())
+  code               String   @unique // Short id for URL (e.g. nanoid); used by frontend to trigger payout
+  transactionId      String   // Our Transaction id (crypto tx that was confirmed)
+  transaction        Transaction? @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  status             String   @default("pending") // pending | completed | failed
+  amount             Decimal? @db.Decimal(18, 8) // Set when payout is executed
+  currency           String?  // e.g. NGN, GHS
+  recipientCode      String?  // Paystack recipient_code after creating recipient
+  recipientName      String?  // Recipient name (for display in dashboard)
+  recipientType      String?  // nuban | mobile_money
+  transferCode       String?  // Paystack transfer_code from execute; use for tracking
+  transferReference  String?  // Paystack transfer reference; use with GET .../payouts/verify/:reference
+  paystackTransferRecords PaystackTransferRecord[]
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([transactionId])
+  @@index([status])
+}
+
+// --------------------------------------
+// Paystack Transfer Record (audit / dashboard)
+// --------------------------------------
+// Persisted when a payout is executed so we can review transfer history in DB.
+
+model PaystackTransferRecord {
+  id               String    @id @default(uuid())
+  reference        String    @unique // Paystack transfer reference
+  transferCode     String    // Paystack transfer_code
+  payoutRequestId  String?
+  payoutRequest    PayoutRequest? @relation(fields: [payoutRequestId], references: [id], onDelete: SetNull)
+  amount           Decimal   @db.Decimal(18, 8)
+  currency         String
+  status           String    // success | pending | failed | reversed | otp
+  recipientName    String?
+  reason           String?
+  rawResponse      Json?     // Sanitized transfer data for review
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([payoutRequestId])
+  @@index([status])
+  @@index([transferCode])
 }
 
 // --------------------------------------
