@@ -23,8 +23,8 @@ const OrderWebhookSchema = z.object({
   t_chain: z.string().min(1).optional().default("ETHEREUM"),
   f_token: z.string().min(1),
   t_token: z.string().min(1),
-  f_provider: z.nativeEnum(PaymentProvider).optional().default(PaymentProvider.NONE),
-  t_provider: z.nativeEnum(PaymentProvider).optional().default(PaymentProvider.NONE),
+  f_provider: z.nativeEnum(PaymentProvider),
+  t_provider: z.nativeEnum(PaymentProvider),
   providerSessionId: z.string().min(1).optional().nullable(),
   requestId: z.string().uuid().optional().nullable(),
 });
