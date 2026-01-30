@@ -28,6 +28,46 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  app.get(
+    "/api/inventory/history",
+    async (
+      req: FastifyRequest<{
+        Querystring: { page?: string; limit?: string; assetId?: string; chain?: string };
+      }>,
+      reply
+    ) => {
+      try {
+        const { page, limit, skip } = parsePagination(req.query);
+        const assetId = req.query.assetId as string | undefined;
+        const chain = req.query.chain as string | undefined;
+        const where: { assetId?: string; asset?: { chain: string } } = {};
+        if (assetId) where.assetId = assetId;
+        if (chain) where.asset = { chain };
+        const [items, total] = await Promise.all([
+          prisma.inventoryHistory.findMany({
+            where,
+            skip,
+            take: limit,
+            orderBy: { createdAt: "desc" },
+            include: { asset: { select: { id: true, chain: true, symbol: true } } },
+          }),
+          prisma.inventoryHistory.count({ where }),
+        ]);
+        const data = items.map((h) => ({
+          ...h,
+          amount: h.amount.toString(),
+          quantity: h.quantity.toString(),
+          initialPurchasePrice: h.initialPurchasePrice.toString(),
+          providerQuotePrice: h.providerQuotePrice.toString(),
+        }));
+        return successEnvelopeWithMeta(reply, data, { page, limit, total });
+      } catch (err) {
+        req.log.error({ err }, "GET /api/inventory/history");
+        return errorEnvelope(reply, "Something went wrong.", 500);
+      }
+    }
+  );
+
   app.get("/api/inventory/:id", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
     try {
       const asset = await prisma.inventoryAsset.findUnique({
