@@ -391,7 +391,8 @@ export const ModelName = {
   Wallet: 'Wallet',
   InventoryAsset: 'InventoryAsset',
   InventoryHistory: 'InventoryHistory',
-  ApiKey: 'ApiKey'
+  ApiKey: 'ApiKey',
+  Invoice: 'Invoice'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -407,7 +408,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "transaction" | "request" | "claim" | "wallet" | "inventoryAsset" | "inventoryHistory" | "apiKey"
+    modelProps: "user" | "transaction" | "request" | "claim" | "wallet" | "inventoryAsset" | "inventoryHistory" | "apiKey" | "invoice"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -1003,6 +1004,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    Invoice: {
+      payload: Prisma.$InvoicePayload<ExtArgs>
+      fields: Prisma.InvoiceFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.InvoiceFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$InvoicePayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.InvoiceFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$InvoicePayload>
+        }
+        findFirst: {
+          args: Prisma.InvoiceFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$InvoicePayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.InvoiceFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$InvoicePayload>
+        }
+        findMany: {
+          args: Prisma.InvoiceFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$InvoicePayload>[]
+        }
+        create: {
+          args: Prisma.InvoiceCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$InvoicePayload>
+        }
+        createMany: {
+          args: Prisma.InvoiceCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.InvoiceCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$InvoicePayload>[]
+        }
+        delete: {
+          args: Prisma.InvoiceDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$InvoicePayload>
+        }
+        update: {
+          args: Prisma.InvoiceUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$InvoicePayload>
+        }
+        deleteMany: {
+          args: Prisma.InvoiceDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.InvoiceUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.InvoiceUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$InvoicePayload>[]
+        }
+        upsert: {
+          args: Prisma.InvoiceUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$InvoicePayload>
+        }
+        aggregate: {
+          args: Prisma.InvoiceAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateInvoice>
+        }
+        groupBy: {
+          args: Prisma.InvoiceGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.InvoiceGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.InvoiceCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.InvoiceCountAggregateOutputType> | number
+        }
+      }
+    }
   }
 } & {
   other: {
@@ -1169,12 +1244,50 @@ export const ApiKeyScalarFieldEnum = {
 export type ApiKeyScalarFieldEnum = (typeof ApiKeyScalarFieldEnum)[keyof typeof ApiKeyScalarFieldEnum]
 
 
+export const InvoiceScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  invoiceNumber: 'invoiceNumber',
+  status: 'status',
+  amount: 'amount',
+  currency: 'currency',
+  currencyLabel: 'currencyLabel',
+  paidAt: 'paidAt',
+  batchTitle: 'batchTitle',
+  billedTo: 'billedTo',
+  billingDetails: 'billingDetails',
+  subject: 'subject',
+  issued: 'issued',
+  dueDate: 'dueDate',
+  notes: 'notes',
+  lineItems: 'lineItems',
+  subtotal: 'subtotal',
+  discountPercent: 'discountPercent',
+  discountAmount: 'discountAmount',
+  total: 'total',
+  amountDue: 'amountDue',
+  termsAndConditions: 'termsAndConditions',
+  notesContent: 'notesContent',
+  log: 'log'
+} as const
+
+export type InvoiceScalarFieldEnum = (typeof InvoiceScalarFieldEnum)[keyof typeof InvoiceScalarFieldEnum]
+
+
 export const SortOrder = {
   asc: 'asc',
   desc: 'desc'
 } as const
 
 export type SortOrder = (typeof SortOrder)[keyof typeof SortOrder]
+
+
+export const JsonNullValueInput = {
+  JsonNull: JsonNull
+} as const
+
+export type JsonNullValueInput = (typeof JsonNullValueInput)[keyof typeof JsonNullValueInput]
 
 
 export const QueryMode = {
@@ -1191,6 +1304,15 @@ export const NullsOrder = {
 } as const
 
 export type NullsOrder = (typeof NullsOrder)[keyof typeof NullsOrder]
+
+
+export const JsonNullValueFilter = {
+  DbNull: DbNull,
+  JsonNull: JsonNull,
+  AnyNull: AnyNull
+} as const
+
+export type JsonNullValueFilter = (typeof JsonNullValueFilter)[keyof typeof JsonNullValueFilter]
 
 
 
@@ -1319,6 +1441,34 @@ export type BooleanFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel,
 
 
 /**
+ * Reference to a field of type 'InvoiceStatus'
+ */
+export type EnumInvoiceStatusFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'InvoiceStatus'>
+    
+
+
+/**
+ * Reference to a field of type 'InvoiceStatus[]'
+ */
+export type ListEnumInvoiceStatusFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'InvoiceStatus[]'>
+    
+
+
+/**
+ * Reference to a field of type 'Json'
+ */
+export type JsonFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Json'>
+    
+
+
+/**
+ * Reference to a field of type 'QueryMode'
+ */
+export type EnumQueryModeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'QueryMode'>
+    
+
+
+/**
  * Reference to a field of type 'Int'
  */
 export type IntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int'>
@@ -1434,6 +1584,7 @@ export type GlobalOmitConfig = {
   inventoryAsset?: Prisma.InventoryAssetOmit
   inventoryHistory?: Prisma.InventoryHistoryOmit
   apiKey?: Prisma.ApiKeyOmit
+  invoice?: Prisma.InvoiceOmit
 }
 
 /* Types for Logging */

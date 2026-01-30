@@ -60,6 +60,14 @@ enum SupportedChain {
   SOLANA
 }
 
+enum InvoiceStatus {
+  Paid
+  Pending
+  Overdue
+  Draft
+  Cancelled
+}
+
 // --------------------------------------
 // Core Models
 // --------------------------------------
@@ -219,4 +227,44 @@ model ApiKey {
 
   @@index([keyHash])
   @@index([isActive])
+}
+
+// --------------------------------------
+// Invoices (dashboard feature)
+// --------------------------------------
+
+model Invoice {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoiceNumber String   @unique
+  status        InvoiceStatus
+  amount        Decimal  @db.Decimal(18, 2)
+  currency      String   @default("USD")
+  currencyLabel String?
+  paidAt        DateTime?
+
+  batchTitle     String  @default("")
+  billedTo       String
+  billingDetails String?
+  subject        String
+  issued         DateTime
+  dueDate        DateTime
+  notes          String?
+
+  lineItems Json // LineItem[]: { id, productName, qty, unitPrice, amount }
+  subtotal  Decimal @db.Decimal(18, 2)
+  discountPercent Decimal @default(0) @db.Decimal(5, 2)
+  discountAmount  Decimal @default(0) @db.Decimal(18, 2)
+  total     Decimal @db.Decimal(18, 2)
+  amountDue Decimal @db.Decimal(18, 2)
+
+  termsAndConditions String @default("")
+  notesContent       String @default("")
+  log                Json   // LogEntry[]: { id, description, date }
+
+  @@index([status])
+  @@index([billedTo])
+  @@index([issued])
 }

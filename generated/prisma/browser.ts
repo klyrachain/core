@@ -57,3 +57,8 @@ export type InventoryHistory = Prisma.InventoryHistoryModel
  * 
  */
 export type ApiKey = Prisma.ApiKeyModel
+/**
+ * Model Invoice
+ * 
+ */
+export type Invoice = Prisma.InvoiceModel

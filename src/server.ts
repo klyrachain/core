@@ -16,6 +16,7 @@ import { cacheApiRoutes } from "./routes/api/cache.js";
 import { queueApiRoutes } from "./routes/api/queue.js";
 import { quoteApiRoutes } from "./routes/api/quote.js";
 import { logsApiRoutes } from "./routes/api/logs.js";
+import { invoicesApiRoutes } from "./routes/api/invoices.js";
 import { onRequestLog, onResponseLog } from "./lib/request-log-hooks.js";
 import { requireApiKey } from "./lib/auth.guard.js";
 
@@ -72,6 +73,7 @@ await app.register(cacheApiRoutes, { prefix: "" });
 await app.register(queueApiRoutes, { prefix: "" });
 await app.register(quoteApiRoutes, { prefix: "" });
 await app.register(logsApiRoutes, { prefix: "" });
+await app.register(invoicesApiRoutes, { prefix: "" });
 
 const pollWorker = createPollWorker(processPollJob);
 

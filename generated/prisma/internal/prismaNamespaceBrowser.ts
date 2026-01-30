@@ -58,7 +58,8 @@ export const ModelName = {
   Wallet: 'Wallet',
   InventoryAsset: 'InventoryAsset',
   InventoryHistory: 'InventoryHistory',
-  ApiKey: 'ApiKey'
+  ApiKey: 'ApiKey',
+  Invoice: 'Invoice'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -204,12 +205,50 @@ export const ApiKeyScalarFieldEnum = {
 export type ApiKeyScalarFieldEnum = (typeof ApiKeyScalarFieldEnum)[keyof typeof ApiKeyScalarFieldEnum]
 
 
+export const InvoiceScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  invoiceNumber: 'invoiceNumber',
+  status: 'status',
+  amount: 'amount',
+  currency: 'currency',
+  currencyLabel: 'currencyLabel',
+  paidAt: 'paidAt',
+  batchTitle: 'batchTitle',
+  billedTo: 'billedTo',
+  billingDetails: 'billingDetails',
+  subject: 'subject',
+  issued: 'issued',
+  dueDate: 'dueDate',
+  notes: 'notes',
+  lineItems: 'lineItems',
+  subtotal: 'subtotal',
+  discountPercent: 'discountPercent',
+  discountAmount: 'discountAmount',
+  total: 'total',
+  amountDue: 'amountDue',
+  termsAndConditions: 'termsAndConditions',
+  notesContent: 'notesContent',
+  log: 'log'
+} as const
+
+export type InvoiceScalarFieldEnum = (typeof InvoiceScalarFieldEnum)[keyof typeof InvoiceScalarFieldEnum]
+
+
 export const SortOrder = {
   asc: 'asc',
   desc: 'desc'
 } as const
 
 export type SortOrder = (typeof SortOrder)[keyof typeof SortOrder]
+
+
+export const JsonNullValueInput = {
+  JsonNull: JsonNull
+} as const
+
+export type JsonNullValueInput = (typeof JsonNullValueInput)[keyof typeof JsonNullValueInput]
 
 
 export const QueryMode = {
@@ -226,4 +265,13 @@ export const NullsOrder = {
 } as const
 
 export type NullsOrder = (typeof NullsOrder)[keyof typeof NullsOrder]
+
+
+export const JsonNullValueFilter = {
+  DbNull: DbNull,
+  JsonNull: JsonNull,
+  AnyNull: AnyNull
+} as const
+
+export type JsonNullValueFilter = (typeof JsonNullValueFilter)[keyof typeof JsonNullValueFilter]
 

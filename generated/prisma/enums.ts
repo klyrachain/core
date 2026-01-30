@@ -70,3 +70,14 @@ export const SupportedChain = {
 } as const
 
 export type SupportedChain = (typeof SupportedChain)[keyof typeof SupportedChain]
+
+
+export const InvoiceStatus = {
+  Paid: 'Paid',
+  Pending: 'Pending',
+  Overdue: 'Overdue',
+  Draft: 'Draft',
+  Cancelled: 'Cancelled'
+} as const
+
+export type InvoiceStatus = (typeof InvoiceStatus)[keyof typeof InvoiceStatus]
