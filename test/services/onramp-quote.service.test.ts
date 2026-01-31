@@ -3,9 +3,16 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 const mockGetFonbnkQuote = vi.fn();
 const mockGetBestQuotes = vi.fn();
 
+const FONBNK_SUPPORTED = new Set([
+  "BASE_USDC",
+  "ETHEREUM_USDC",
+  "ETHEREUM_NATIVE",
+]);
 vi.mock("../../src/services/fonbnk.service.js", () => ({
   getFonbnkQuote: (req: unknown) => mockGetFonbnkQuote(req),
   getCurrencyForCountry: (code: string) => (code === "GH" ? "GHS" : "USD"),
+  isFonbnkSupportedPayoutCode: (code: string) =>
+    FONBNK_SUPPORTED.has(code.trim().toUpperCase()),
 }));
 
 vi.mock("../../src/services/swap-quote.service.js", () => ({
@@ -100,6 +107,54 @@ describe("onramp-quote.service", () => {
           amountIn: "crypto",
         })
       );
+    });
+  });
+
+  describe("getOnrampQuote (pool token not in Fonbnk list)", () => {
+    it("uses intermediate + swap when pool token is Base ETH (not in Fonbnk list)", async () => {
+      mockGetFonbnkQuote.mockResolvedValue({
+        country: "GH",
+        currency: "GHS",
+        network: "base",
+        asset: "USDC",
+        amount: 100,
+        rate: 12.5,
+        fee: 1,
+        total: 7.92,
+        paymentChannel: "mobile_money",
+        purchaseMethod: "buy",
+        amountIn: "fiat",
+      });
+      mockGetBestQuotes.mockResolvedValue({
+        ok: true,
+        data: {
+          best: {
+            from_chain_id: 8453,
+            from_token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            to_chain_id: 8453,
+            to_token: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+            from_amount: "7920000",
+            to_amount: "5000000000000000000",
+            provider: "0x",
+          },
+        },
+      });
+      const mod = await loadOnrampQuoteService();
+      const result = await mod.getOnrampQuote({
+        country: "GH",
+        chain_id: 8453,
+        token: "ETH",
+        amount: 100,
+        amount_in: "fiat",
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.swap).toBeDefined();
+        expect(mockGetFonbnkQuote).toHaveBeenCalledWith(
+          expect.objectContaining({ token: "BASE_USDC" })
+        );
+        expect(mockGetBestQuotes).toHaveBeenCalled();
+      }
     });
   });
 

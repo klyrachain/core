@@ -1,11 +1,52 @@
 /**
  * Fonbnk API: fiat↔crypto quotes for onramp.
  * Docs: https://docs.fonbnk.com/
+ * Payout/deposit currency must be NETWORK_ASSET (chain + token, e.g. BASE_USDC, POLYGON_USDC, ETHEREUM_NATIVE).
+ * Supported list: https://docs.fonbnk.com/supported-countries-and-cryptocurrencies
  */
 
 import crypto from "node:crypto";
 import { getEnv } from "../config/env.js";
 import type { FonbnkQuoteRequest, FonbnkQuoteResponse } from "../lib/onramp-quote.types.js";
+
+/** Fonbnk-supported payout/deposit codes (NETWORK_ASSET). From https://docs.fonbnk.com/supported-countries-and-cryptocurrencies */
+const FONBNK_SUPPORTED_PAYOUT_CODES = new Set([
+  "ARBITRUM_USDC",
+  "ARBITRUM_USDT",
+  "AVALANCHE_USDC",
+  "AVALANCHE_USDT",
+  "BASE_USDC",
+  "BNB_USDC",
+  "BNB_USDT",
+  "CELO_CGHS",
+  "CELO_CKES",
+  "CELO_CUSD",
+  "CELO_USDC",
+  "CELO_USDT",
+  "ETHEREUM_NATIVE",
+  "ETHEREUM_RLUSD",
+  "ETHEREUM_USDC",
+  "ETHEREUM_USDT",
+  "LISK_USDT",
+  "OPTIMISM_USDC",
+  "OPTIMISM_USDT",
+  "POLYGON_USDC",
+  "POLYGON_USDT",
+  "SOLANA_NATIVE",
+  "SOLANA_USDC",
+  "SOLANA_USDT",
+  "STELLAR_USDC",
+  "TON_USDE",
+  "TON_USDT",
+  "TRON_NATIVE",
+  "TRON_USDT",
+  "XRP_RLUSD",
+]);
+
+export function isFonbnkSupportedPayoutCode(code: string): boolean {
+  const normalized = code.trim().toUpperCase();
+  return FONBNK_SUPPORTED_PAYOUT_CODES.has(normalized);
+}
 
 const COUNTRY_TO_CURRENCY: Record<string, string> = {
   GH: "GHS",
@@ -50,7 +91,11 @@ function signRequest(endpoint: string, timestamp: string, clientSecret: string):
   return hmac.digest("base64");
 }
 
-/** Map token to Fonbnk payout currency code (e.g. USDC → BASE_USDC, BASE_USDC as-is). */
+/**
+ * Normalize token to Fonbnk payout currency code.
+ * Fonbnk requires NETWORK_ASSET (chain + token, e.g. BASE_USDC, POLYGON_USDC, ETHEREUM_NATIVE).
+ * Callers should pass the full code from pool-tokens (fonbnkCode). If token already contains "_", return as-is.
+ */
 export function toPayoutCurrencyCode(token: string): string {
   const normalized = token.trim().toUpperCase();
   if (normalized.includes("_")) return normalized;

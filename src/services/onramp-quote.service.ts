@@ -8,7 +8,11 @@ import {
   getIntermediatePoolToken,
   getPoolTokenDecimals,
 } from "../lib/pool-tokens.js";
-import { getFonbnkQuote, getCurrencyForCountry } from "./fonbnk.service.js";
+import {
+  getFonbnkQuote,
+  getCurrencyForCountry,
+  isFonbnkSupportedPayoutCode,
+} from "./fonbnk.service.js";
 import { getBestQuotes } from "./swap-quote.service.js";
 
 function humanToWei(amount: number, decimals: number): string {
@@ -49,7 +53,9 @@ export async function getOnrampQuote(
   const isSell = purchase_method === "sell";
 
   const pool = findPoolToken(chain_id, token);
-  if (pool) {
+  const useDirectFonbnk =
+    pool != null && isFonbnkSupportedPayoutCode(pool.fonbnkCode);
+  if (useDirectFonbnk && pool) {
     const fonbnk = await getFonbnkQuote({
       country: countryCode,
       token: pool.fonbnkCode,

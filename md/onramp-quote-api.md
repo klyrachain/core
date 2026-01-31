@@ -14,7 +14,7 @@ The platform’s liquidity pool currently holds:
 - **Base** (chain ID `8453`): USDC, ETH  
 - **Ethereum** (chain ID `1`): USDC, ETH  
 
-Fonbnk supports these as payout/deposit assets (e.g. `BASE_USDC`, `BASE_ETH`, `ETHEREUM_USDC`, `ETHEREUM_ETH`). For any other token (e.g. MANA, Polygon USDC), the backend uses an **intermediate pool token** (same-chain USDC preferred, else same-chain ETH, else Base USDC), gets a Fonbnk quote for fiat↔that pool token, then a swap quote pool→requested token, and combines them.
+Fonbnk expects payout/deposit currency as **NETWORK_ASSET** (chain + token, e.g. `BASE_USDC`, `POLYGON_USDC`, `ETHEREUM_NATIVE`). See [supported countries and cryptocurrencies](https://docs.fonbnk.com/supported-countries-and-cryptocurrencies). Only pool tokens whose Fonbnk code is in that list get a **direct** Fonbnk quote (e.g. `BASE_USDC`, `ETHEREUM_USDC`, `ETHEREUM_NATIVE`). `BASE_ETH` is not in Fonbnk's list, so Base ETH uses an **intermediate pool token** (Base USDC) + swap. For any other token (e.g. MANA, Polygon USDC), the backend uses an intermediate pool token, Fonbnk for fiat↔pool token, then a swap quote pool→requested token, and combines them.
 
 ---
 
@@ -41,6 +41,66 @@ If the requested token is a **pool token** (Base/Ethereum USDC or ETH), the resp
 | `purchase_method`| string | Optional. `"buy"` (onramp) or `"sell"` (offramp). Default `"buy"`. |
 | `from_address`   | string | Optional. Wallet address used for swap routing when the requested token is not a pool token. If omitted, a zero address is used (may limit some routes). |
 | `token_decimals` | number | Optional. Decimals for the requested token when it is **not** a pool token and `amount_in` is `"crypto"`. Used to convert `amount` to wei for the swap. Default `18`. |
+
+**Proper request examples**
+
+- **Onramp (buy), fiat in:** “I pay 100 GHS; how much Base USDC do I get?”  
+  Backend uses Fonbnk with payout `BASE_USDC` (NETWORK_ASSET).
+
+```json
+POST /api/quote/onramp
+Content-Type: application/json
+
+{
+  "country": "GH",
+  "chain_id": 8453,
+  "token": "USDC",
+  "amount": 100,
+  "amount_in": "fiat",
+  "purchase_method": "buy"
+}
+```
+
+- **Onramp (buy), crypto in:** “I want 1 Base USDC; how much fiat do I pay?”
+
+```json
+{
+  "country": "GH",
+  "chain_id": 8453,
+  "token": "USDC",
+  "amount": 1,
+  "amount_in": "crypto",
+  "purchase_method": "buy"
+}
+```
+
+- **Offramp (sell):** “I sell 10 Base USDC; how much GHS do I get?”
+
+```json
+{
+  "country": "GH",
+  "chain_id": 8453,
+  "token": "USDC",
+  "amount": 10,
+  "amount_in": "crypto",
+  "purchase_method": "sell"
+}
+```
+
+- **Non‑pool token (e.g. MANA):** Backend uses Fonbnk for an intermediate pool token (e.g. `BASE_USDC`) then swap. Provide `from_address` for better swap routes.
+
+```json
+{
+  "country": "GH",
+  "chain_id": 8453,
+  "token": "0x...",
+  "amount": 100,
+  "amount_in": "fiat",
+  "from_address": "0xYourWallet"
+}
+```
+
+You do **not** send Fonbnk’s NETWORK_ASSET (e.g. `BASE_USDC`) in the request. You send **chain_id** + **token** (symbol or address); the backend maps pool tokens to the correct Fonbnk code (e.g. Base USDC → `BASE_USDC`).
 
 **Response (200) – pool token (direct Fonbnk):**
 

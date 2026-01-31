@@ -1,6 +1,9 @@
 /**
  * Liquidity pool tokens: Base/Ethereum USDC and ETH.
- * Used for direct Fonbnk quotes and as intermediate for onramp→swap when requested token is not in pool.
+ * Used for direct Fonbnk quotes (when supported) and as intermediate for onramp→swap.
+ * Fonbnk expects NETWORK_ASSET (chain + token, e.g. BASE_USDC, POLYGON_USDC, ETHEREUM_NATIVE).
+ * See: https://docs.fonbnk.com/supported-countries-and-cryptocurrencies
+ * Note: BASE_ETH is not in Fonbnk's supported list (only BASE_USDC for Base); Base ETH quotes use intermediate + swap.
  */
 
 import type { PoolToken } from "./onramp-quote.types.js";
@@ -11,7 +14,7 @@ const NATIVE = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
 export const CHAIN_ID_BASE = 8453;
 export const CHAIN_ID_ETHEREUM = 1;
 
-/** Pool tokens we hold: Base USDC/ETH, Ethereum USDC/ETH. */
+/** Pool tokens we hold. fonbnkCode is NETWORK_ASSET; only codes in Fonbnk's supported list get direct quotes. */
 export const POOL_TOKENS: PoolToken[] = [
   {
     chainId: CHAIN_ID_BASE,
@@ -35,7 +38,7 @@ export const POOL_TOKENS: PoolToken[] = [
     chainId: CHAIN_ID_ETHEREUM,
     symbol: "ETH",
     address: NATIVE,
-    fonbnkCode: "ETHEREUM_ETH",
+    fonbnkCode: "ETHEREUM_NATIVE",
   },
 ];
 
