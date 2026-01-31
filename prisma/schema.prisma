@@ -262,6 +262,65 @@ model InventoryHistory {
 }
 
 // --------------------------------------
+// Supported Countries (onramp/offramp, payouts)
+// --------------------------------------
+// Country code (e.g. GH, NG), currency (e.g. GHS, NGN). Used for quotes and payouts.
+// supportedFonbnk / supportedPaystack indicate which provider supports this country.
+
+model Country {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  code             String   @unique // ISO 3166-1 alpha-2, e.g. GH, NG
+  name             String   // e.g. Ghana, Nigeria
+  currency         String   // ISO 4217, e.g. GHS, NGN
+  supportedFonbnk  Boolean  @default(false)
+  supportedPaystack Boolean @default(false)
+
+  @@index([code])
+  @@index([supportedFonbnk, supportedPaystack])
+}
+
+// --------------------------------------
+// Supported Chains & Tokens (onramp/offramp, quotes, transfers)
+// --------------------------------------
+// Managed via admin; consumed by GET /api/chains and GET /api/tokens.
+// Used for pool-token lookup (Fonbnk intermediate, direct quotes).
+// Model name "Chain" to avoid conflict with enum SupportedChain (ETHEREUM, BNB, BASE, SOLANA).
+
+model Chain {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  chainId   Int     @unique // e.g. 8453 (Base), 1 (Ethereum)
+  name      String  // e.g. Base, Ethereum
+  iconUri   String? // optional chain icon URL
+
+  @@index([chainId])
+  @@map("SupportedChain")
+}
+
+model SupportedToken {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  chainId       Int     // chain ID (e.g. 8453, 1); match Chain.chainId
+  tokenAddress  String  // contract address or native sentinel (e.g. 0xEee...)
+  symbol        String  // e.g. USDC, ETH
+  decimals      Int     @default(18)
+  name          String? // e.g. USD Coin
+  logoUri       String? // optional token icon URL
+  fonbnkCode    String? // Fonbnk NETWORK_ASSET e.g. BASE_USDC, ETHEREUM_NATIVE
+
+  @@unique([chainId, tokenAddress])
+  @@index([chainId])
+  @@index([symbol])
+}
+
+// --------------------------------------
 // API Key Management
 // --------------------------------------
 

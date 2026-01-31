@@ -247,6 +247,64 @@ async function main() {
     update: {},
   });
 
+  console.log("Seeding countries (Fonbnk + Paystack supported)...");
+  const countryData: Array<{ code: string; name: string; currency: string; supportedFonbnk: boolean; supportedPaystack: boolean }> = [
+    { code: "NG", name: "Nigeria", currency: "NGN", supportedFonbnk: true, supportedPaystack: true },
+    { code: "KE", name: "Kenya", currency: "KES", supportedFonbnk: true, supportedPaystack: true },
+    { code: "GH", name: "Ghana", currency: "GHS", supportedFonbnk: true, supportedPaystack: true },
+    { code: "ZA", name: "South Africa", currency: "ZAR", supportedFonbnk: true, supportedPaystack: true },
+    { code: "TZ", name: "Tanzania", currency: "TZS", supportedFonbnk: true, supportedPaystack: false },
+    { code: "UG", name: "Uganda", currency: "UGX", supportedFonbnk: true, supportedPaystack: false },
+    { code: "ZM", name: "Zambia", currency: "ZMW", supportedFonbnk: true, supportedPaystack: false },
+    { code: "BF", name: "Burkina Faso", currency: "XOF", supportedFonbnk: true, supportedPaystack: false },
+    { code: "BR", name: "Brazil", currency: "BRL", supportedFonbnk: true, supportedPaystack: false },
+    { code: "SN", name: "Senegal", currency: "XOF", supportedFonbnk: true, supportedPaystack: false },
+    { code: "CG", name: "Republic of the Congo", currency: "XAF", supportedFonbnk: true, supportedPaystack: false },
+    { code: "BJ", name: "Benin", currency: "XOF", supportedFonbnk: true, supportedPaystack: false },
+    { code: "GA", name: "Gabon", currency: "XAF", supportedFonbnk: true, supportedPaystack: false },
+    { code: "RW", name: "Rwanda", currency: "RWF", supportedFonbnk: true, supportedPaystack: false },
+    { code: "CI", name: "Ivory Coast", currency: "XOF", supportedFonbnk: true, supportedPaystack: false },
+    { code: "CM", name: "Cameroon", currency: "XAF", supportedFonbnk: true, supportedPaystack: false },
+    { code: "MW", name: "Malawi", currency: "MWK", supportedFonbnk: true, supportedPaystack: false },
+  ];
+  for (const c of countryData) {
+    await prisma.country.upsert({
+      where: { code: c.code },
+      create: c,
+      update: { name: c.name, currency: c.currency, supportedFonbnk: c.supportedFonbnk, supportedPaystack: c.supportedPaystack },
+    });
+  }
+
+  console.log("Seeding supported chains and tokens...");
+  const CHAIN_ID_BASE = 8453;
+  const CHAIN_ID_ETHEREUM = 1;
+  const NATIVE = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+
+  await prisma.chain.upsert({
+    where: { chainId: CHAIN_ID_BASE },
+    create: { chainId: CHAIN_ID_BASE, name: "Base", iconUri: null },
+    update: { name: "Base", iconUri: undefined },
+  });
+  await prisma.chain.upsert({
+    where: { chainId: CHAIN_ID_ETHEREUM },
+    create: { chainId: CHAIN_ID_ETHEREUM, name: "Ethereum", iconUri: null },
+    update: { name: "Ethereum", iconUri: undefined },
+  });
+
+  const tokenData: Array<{ chainId: number; tokenAddress: string; symbol: string; decimals: number; name: string | null; logoUri: string | null; fonbnkCode: string | null }> = [
+    { chainId: CHAIN_ID_BASE, tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", symbol: "USDC", decimals: 6, name: "USD Coin", logoUri: null, fonbnkCode: "BASE_USDC" },
+    { chainId: CHAIN_ID_BASE, tokenAddress: NATIVE, symbol: "ETH", decimals: 18, name: "Ether", logoUri: null, fonbnkCode: "BASE_ETH" },
+    { chainId: CHAIN_ID_ETHEREUM, tokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", symbol: "USDC", decimals: 6, name: "USD Coin", logoUri: null, fonbnkCode: "ETHEREUM_USDC" },
+    { chainId: CHAIN_ID_ETHEREUM, tokenAddress: NATIVE, symbol: "ETH", decimals: 18, name: "Ether", logoUri: null, fonbnkCode: "ETHEREUM_NATIVE" },
+  ];
+  for (const t of tokenData) {
+    await prisma.supportedToken.upsert({
+      where: { chainId_tokenAddress: { chainId: t.chainId, tokenAddress: t.tokenAddress } },
+      create: t,
+      update: { symbol: t.symbol, decimals: t.decimals, name: t.name, logoUri: t.logoUri, fonbnkCode: t.fonbnkCode },
+    });
+  }
+
   console.log("Seeding inventory history...");
   await Promise.all([
     prisma.inventoryHistory.upsert({
@@ -286,6 +344,9 @@ async function main() {
     request: request.code,
     claim: claim.id,
     inventoryHistory: 2,
+    countries: countryData.length,
+    chains: 2,
+    supportedTokens: tokenData.length,
   });
 }
 

@@ -2,6 +2,7 @@
  * Persist Paystack transfer (payout) data for dashboard review and audit.
  */
 
+import { Prisma } from "../../prisma/generated/prisma/client.js";
 import { prisma } from "../lib/prisma.js";
 import type { PaystackTransferVerifyData } from "./paystack.service.js";
 
@@ -31,7 +32,7 @@ export async function createPaystackTransferRecord(params: CreateTransferRecordP
       status: params.status,
       recipientName: params.recipient_name ?? null,
       reason: params.reason ?? null,
-      rawResponse: params.raw_response ? (params.raw_response as object) : null,
+      rawResponse: params.raw_response ? (params.raw_response as Prisma.InputJsonValue) : Prisma.JsonNull,
     },
   });
 }

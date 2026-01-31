@@ -4,14 +4,14 @@
 
 import type { OnrampQuoteRequest, OnrampQuoteResponse } from "../lib/onramp-quote.types.js";
 import {
-  findPoolToken,
-  getIntermediatePoolToken,
-  getPoolTokenDecimals,
-} from "../lib/pool-tokens.js";
+  findPoolTokenFromDb,
+  getIntermediatePoolTokenFromDb,
+  getPoolTokenDecimalsFromDb,
+  useDirectFonbnkForPoolToken,
+} from "./supported-token.service.js";
 import {
   getFonbnkQuote,
   getCurrencyForCountry,
-  isFonbnkSupportedPayoutCode,
 } from "./fonbnk.service.js";
 import { getBestQuotes } from "./swap-quote.service.js";
 
@@ -52,23 +52,41 @@ export async function getOnrampQuote(
   const currency = getCurrencyForCountry(country);
   const isSell = purchase_method === "sell";
 
-  const pool = findPoolToken(chain_id, token);
-  const useDirectFonbnk =
-    pool != null && isFonbnkSupportedPayoutCode(pool.fonbnkCode);
+  const pool = await findPoolTokenFromDb(chain_id, token);
+  const useDirectFonbnk = pool != null && useDirectFonbnkForPoolToken(pool);
   if (useDirectFonbnk && pool) {
+    // Sell + amount_in fiat: "I want X fiat, how much crypto to sell?" — Fonbnk only accepts crypto amount,
+    // so we get a rate quote (nominal 1 unit) and compute counterpart.
+    const isSellFiatTarget = isSell && amount_in === "fiat";
+    const quoteAmount = isSellFiatTarget ? 1 : amount;
+    const quoteAmountIn = isSellFiatTarget ? "crypto" : amount_in;
+
     const fonbnk = await getFonbnkQuote({
       country: countryCode,
       token: pool.fonbnkCode,
       purchaseMethod: isSell ? "sell" : "buy",
-      amount,
-      amountIn: amount_in,
+      amount: quoteAmount,
+      amountIn: quoteAmountIn,
     });
     if (!fonbnk) {
       return { ok: false, error: "No Fonbnk quote for this pool token.", status: 404 };
     }
-    const totalCrypto =
-      amount_in === "fiat" ? String(fonbnk.total) : String(amount);
-    const totalFiat = amount_in === "fiat" ? amount : fonbnk.total;
+    let totalCrypto: string;
+    let totalFiat: number;
+    if (isSellFiatTarget) {
+      // We got rate for "sell 1 crypto → fonbnk.total fiat". So crypto needed = amount / rate.
+      const rate = fonbnk.rate > 0 ? fonbnk.rate : fonbnk.total;
+      totalCrypto = String(amount / rate);
+      totalFiat = amount;
+    } else if (amount_in === "fiat") {
+      // Buy, amount in fiat: total crypto = fonbnk.total, total fiat = amount
+      totalCrypto = String(fonbnk.total);
+      totalFiat = amount;
+    } else {
+      // amount_in === "crypto": total crypto = amount, total fiat = fonbnk.total
+      totalCrypto = String(amount);
+      totalFiat = fonbnk.total;
+    }
     const data: OnrampQuoteResponse = {
       country: countryCode,
       currency,
@@ -85,21 +103,27 @@ export async function getOnrampQuote(
     return { ok: true, data };
   }
 
-  const intermediate = getIntermediatePoolToken(chain_id);
-  const poolDecimals = getPoolTokenDecimals(intermediate.symbol);
+  const intermediate = await getIntermediatePoolTokenFromDb(chain_id);
+  const poolDecimals = intermediate.decimals ?? await getPoolTokenDecimalsFromDb(intermediate.symbol);
 
   if (amount_in === "fiat") {
+    // Sell + fiat: "I want X fiat" — get rate (nominal 1 crypto) then crypto needed = amount / rate.
+    const isSellFiatTarget = isSell;
+    const quoteAmount = isSellFiatTarget ? 1 : amount;
+    const quoteAmountIn = isSellFiatTarget ? "crypto" : "fiat";
+
     const fonbnk = await getFonbnkQuote({
       country: countryCode,
       token: intermediate.fonbnkCode,
       purchaseMethod: isSell ? "sell" : "buy",
-      amount,
-      amountIn: "fiat",
+      amount: quoteAmount,
+      amountIn: quoteAmountIn,
     });
     if (!fonbnk) {
       return { ok: false, error: "No Fonbnk quote for intermediate pool token.", status: 404 };
     }
-    const poolAmountWei = humanToWei(fonbnk.total, poolDecimals);
+    const poolAmountHuman = isSellFiatTarget ? amount / (fonbnk.rate > 0 ? fonbnk.rate : fonbnk.total) : fonbnk.total;
+    const poolAmountWei = humanToWei(poolAmountHuman, poolDecimals);
     if (isSell) {
       const estimatePoolWei = humanToWei(1000, poolDecimals);
       const swapEstimate = await getBestQuotes({

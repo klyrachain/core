@@ -15,6 +15,9 @@ import { inventoryApiRoutes } from "./routes/api/inventory.js";
 import { cacheApiRoutes } from "./routes/api/cache.js";
 import { queueApiRoutes } from "./routes/api/queue.js";
 import { quoteApiRoutes } from "./routes/api/quote.js";
+import { countriesApiRoutes } from "./routes/api/countries.js";
+import { chainsTokensApiRoutes } from "./routes/api/chains-tokens.js";
+import { ratesApiRoutes } from "./routes/api/rates.js";
 import { cryptoTransactionsApiRoutes } from "./routes/api/crypto-transactions.js";
 import { logsApiRoutes } from "./routes/api/logs.js";
 import { paystackBanksApiRoutes } from "./routes/api/paystack-banks.js";
@@ -50,7 +53,7 @@ app.addHook("onResponse", onResponseLog);
 // Require x-api-key for all routes except health and ready
 app.addHook("preHandler", async (request, reply) => {
   const path = (request.url ?? "").split("?")[0];
-  if (path === "/health" || path === "/ready" || path.startsWith("/api/quote") || path === "/webhook/paystack") return;
+  if (path === "/health" || path === "/ready" || path.startsWith("/api/quote") || path === "/api/countries" || path.startsWith("/api/rates") || path === "/api/chains" || path === "/api/tokens" || path === "/webhook/paystack") return;
   await requireApiKey(request, reply);
 });
 
@@ -80,6 +83,9 @@ await app.register(inventoryApiRoutes, { prefix: "" });
 await app.register(cacheApiRoutes, { prefix: "" });
 await app.register(queueApiRoutes, { prefix: "" });
 await app.register(quoteApiRoutes, { prefix: "" });
+await app.register(countriesApiRoutes, { prefix: "" });
+await app.register(chainsTokensApiRoutes, { prefix: "" });
+await app.register(ratesApiRoutes, { prefix: "" });
 await app.register(cryptoTransactionsApiRoutes, { prefix: "" });
 await app.register(logsApiRoutes, { prefix: "" });
 await app.register(paystackBanksApiRoutes, { prefix: "" });

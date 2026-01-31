@@ -36,6 +36,9 @@ const envSchema = z.object({
   FONBNK_CLIENT_ID: z.string().optional(),
   FONBNK_CLIENT_SECRET: z.string().optional(),
   FONBNK_TIMEOUT_MS: z.coerce.number().positive().optional(),
+
+  /** ExchangeRate-API key for fiat↔fiat (USD pivot). Optional; used for non–Fonbnk countries. */
+  EXCHANGERATE_API_KEY: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

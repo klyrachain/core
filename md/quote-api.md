@@ -224,3 +224,50 @@ Returns a fee quote for an order (buy/sell/request/claim). Not related to swap p
 - **Best quote:** `POST /api/quote/best` with no provider; backend calls all applicable providers (same-chain: 0x, Squid, LiFi; cross-chain: Squid, LiFi). Returns `best` (highest `to_amount`) and optional `alternative` (within 5% of best).
 - **Timers:** `next_quote_timer_seconds` = quote validity/refresh; `estimated_duration_seconds` = how long the swap takes (Squid, LiFi). Both can inform “best” (rate vs speed).
 - **Response:** Normalized quote includes `from_chain_id`, `to_chain_id`, `cross_chain`, `same_chain`, `token_type`, `from_amount`, `to_amount`, `next_quote_timer_seconds`, `estimated_duration_seconds`, and `transaction` when the provider returns calldata.
+
+
+Use these shapes for **POST /api/quote/onramp** (same endpoint for both; difference is `amount_in` and `purchase_method`).
+
+---
+
+**1. Onramp (buy) – “I pay 100 GHS, how much Polygon MANA do I get?”**
+
+```json
+{
+  "country": "GH",
+  "chain_id": 137,
+  "token": "0xA1c57f48F0Deb89f529dF39EbD8200A0cfB952fe",
+  "amount": 100,
+  "amount_in": "fiat",
+  "purchase_method": "buy",
+  "from_address": "0xYourWalletAddress"
+}
+```
+
+- `chain_id`: **137** = Polygon.
+- `token`: MANA contract on Polygon. The one above is the usual Decentraland MANA on Polygon; if your app uses another address, swap it in.
+- `amount`: fiat amount (e.g. 100 GHS).
+- `from_address`: recommended so the swap (Base USDC → Polygon MANA) can be quoted properly.
+
+---
+
+**2. Offramp (sell) – “I sell 500 Polygon MANA, how much fiat do I get?”**
+
+```json
+{
+  "country": "GH",
+  "chain_id": 137,
+  "token": "0xA1c57f48F0Deb89f529dF39EbD8200A0cfB952fe",
+  "amount": 500,
+  "amount_in": "crypto",
+  "purchase_method": "sell",
+  "token_decimals": 18,
+  "from_address": "0xYourWalletAddress"
+}
+```
+
+- `amount`: MANA amount in human units (e.g. 500).
+- `token_decimals`: **18** for MANA (so the backend converts 500 → wei correctly for the swap).
+- Same `chain_id` and `token` as onramp.
+
+Replace `0xYourWalletAddress` with the real wallet, and `GH`/GHS with the country/currency you want for fiat (e.g. `NG` for NGN). If MANA on your Polygon deployment uses a different contract, replace the `token` value with that address.

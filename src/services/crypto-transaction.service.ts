@@ -3,6 +3,7 @@
  * Enables search by id or tx hash and linking to business Transaction for onramp/offramp.
  */
 
+import type { Prisma } from "../../prisma/generated/prisma/client.js";
 import { prisma } from "../lib/prisma.js";
 
 const PROVIDERS = ["0x", "squid", "lifi"] as const;
@@ -45,7 +46,7 @@ export async function createCryptoTransaction(
       toAmount: input.toAmount,
       status: "PENDING",
       transactionId: input.transactionId ?? null,
-      metadata: input.metadata ?? undefined,
+      metadata: (input.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
     },
     select: { id: true },
   });
@@ -63,7 +64,7 @@ export async function updateCryptoTransaction(
       ...(input.txHash != null && { txHash: input.txHash }),
       ...(input.txUrl != null && { txUrl: input.txUrl }),
       ...(input.transactionId != null && { transactionId: input.transactionId }),
-      ...(input.metadata != null && { metadata: input.metadata as object }),
+      ...(input.metadata != null && { metadata: input.metadata as Prisma.InputJsonValue }),
     },
   });
   if (row.count === 0) return null;

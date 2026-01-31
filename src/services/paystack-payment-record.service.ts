@@ -3,6 +3,7 @@
  * Paystack: store transaction ID as unsigned 64-bit; we use String for paystackId to avoid JS precision.
  */
 
+import { Prisma } from "../../prisma/generated/prisma/client.js";
 import { prisma } from "../lib/prisma.js";
 import type { PaystackTransactionData } from "./paystack.service.js";
 import { sanitizeTransactionData } from "./paystack.service.js";
@@ -33,8 +34,8 @@ export async function upsertPaystackPaymentRecord(
       channel: data.channel ?? null,
       gatewayResponse: data.gateway_response ?? null,
       customerEmail,
-      metadata: data.metadata ? (data.metadata as object) : null,
-      rawResponse: sanitizeTransactionData(data) as unknown as object,
+      metadata: data.metadata ? (data.metadata as Prisma.InputJsonValue) : Prisma.JsonNull,
+      rawResponse: sanitizeTransactionData(data) as Prisma.InputJsonValue,
     },
     update: {
       paystackId,
@@ -46,8 +47,8 @@ export async function upsertPaystackPaymentRecord(
       channel: data.channel ?? null,
       gatewayResponse: data.gateway_response ?? null,
       customerEmail,
-      metadata: data.metadata ? (data.metadata as object) : null,
-      rawResponse: sanitizeTransactionData(data) as unknown as object,
+      metadata: data.metadata ? (data.metadata as Prisma.InputJsonValue) : Prisma.JsonNull,
+      rawResponse: sanitizeTransactionData(data) as Prisma.InputJsonValue,
     },
   });
 }

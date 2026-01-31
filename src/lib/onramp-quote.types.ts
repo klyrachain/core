@@ -26,12 +26,14 @@ export type FonbnkQuoteResponse = {
   amountIn?: "fiat" | "crypto";
 };
 
-/** Pool token: chain + token we hold (Base USDC/ETH, Ethereum USDC/ETH). */
+/** Pool token: chain + token we hold (from SupportedChain/SupportedToken or legacy pool-tokens). */
 export type PoolToken = {
   chainId: number;
   symbol: string;
   address: string;
   fonbnkCode: string;
+  /** Decimals for amount conversion; optional when from DB. */
+  decimals?: number;
 };
 
 /** Request for onramp/offramp quote: country, chain_id, token, amount, amount_in, purchase_method (buy = onramp, sell = offramp). */
