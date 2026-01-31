@@ -287,7 +287,7 @@ model Country {
 // --------------------------------------
 // Managed via admin; consumed by GET /api/chains and GET /api/tokens.
 // Used for pool-token lookup (Fonbnk intermediate, direct quotes).
-// Model name "Chain" to avoid conflict with enum SupportedChain (ETHEREUM, BNB, BASE, SOLANA).
+// Model "Chain" maps to table "Chain" so the table does not conflict with enum type SupportedChain (ETHEREUM, BNB, BASE, SOLANA).
 
 model Chain {
   id        String   @id @default(uuid())
@@ -299,7 +299,7 @@ model Chain {
   iconUri   String? // optional chain icon URL
 
   @@index([chainId])
-  @@map("SupportedChain")
+  @@map("Chain")
 }
 
 model SupportedToken {

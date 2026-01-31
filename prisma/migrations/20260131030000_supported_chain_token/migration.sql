@@ -1,5 +1,5 @@
--- CreateTable
-CREATE TABLE "SupportedChain" (
+-- CreateTable (table name "Chain" to avoid conflict with enum type "SupportedChain")
+CREATE TABLE "Chain" (
     "id" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -7,7 +7,7 @@ CREATE TABLE "SupportedChain" (
     "name" TEXT NOT NULL,
     "iconUri" TEXT,
 
-    CONSTRAINT "SupportedChain_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "Chain_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -27,10 +27,10 @@ CREATE TABLE "SupportedToken" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "SupportedChain_chainId_key" ON "SupportedChain"("chainId");
+CREATE UNIQUE INDEX "Chain_chainId_key" ON "Chain"("chainId");
 
 -- CreateIndex
-CREATE INDEX "SupportedChain_chainId_idx" ON "SupportedChain"("chainId");
+CREATE INDEX "Chain_chainId_idx" ON "Chain"("chainId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "SupportedToken_chainId_tokenAddress_key" ON "SupportedToken"("chainId", "tokenAddress");
