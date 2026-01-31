@@ -2,6 +2,8 @@
 
 This guide describes how the backend supports **onramp** (fiat → crypto) and **offramp** (crypto → fiat) flows, how they link to **Paystack**, and how **receivers** (wallet vs email/phone) and **claims** work. It maps flows to existing entities: `Transaction`, `Request`, `Claim`, `PayoutRequest`, `PaystackPaymentRecord`, and `CryptoTransaction`.
 
+**Currencies vs tokens:** Fiat **currencies** (e.g. GHS, USD, NGN) are used for Paystack payments and payouts. On-chain **tokens** (e.g. USDC, ETH) are used when the provider is **KLYRA** (we send/receive on-chain). For orders where `f_provider` or `t_provider` is KLYRA, `f_token` and `t_token` must **not** be fiat currencies — use on-chain symbols only. Same token on same chain is not allowed (rejected with `SAME_TOKEN_SAME_CHAIN`). See [core-api.integration.md](./core-api.integration.md) and [quote-api.md](./quote-api.md) for validation rules.
+
 ---
 
 ## 1. Onramp flow (buy crypto with fiat)

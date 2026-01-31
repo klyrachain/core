@@ -53,6 +53,8 @@ Record a new crypto/swap transaction (e.g. when user picks a quote and proceeds)
 | `transaction_id`  | string | Optional. Our business Transaction uuid (onramp/offramp). |
 | `metadata`       | object | Optional. Quote snapshot, addresses, etc. |
 
+**Validation:** Same token on same chain (`from_chain_id === to_chain_id` and `from_token === to_token`, case-insensitive) returns **400** with `code: "SAME_TOKEN_SAME_CHAIN"` — swap must be to a different token or chain.
+
 **Response (201):** `{ "success": true, "data": { "id": "uuid" } }`
 
 ---

@@ -84,39 +84,61 @@ async function main() {
   ]);
 
   console.log("Seeding inventory assets...");
-  const [usdcEth, ethEth, ghs] = await Promise.all([
+  const defaultAddress = walletEth.address;
+  const [usdcEth, ethEth, usdcBase] = await Promise.all([
     prisma.inventoryAsset.upsert({
       where: {
-        chain_tokenAddress: { chain: "ETHEREUM", tokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" },
+        chainId_tokenAddress_address: {
+          chainId: 1,
+          tokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          address: defaultAddress,
+        },
       },
       create: {
         chain: "ETHEREUM",
+        chainId: 1,
         tokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
         symbol: "USDC",
+        address: defaultAddress,
+        walletId: walletEth.id,
         currentBalance: 50_000,
       },
       update: {},
     }),
     prisma.inventoryAsset.upsert({
       where: {
-        chain_tokenAddress: { chain: "ETHEREUM", tokenAddress: "0x0000000000000000000000000000000000000000" },
+        chainId_tokenAddress_address: {
+          chainId: 1,
+          tokenAddress: "0x0000000000000000000000000000000000000000",
+          address: defaultAddress,
+        },
       },
       create: {
         chain: "ETHEREUM",
+        chainId: 1,
         tokenAddress: "0x0000000000000000000000000000000000000000",
         symbol: "ETH",
+        address: defaultAddress,
+        walletId: walletEth.id,
         currentBalance: 10,
       },
       update: {},
     }),
     prisma.inventoryAsset.upsert({
       where: {
-        chain_tokenAddress: { chain: "BASE", tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
+        chainId_tokenAddress_address: {
+          chainId: 8453,
+          tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          address: defaultAddress,
+        },
       },
       create: {
         chain: "BASE",
+        chainId: 8453,
         tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
         symbol: "USDC",
+        address: defaultAddress,
+        walletId: walletEth.id,
         currentBalance: 25_000,
       },
       update: {},

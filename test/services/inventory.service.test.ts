@@ -52,6 +52,7 @@ describe("inventory.service", () => {
           tokenAddress: "0xabc",
           symbol: "USDC",
           amount: 10,
+          address: "0xwallet1",
         })
       ).rejects.toThrow("InventoryAsset not found");
       expect(mockTransaction).not.toHaveBeenCalled();
@@ -71,6 +72,7 @@ describe("inventory.service", () => {
           tokenAddress: "0xabc",
           symbol: "USDC",
           amount: 10,
+          address: "0xwallet1",
         })
       ).rejects.toThrow("Insufficient inventory");
       expect(mockTransaction).not.toHaveBeenCalled();
@@ -94,6 +96,7 @@ describe("inventory.service", () => {
         tokenAddress: "0xabc",
         symbol: "USDC",
         amount: 20,
+        address: "0xwallet1",
         type: "SALE",
         providerQuotePrice: 1.5,
       });
@@ -128,6 +131,7 @@ describe("inventory.service", () => {
           tokenAddress: "0xeth",
           symbol: "ETH",
           amount: 1,
+          address: "0xwallet1",
         })
       ).rejects.toThrow("InventoryAsset not found");
       expect(mockTransaction).not.toHaveBeenCalled();
@@ -151,6 +155,7 @@ describe("inventory.service", () => {
         tokenAddress: "0xeth",
         symbol: "ETH",
         amount: 2,
+        address: "0xwallet1",
         type: "PURCHASE",
         providerQuotePrice: 3000,
       });
@@ -199,7 +204,7 @@ describe("inventory.service", () => {
       expect(mockSetBalance).not.toHaveBeenCalled();
     });
 
-    it("should set balance in Redis when asset exists", async () => {
+    it("should set balance in Redis when asset exists (findFirst, no address)", async () => {
       mockFindUnique.mockResolvedValue({
         id: "asset-1",
         chain: "ETHEREUM",

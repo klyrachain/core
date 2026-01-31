@@ -77,7 +77,7 @@ Single endpoint for swap quotes. The **provider** in the body determines which r
 
 **Errors:**
 
-- **400** – Validation failed (e.g. missing `provider`, invalid enum, missing `from_address` for squid/lifi).
+- **400** – Validation failed (e.g. missing `provider`, invalid enum, missing `from_address` for squid/lifi). **Same token on same chain:** if `from_chain === to_chain` and `from_token === to_token` (case-insensitive), returns 400 with `code: "SAME_TOKEN_SAME_CHAIN"` — swap must be to a different token or chain.
 - **502** – Provider error (no route, API error).
 - **503** – Provider not configured (missing `ZEROX_API_KEY`, `SQUID_INTEGRATOR_ID`, or optional `LIFI_API_KEY` for higher limits).
 
@@ -174,7 +174,7 @@ Returns the **best** quote by calling all applicable providers and comparing res
 - **`best`** – Quote with the highest `to_amount` (best rate).
 - **`alternative`** – Present only when a second provider’s quote is within 5% of the best amount. Lets the user choose between best rate and e.g. faster completion (`estimated_duration_seconds`).
 
-**Errors:** 400 if validation fails (e.g. missing `from_address`). 502 if no provider returns a quote.
+**Errors:** 400 if validation fails (e.g. missing `from_address`). **Same token on same chain:** if `from_chain === to_chain` and `from_token === to_token`, returns 400 with `code: "SAME_TOKEN_SAME_CHAIN"`. 502 if no provider returns a quote.
 
 **Example:**
 
@@ -201,6 +201,8 @@ Content-Type: application/json
 Returns a fee quote for an order (buy/sell/request/claim). Not related to swap providers.
 
 **Query:** `action`, `f_amount`, `t_amount`, `f_price`, `t_price`, `f_token`, `t_token`, optional `f_chain`, `t_chain`.
+
+**Validation:** Same token on same chain (`f_chain === t_chain` and `f_token === t_token`, case-insensitive) returns **400** with `code: "SAME_TOKEN_SAME_CHAIN"`.
 
 **Response (200):** `{ "success": true, "data": { ... } }` (fee quote object).
 

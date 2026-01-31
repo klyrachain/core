@@ -75,6 +75,14 @@ export async function quoteApiRoutes(app: FastifyInstance): Promise<void> {
       }
       const params = parse.data;
 
+      if (params.from_chain === params.to_chain && params.from_token.toLowerCase().trim() === params.to_token.toLowerCase().trim()) {
+        return reply.status(400).send({
+          success: false,
+          error: "Same token on same chain is not allowed; swap must be to a different token or chain",
+          code: "SAME_TOKEN_SAME_CHAIN",
+        });
+      }
+
       if ((params.provider === "squid" || params.provider === "lifi") && !params.from_address?.trim()) {
         return reply.status(400).send({
           success: false,
@@ -117,6 +125,14 @@ export async function quoteApiRoutes(app: FastifyInstance): Promise<void> {
         });
       }
       const params = parse.data;
+
+      if (params.from_chain === params.to_chain && params.from_token.toLowerCase().trim() === params.to_token.toLowerCase().trim()) {
+        return reply.status(400).send({
+          success: false,
+          error: "Same token on same chain is not allowed; swap must be to a different token or chain",
+          code: "SAME_TOKEN_SAME_CHAIN",
+        });
+      }
 
       const result = await getBestQuotes(params);
       if (!result.ok) {
@@ -189,8 +205,18 @@ export async function quoteApiRoutes(app: FastifyInstance): Promise<void> {
           details: parse.error.flatten(),
         });
       }
+      const query = parse.data;
+      const fChain = (query.f_chain ?? "").trim();
+      const tChain = (query.t_chain ?? "").trim();
+      if (fChain && tChain && fChain === tChain && query.f_token.toLowerCase().trim() === query.t_token.toLowerCase().trim()) {
+        return reply.status(400).send({
+          success: false,
+          error: "Same token on same chain is not allowed; swap must be to a different token or chain",
+          code: "SAME_TOKEN_SAME_CHAIN",
+        });
+      }
       try {
-        const quote = getFeeForOrder(parse.data);
+        const quote = getFeeForOrder(query);
         return successEnvelope(reply, quote);
       } catch (err) {
         req.log.error({ err }, "GET /api/quote");
