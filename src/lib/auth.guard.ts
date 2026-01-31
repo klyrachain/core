@@ -13,6 +13,7 @@ export type AuthenticatedApiKey = {
   isActive: boolean;
   expiresAt: Date | null;
   lastUsedAt: Date | null;
+  businessId: string | null;
 };
 
 declare module "fastify" {
@@ -88,6 +89,7 @@ export async function requireApiKey(
     isActive: record.isActive,
     expiresAt: record.expiresAt,
     lastUsedAt: record.lastUsedAt,
+    businessId: record.businessId ?? null,
   };
 }
 

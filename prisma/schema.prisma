@@ -76,6 +76,47 @@ enum InvoiceStatus {
 }
 
 // --------------------------------------
+// Enums (Business / B2B2C)
+// --------------------------------------
+
+enum BusinessRole {
+  OWNER
+  ADMIN
+  DEVELOPER
+  FINANCE
+  SUPPORT
+}
+
+enum KybStatus {
+  NOT_STARTED
+  PENDING
+  APPROVED
+  REJECTED
+  RESTRICTED // Frozen funds
+}
+
+enum SettlementSchedule {
+  INSTANT
+  DAILY
+  WEEKLY
+  MANUAL
+}
+
+enum PayoutMethodType {
+  BANK_ACCOUNT
+  CRYPTO_WALLET
+  MOBILE_MONEY
+}
+
+enum PayoutStatus {
+  SCHEDULED
+  PROCESSING
+  PAID
+  FAILED
+  REVERSED
+}
+
+// --------------------------------------
 // Core Models
 // --------------------------------------
 
@@ -91,6 +132,7 @@ model User {
 
   transactionsFrom Transaction[] @relation("FromUser")
   transactionsTo   Transaction[] @relation("ToUser")
+  members          BusinessMember[]
 
   @@index([email, address, username])
 }
@@ -128,6 +170,12 @@ model Transaction {
 
   providerSessionId String? // External provider session (e.g. PayStack); link for session-based providers
 
+  businessId String? // Optional: if this tx was initiated via API by a merchant
+  business   Business? @relation("BusinessTransactions", fields: [businessId], references: [id], onDelete: SetNull)
+
+  platformFee Decimal? @default(0) @db.Decimal(18, 8) // Platform cut
+  merchantFee Decimal? @default(0) @db.Decimal(18, 8) // Merchant markup (if any)
+
   request   Request?
   requestId String?  @unique
 
@@ -136,6 +184,7 @@ model Transaction {
   cryptoTransactions CryptoTransaction[]
 
   @@index([status, type])
+  @@index([businessId])
 }
 
 // --------------------------------------
@@ -321,6 +370,108 @@ model SupportedToken {
 }
 
 // --------------------------------------
+// Business (B2B2C: Platform–Merchant–User)
+// --------------------------------------
+
+model Business {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name         String  // e.g. "Amazon Inc"
+  slug         String  @unique // e.g. "amazon" (for public payment links)
+  logoUrl      String?
+  website      String?
+  supportEmail String?
+
+  legalName          String? // Official registered name (KYB)
+  registrationNumber String? // Tax ID / EIN / RC Number
+  country            String  // ISO code e.g. "GH", "US"
+  kybStatus          KybStatus @default(NOT_STARTED)
+  riskScore          Int       @default(0) // 0–100, 100 is high risk
+
+  settlementSchedule SettlementSchedule @default(WEEKLY)
+  webhookUrl          String? // Main webhook for business events
+
+  members       BusinessMember[]
+  apiKeys       ApiKey[]
+  transactions  Transaction[]    @relation("BusinessTransactions")
+  payoutMethods PayoutMethod[]
+  payouts       Payout[]
+  feeSchedule   FeeSchedule?
+}
+
+model BusinessMember {
+  id        String   @id @default(uuid())
+  joinedAt  DateTime @default(now())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  role      BusinessRole @default(DEVELOPER)
+  isActive  Boolean       @default(true)
+
+  @@unique([userId, businessId])
+  @@index([userId])
+  @@index([businessId])
+}
+
+model FeeSchedule {
+  id        String   @id @default(uuid())
+
+  businessId String   @unique
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  flatFee       Decimal  @default(0) @db.Decimal(18, 2) // e.g. $0.50 per tx
+  percentageFee Decimal  @default(1) @db.Decimal(5, 2)  // e.g. 1.0%
+  maxFee        Decimal? @db.Decimal(18, 2)
+}
+
+model PayoutMethod {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  type      PayoutMethodType
+  currency  String // e.g. "USD", "USDC", "GHS"
+  details   Json   // Encrypted blob: { accountNumber, bankCode } or { walletAddress } etc.
+  isPrimary Boolean @default(false)
+  isActive  Boolean @default(true)
+
+  payouts   Payout[]
+
+  @@index([businessId])
+}
+
+model Payout {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  methodId  String
+  method    PayoutMethod @relation(fields: [methodId], references: [id], onDelete: Restrict)
+
+  amount    Decimal @db.Decimal(18, 8)
+  fee       Decimal @default(0) @db.Decimal(18, 8)
+  currency  String
+  status    PayoutStatus @default(SCHEDULED)
+  reference String?
+  batchId   String?
+
+  @@index([businessId])
+  @@index([methodId])
+  @@index([status])
+}
+
+// --------------------------------------
 // API Key Management
 // --------------------------------------
 
@@ -339,8 +490,12 @@ model ApiKey {
   expiresAt  DateTime?
   lastUsedAt DateTime?
 
+  businessId String?  // If null: platform admin key; if set: merchant key
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
   @@index([keyHash])
   @@index([isActive])
+  @@index([businessId])
 }
 
 // --------------------------------------

@@ -58,7 +58,7 @@ export async function generateKey(options: GenerateKeyOptions): Promise<string> 
 
 /**
  * Find an API key record by the hash of the incoming raw key. Returns null if not found.
- * Uses raw SQL because prisma.apiKey delegate can be undefined with Prisma 7 + driver adapter.
+ * Includes businessId when present (merchant key); platform keys have businessId null.
  */
 export async function findApiKeyByRawKey(rawKey: string): Promise<{
   id: string;
@@ -68,11 +68,12 @@ export async function findApiKeyByRawKey(rawKey: string): Promise<{
   isActive: boolean;
   expiresAt: Date | null;
   lastUsedAt: Date | null;
+  businessId: string | null;
 } | null> {
   const keyHash = hashApiKey(rawKey);
   const rows = await prisma.$queryRaw<
-    { id: string; name: string; domains: string[]; permissions: string[]; isActive: boolean; expiresAt: Date | null; lastUsedAt: Date | null }[]
-  >`SELECT id, name, domains, permissions, "isActive", "expiresAt", "lastUsedAt" FROM "ApiKey" WHERE "keyHash" = ${keyHash} LIMIT 1`;
+    { id: string; name: string; domains: string[]; permissions: string[]; isActive: boolean; expiresAt: Date | null; lastUsedAt: Date | null; businessId: string | null }[]
+  >`SELECT id, name, domains, permissions, "isActive", "expiresAt", "lastUsedAt", "businessId" FROM "ApiKey" WHERE "keyHash" = ${keyHash} LIMIT 1`;
   const row = rows[0];
   if (!row) return null;
   return {
@@ -83,6 +84,7 @@ export async function findApiKeyByRawKey(rawKey: string): Promise<{
     isActive: row.isActive,
     expiresAt: row.expiresAt,
     lastUsedAt: row.lastUsedAt,
+    businessId: row.businessId ?? null,
   };
 }
 
