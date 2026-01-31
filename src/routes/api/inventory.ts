@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { prisma } from "../../lib/prisma.js";
 import { parsePagination, successEnvelope, successEnvelopeWithMeta, errorEnvelope } from "../../lib/api-helpers.js";
+import { getAverageCostBasis, getLotsForAsset } from "../../services/inventory.service.js";
 
 function toDecimal(value: unknown): number {
   if (value == null) return 0;
@@ -162,6 +163,54 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
       return successEnvelope(reply, data);
     } catch (err) {
       req.log.error({ err }, "GET /api/inventory/:id");
+      return errorEnvelope(reply, "Something went wrong.", 500);
+    }
+  });
+
+  // --- GET /api/inventory/:id/lots (FIFO order; for order-book style fulfillment) ---
+  app.get(
+    "/api/inventory/:id/lots",
+    async (
+      req: FastifyRequest<{
+        Params: { id: string };
+        Querystring: { onlyAvailable?: string };
+      }>,
+      reply
+    ) => {
+      try {
+        const asset = await prisma.inventoryAsset.findUnique({ where: { id: req.params.id } });
+        if (!asset) return errorEnvelope(reply, "Inventory asset not found", 404);
+        const onlyAvailable = req.query.onlyAvailable === "true" || req.query.onlyAvailable === "1";
+        const lots = await getLotsForAsset(req.params.id, { onlyAvailable });
+        const data = lots.map((l) => ({
+          id: l.id,
+          quantity: l.quantity.toString(),
+          costPerToken: l.costPerToken.toString(),
+          acquiredAt: l.acquiredAt.toISOString(),
+          sourceType: l.sourceType,
+          sourceTransactionId: l.sourceTransactionId,
+        }));
+        return successEnvelope(reply, data);
+      } catch (err) {
+        req.log.error({ err }, "GET /api/inventory/:id/lots");
+        return errorEnvelope(reply, "Something went wrong.", 500);
+      }
+    }
+  );
+
+  // --- GET /api/inventory/:id/cost-basis (volume-weighted avg for pricing engine floor) ---
+  app.get("/api/inventory/:id/cost-basis", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
+    try {
+      const asset = await prisma.inventoryAsset.findUnique({ where: { id: req.params.id } });
+      if (!asset) return errorEnvelope(reply, "Inventory asset not found", 404);
+      const averageCostPerToken = await getAverageCostBasis(req.params.id);
+      const data = {
+        assetId: req.params.id,
+        averageCostPerToken: averageCostPerToken == null ? null : averageCostPerToken.toString(),
+      };
+      return successEnvelope(reply, data);
+    } catch (err) {
+      req.log.error({ err }, "GET /api/inventory/:id/cost-basis");
       return errorEnvelope(reply, "Something went wrong.", 500);
     }
   });

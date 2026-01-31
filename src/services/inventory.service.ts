@@ -15,6 +15,11 @@ function chainToChainId(chain: string): number {
   return id ?? 1;
 }
 
+function toDecimal(v: Decimal | string | number | undefined): Decimal {
+  if (v === undefined || v === null) return new Decimal(0);
+  return typeof v === "object" ? new Decimal(v) : new Decimal(v);
+}
+
 export type InventoryDeductionInput = {
   chain: string;
   chainId?: number;
@@ -25,6 +30,7 @@ export type InventoryDeductionInput = {
   type?: "PURCHASE" | "SALE" | "REBALANCE";
   initialPurchasePrice?: Decimal | string | number;
   providerQuotePrice?: Decimal | string | number;
+  sourceTransactionId?: string;
 };
 
 export type InventoryAdditionInput = {
@@ -37,14 +43,20 @@ export type InventoryAdditionInput = {
   type?: "PURCHASE" | "SALE" | "REBALANCE";
   initialPurchasePrice?: Decimal | string | number;
   providerQuotePrice?: Decimal | string | number;
+  sourceTransactionId?: string;
+};
+
+export type DeductInventoryResult = {
+  averageCostPerToken: Decimal | null; // volume-weighted cost of allocated lots; null if no lots used
 };
 
 /**
  * Deduct from inventory (we give token to user). Used when we deliver t_token on BUY or t_token on SELL.
+ * Allocates from lots FIFO (oldest first); updates lot quantities and returns volume-weighted cost basis.
  * Uses DB for source of truth and updates Redis cache.
  */
-export async function deductInventory(input: InventoryDeductionInput): Promise<void> {
-  const amount = typeof input.amount === "object" ? new Decimal(input.amount) : new Decimal(input.amount);
+export async function deductInventory(input: InventoryDeductionInput): Promise<DeductInventoryResult> {
+  const amount = toDecimal(input.amount);
   const type = input.type ?? "SALE";
   const chainId = input.chainId ?? chainToChainId(input.chain);
 
@@ -54,6 +66,12 @@ export async function deductInventory(input: InventoryDeductionInput): Promise<v
         chainId,
         tokenAddress: input.tokenAddress,
         address: input.address,
+      },
+    },
+    include: {
+      lots: {
+        where: { quantity: { gt: 0 } },
+        orderBy: { acquiredAt: "asc" },
       },
     },
   });
@@ -70,24 +88,49 @@ export async function deductInventory(input: InventoryDeductionInput): Promise<v
   }
 
   const newBalance = current.minus(amount);
-  const quantity = amount;
+  let totalCost = new Decimal(0);
+  let allocated = new Decimal(0);
+  const lotUpdates: { id: string; newQuantity: Decimal }[] = [];
 
-  await prisma.$transaction([
-    prisma.inventoryAsset.update({
+  for (const lot of asset.lots) {
+    if (allocated.gte(amount)) break;
+    const lotQty = new Decimal(lot.quantity);
+    if (lotQty.lte(0)) continue;
+    const need = amount.minus(allocated);
+    const take = Decimal.min(lotQty, need);
+    const cost = take.mul(lot.costPerToken);
+    totalCost = totalCost.plus(cost);
+    allocated = allocated.plus(take);
+    const newQty = lotQty.minus(take);
+    lotUpdates.push({ id: lot.id, newQuantity: newQty });
+  }
+
+  const averageCostPerToken =
+    allocated.gt(0) && totalCost.gte(0) ? totalCost.div(allocated) : null;
+  const historyCost = averageCostPerToken ?? toDecimal(input.initialPurchasePrice ?? input.providerQuotePrice ?? 0);
+
+  await prisma.$transaction(async (tx) => {
+    for (const { id, newQuantity } of lotUpdates) {
+      await tx.inventoryLot.update({
+        where: { id },
+        data: { quantity: newQuantity },
+      });
+    }
+    await tx.inventoryAsset.update({
       where: { id: asset.id },
       data: { currentBalance: newBalance },
-    }),
-    prisma.inventoryHistory.create({
+    });
+    await tx.inventoryHistory.create({
       data: {
         assetId: asset.id,
         type,
         amount,
-        quantity,
-        initialPurchasePrice: input.initialPurchasePrice ?? 0,
+        quantity: amount,
+        initialPurchasePrice: historyCost,
         providerQuotePrice: input.providerQuotePrice ?? 0,
       },
-    }),
-  ]);
+    });
+  });
 
   const entry: BalanceEntry = {
     amount: newBalance.toString(),
@@ -95,16 +138,20 @@ export async function deductInventory(input: InventoryDeductionInput): Promise<v
     updatedAt: new Date().toISOString(),
   };
   await setBalance(input.chain, input.symbol, entry);
+
+  return { averageCostPerToken };
 }
 
 /**
  * Add to inventory (we receive token from user). Used when we receive f_token on BUY or f_token on SELL.
+ * Creates a lot with cost basis (initialPurchasePrice or providerQuotePrice) for FIFO fulfillment.
  * Each token is in its own currency (e.g. USDC in USDC, ETH in ETH); no conversion between tokens here.
  */
 export async function addInventory(input: InventoryAdditionInput): Promise<void> {
-  const amount = typeof input.amount === "object" ? new Decimal(input.amount) : new Decimal(input.amount);
+  const amount = toDecimal(input.amount);
   const type = input.type ?? "PURCHASE";
   const chainId = input.chainId ?? chainToChainId(input.chain);
+  const costPerToken = toDecimal(input.initialPurchasePrice ?? input.providerQuotePrice ?? 0);
 
   const asset = await prisma.inventoryAsset.findUnique({
     where: {
@@ -122,7 +169,6 @@ export async function addInventory(input: InventoryAdditionInput): Promise<void>
 
   const current = new Decimal(asset.currentBalance);
   const newBalance = current.plus(amount);
-  const quantity = amount;
 
   await prisma.$transaction([
     prisma.inventoryAsset.update({
@@ -134,9 +180,18 @@ export async function addInventory(input: InventoryAdditionInput): Promise<void>
         assetId: asset.id,
         type,
         amount,
-        quantity,
-        initialPurchasePrice: input.initialPurchasePrice ?? 0,
+        quantity: amount,
+        initialPurchasePrice: costPerToken,
         providerQuotePrice: input.providerQuotePrice ?? 0,
+      },
+    }),
+    prisma.inventoryLot.create({
+      data: {
+        assetId: asset.id,
+        quantity: amount,
+        costPerToken,
+        sourceType: type,
+        sourceTransactionId: input.sourceTransactionId ?? undefined,
       },
     }),
   ]);
@@ -180,4 +235,42 @@ export async function refreshBalanceCache(
     updatedAt: new Date().toISOString(),
   };
   await setBalance(chain, asset.symbol, entry);
+}
+
+/**
+ * Volume-weighted average cost basis of available lots for an asset.
+ * Use as minSellingPrice (floor) in pricing engine quoteOnRamp so we never sell below cost.
+ * Returns null if no lots or total quantity is zero.
+ */
+export async function getAverageCostBasis(assetId: string): Promise<Decimal | null> {
+  const lots = await prisma.inventoryLot.findMany({
+    where: { assetId, quantity: { gt: 0 } },
+    orderBy: { acquiredAt: "asc" },
+  });
+  if (lots.length === 0) return null;
+  let totalQty = new Decimal(0);
+  let totalCost = new Decimal(0);
+  for (const lot of lots) {
+    const q = new Decimal(lot.quantity);
+    totalQty = totalQty.plus(q);
+    totalCost = totalCost.plus(q.mul(lot.costPerToken));
+  }
+  if (totalQty.lte(0)) return null;
+  return totalCost.div(totalQty);
+}
+
+/**
+ * Lots for an asset (FIFO order). Used for order-book style fulfillment and reporting.
+ */
+export async function getLotsForAsset(
+  assetId: string,
+  options?: { onlyAvailable?: boolean }
+) {
+  return prisma.inventoryLot.findMany({
+    where: {
+      assetId,
+      ...(options?.onlyAvailable === true ? { quantity: { gt: 0 } } : {}),
+    },
+    orderBy: { acquiredAt: "asc" },
+  });
 }

@@ -41,6 +41,7 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
           address: tAsset.address,
           type: "SALE",
           providerQuotePrice: tx.t_price,
+          sourceTransactionId: transactionId,
         });
       }
       const fAsset = await prisma.inventoryAsset.findFirst({
@@ -56,6 +57,7 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
           address: fAsset.address,
           type: "PURCHASE",
           providerQuotePrice: tx.f_price,
+          sourceTransactionId: transactionId,
         });
       }
     }
@@ -75,6 +77,7 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
           address: fAsset.address,
           type: "PURCHASE",
           providerQuotePrice: tx.f_price,
+          sourceTransactionId: transactionId,
         });
       }
       const tAsset = await prisma.inventoryAsset.findFirst({
@@ -90,6 +93,7 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
           address: tAsset.address,
           type: "SALE",
           providerQuotePrice: tx.t_price,
+          sourceTransactionId: transactionId,
         });
       }
     }

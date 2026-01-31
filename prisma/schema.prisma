@@ -289,10 +289,30 @@ model InventoryAsset {
   walletId String?
   wallet   Wallet?           @relation(fields: [walletId], references: [id], onDelete: SetNull)
   history  InventoryHistory[]
+  lots     InventoryLot[]
 
   @@unique([chainId, tokenAddress, address])
   @@index([address])
   @@index([walletId])
+}
+
+// Order-book style lots: each acquisition is a lot with cost basis. Fulfill sell orders FIFO.
+model InventoryLot {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  assetId String
+  asset   InventoryAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  quantity   Decimal @db.Decimal(28, 8)  // remaining quantity in this lot
+  costPerToken Decimal @db.Decimal(18, 8) // price we paid per token (cost basis)
+  acquiredAt DateTime @default(now())
+
+  sourceType          String?  // e.g. PURCHASE, REBALANCE
+  sourceTransactionId String? // link to Transaction when from an order
+
+  @@index([assetId, acquiredAt])
+  @@index([sourceTransactionId])
 }
 
 model InventoryHistory {
@@ -490,6 +510,34 @@ enum PlatformAdminRole {
   support
   developer
   viewer
+}
+
+// Provider % routing: status, operational, enabled, API key, priority, fee.
+enum ProviderRoutingStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+}
+
+model ProviderRouting {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  code     String   @unique // e.g. SQUID, LIFI, PAYSTACK, ZERO_X
+  name     String?  // display name
+  status   ProviderRoutingStatus @default(ACTIVE)
+  operational Boolean @default(true) // provider health (currently working)
+  enabled  Boolean  @default(true)  // include in routing
+
+  keyHash  String?  // SHA-256 of API key; never store raw key
+  keyPrefix String? // first 7 chars for display (e.g. "sk_live")
+
+  priority Int     @default(0) // higher = prefer in routing (e.g. 1 = first choice)
+  fee      Decimal? @db.Decimal(5, 4) // provider fee e.g. 0.0050 = 0.5%; set later
+
+  @@index([code])
+  @@index([enabled, priority])
 }
 
 model PlatformAdmin {

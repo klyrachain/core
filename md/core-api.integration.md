@@ -54,14 +54,22 @@ All list endpoints support `?page=1&limit=20` (default limit 20, max 100). Respo
 | `GET` | `/api/inventory` | List inventory assets (paginated). Query: `?page=&limit=&chain=&chainId=&address=` optional. |
 | `POST` | `/api/inventory` | Create inventory asset. Body: `chain`, `chainId`, `tokenAddress`, `symbol`, `address`; optional: `currentBalance`, `walletId`. Unique: `(chainId, tokenAddress, address)`. |
 | `GET` | `/api/inventory/:id` | Get inventory asset by ID. |
+| `GET` | `/api/inventory/:id/lots` | List lots for asset (FIFO order). Query: `?onlyAvailable=true` to exclude fully consumed lots. Used for order-book style fulfillment. |
+| `GET` | `/api/inventory/:id/cost-basis` | Volume-weighted average cost per token for available lots. Use as **minSellingPrice** (floor) in pricing engine on-ramp so the platform never sells below cost. |
 | `PATCH` | `/api/inventory/:id` | Update inventory asset. Body: any of `chain`, `chainId`, `tokenAddress`, `symbol`, `address`, `currentBalance`, `walletId` (all optional). |
-| `DELETE` | `/api/inventory/:id` | Delete inventory asset (and its history). |
+| `DELETE` | `/api/inventory/:id` | Delete inventory asset (and its history and lots). |
 | `GET` | `/api/inventory/:id/history` | List inventory history for asset (paginated). |
 | `GET` | `/api/cache/balances` | List Redis balance keys (query: `?limit=50`). |
 | `GET` | `/api/cache/balances/:chain/:token` | Get Redis balance for chain/token. |
 | `GET` | `/api/queue/poll` | Poll queue stats (counts, recent waiting/active jobs). Query: `?limit=20`. |
 | `GET` | `/api/quote` | Prefetch fee and quote for an order. Query: `action`, `f_amount`, `t_amount`, `f_price`, `t_price`, `f_chain` (optional), `t_chain` (optional), `f_token`, `t_token`. Returns `{ feeAmount, feePercent, totalCost, totalReceived, rate, grossValue, profit }`. |
 | `GET` | `/api/logs` | Request logs for monitoring. All GET/POST/etc. requests are intercepted; each log has `id`, `timestamp`, `method`, `path`, `query`, `headers` (sensitive headers redacted), `body`, `statusCode`, `responseTimeMs`. Query: `method`, `path`, `since` (ISO), `page`, `limit`. **Sends webhook to admin dashboard** with event `logs.viewed` and full data: `success`, `data` (log entries), `meta`, `filters`, `requestLogId`. |
+
+**Inventory lots and pricing engine**
+
+- Each **inventory asset** has **lots**: each acquisition (e.g. from a completed BUY/SELL) is stored as a lot with `quantity`, `costPerToken`, and `acquiredAt`. Sell orders are fulfilled **FIFO** (oldest lots first); lot quantities are reduced when inventory is deducted.
+- **GET /api/inventory/:id/cost-basis** returns the volume-weighted average cost per token of available lots. Use this value as **minSellingPrice** (floor) in the Merchant Pricing Engine’s **on-ramp** quote so the platform never sells below cost. See `md/PRICING_ENGINE_IMPLEMENTATION_PLAN.md` for formulas.
+- **GET /api/inventory/:id/lots** returns lots in FIFO order for reporting or order-book style UIs. Query `?onlyAvailable=true` to list only lots with remaining quantity.
 
 ### 3.3 Order webhook (used by Backend → Core)
 

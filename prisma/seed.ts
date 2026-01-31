@@ -422,6 +422,25 @@ async function main() {
     });
   }
 
+  console.log("Seeding provider routing...");
+  const providerCodes = ["SQUID", "LIFI", "ZERO_X", "PAYSTACK"] as const;
+  for (let i = 0; i < providerCodes.length; i++) {
+    const code = providerCodes[i];
+    await prisma.providerRouting.upsert({
+      where: { code },
+      create: {
+        code,
+        name: code === "ZERO_X" ? "0x" : code,
+        status: "ACTIVE",
+        operational: true,
+        enabled: true,
+        priority: i + 1,
+        fee: null,
+      },
+      update: {},
+    });
+  }
+
   console.log("Seeding inventory history...");
   await Promise.all([
     prisma.inventoryHistory.upsert({
@@ -470,6 +489,7 @@ async function main() {
     payoutMethods: 1,
     payouts: 1,
     platformSettings: platformSettingDefaults.length,
+    providerRouting: providerCodes.length,
   });
 }
 
