@@ -41,6 +41,26 @@ export const SESSION_TRACKING_PROVIDERS: PaymentProvider[] = [
   // Add LIFI, SQUID etc. when they use session-based flows
 ];
 
+/** Fiat currency symbols that are not on-chain tokens. KLYRA (on-chain) cannot send/receive these as tokens. */
+export const FIAT_CURRENCIES = ["GHS", "USD", "NGN", "KES", "ZAR"] as const;
+
+function isFiatCurrency(token: string): boolean {
+  return FIAT_CURRENCIES.includes(token.toUpperCase().trim() as (typeof FIAT_CURRENCIES)[number]);
+}
+
+function sameTokenSameChain(
+  fromChain: string | undefined,
+  toChain: string | undefined,
+  fromToken: string | undefined,
+  toToken: string | undefined
+): boolean {
+  if (!fromChain || !toChain || !fromToken || !toToken) return false;
+  return (
+    fromChain.trim() === toChain.trim() &&
+    fromToken.toLowerCase().trim() === toToken.toLowerCase().trim()
+  );
+}
+
 /** Which identity types each provider expects for "from" and "to" identifiers. */
 export const PROVIDER_IDENTITY_RULES: Record<
   PaymentProvider,
@@ -73,9 +93,38 @@ export function validateProviderPayload(payload: ProviderPayload): ValidationRes
     toType,
     f_provider,
     t_provider,
+    f_chain,
+    t_chain,
+    f_token,
+    t_token,
   } = payload;
 
   const type = action.toUpperCase() as TransactionType;
+
+  // ---- Currencies vs tokens: KLYRA (on-chain) cannot send/receive fiat as token ----
+  if (f_provider === "KLYRA" && f_token && isFiatCurrency(f_token)) {
+    return {
+      valid: false,
+      error: `${f_token} is a currency, not an on-chain token; KLYRA cannot send fiat`,
+      code: "FIAT_NOT_ALLOWED_AS_TOKEN",
+    };
+  }
+  if (t_provider === "KLYRA" && t_token && isFiatCurrency(t_token)) {
+    return {
+      valid: false,
+      error: `${t_token} is a currency, not an on-chain token; KLYRA cannot receive fiat`,
+      code: "FIAT_NOT_ALLOWED_AS_TOKEN",
+    };
+  }
+
+  // ---- Same token on same chain is not allowed (no-op swap) ----
+  if (sameTokenSameChain(f_chain, t_chain, f_token, t_token)) {
+    return {
+      valid: false,
+      error: "Same token on same chain is not allowed; swap must be to a different token or chain",
+      code: "SAME_TOKEN_SAME_CHAIN",
+    };
+  }
 
   // ---- CLAIM: allow claim to any provider; identifiers can be flexible ----
   if (type === "CLAIM") {

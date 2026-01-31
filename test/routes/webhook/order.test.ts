@@ -36,6 +36,8 @@ const validBody = {
   t_chain: "ETHEREUM",
   f_token: "USDC",
   t_token: "ETH",
+  f_provider: "KLYRA",
+  t_provider: "KLYRA",
 };
 
 describe("webhook order", () => {

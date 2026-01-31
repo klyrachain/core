@@ -3,30 +3,44 @@ import { prisma } from "../../lib/prisma.js";
 import { parsePagination, successEnvelope, successEnvelopeWithMeta, errorEnvelope } from "../../lib/api-helpers.js";
 
 export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/inventory", async (req: FastifyRequest<{ Querystring: { page?: string; limit?: string; chain?: string } }>, reply) => {
-    try {
-      const { page, limit, skip } = parsePagination(req.query);
-      const chainFilter = req.query.chain as string | undefined;
-      const where = chainFilter ? { chain: chainFilter } : {};
-      const [items, total] = await Promise.all([
-        prisma.inventoryAsset.findMany({
-          where,
-          skip,
-          take: limit,
-          orderBy: { updatedAt: "desc" },
-        }),
-        prisma.inventoryAsset.count({ where }),
-      ]);
-      const data = items.map((a) => ({
-        ...a,
-        currentBalance: a.currentBalance.toString(),
-      }));
-      return successEnvelopeWithMeta(reply, data, { page, limit, total });
-    } catch (err) {
-      req.log.error({ err }, "GET /api/inventory");
-      return errorEnvelope(reply, "Something went wrong.", 500);
+  app.get(
+    "/api/inventory",
+    async (
+      req: FastifyRequest<{
+        Querystring: { page?: string; limit?: string; chain?: string; chainId?: string; address?: string };
+      }>,
+      reply
+    ) => {
+      try {
+        const { page, limit, skip } = parsePagination(req.query);
+        const chainFilter = req.query.chain as string | undefined;
+        const chainIdFilter = req.query.chainId != null ? parseInt(req.query.chainId as string, 10) : undefined;
+        const addressFilter = (req.query.address as string)?.trim();
+        const where: { chain?: string; chainId?: number; address?: string } = {};
+        if (chainFilter) where.chain = chainFilter;
+        if (!Number.isNaN(chainIdFilter)) where.chainId = chainIdFilter;
+        if (addressFilter) where.address = addressFilter;
+        const [items, total] = await Promise.all([
+          prisma.inventoryAsset.findMany({
+            where,
+            skip,
+            take: limit,
+            orderBy: { updatedAt: "desc" },
+            include: { wallet: { select: { id: true, address: true } } },
+          }),
+          prisma.inventoryAsset.count({ where }),
+        ]);
+        const data = items.map((a) => ({
+          ...a,
+          currentBalance: a.currentBalance.toString(),
+        }));
+        return successEnvelopeWithMeta(reply, data, { page, limit, total });
+      } catch (err) {
+        req.log.error({ err }, "GET /api/inventory");
+        return errorEnvelope(reply, "Something went wrong.", 500);
+      }
     }
-  });
+  );
 
   app.get(
     "/api/inventory/history",
@@ -40,7 +54,7 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
         const { page, limit, skip } = parsePagination(req.query);
         const assetId = req.query.assetId as string | undefined;
         const chain = req.query.chain as string | undefined;
-        const where: { assetId?: string; asset?: { chain: string } } = {};
+        const where: { assetId?: string; asset?: { chain?: string; chainId?: number; address?: string } } = {};
         if (assetId) where.assetId = assetId;
         if (chain) where.asset = { chain };
         const [items, total] = await Promise.all([
@@ -49,7 +63,7 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
             skip,
             take: limit,
             orderBy: { createdAt: "desc" },
-            include: { asset: { select: { id: true, chain: true, symbol: true } } },
+            include: { asset: { select: { id: true, chain: true, chainId: true, symbol: true, address: true } } },
           }),
           prisma.inventoryHistory.count({ where }),
         ]);
@@ -72,6 +86,7 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
     try {
       const asset = await prisma.inventoryAsset.findUnique({
         where: { id: req.params.id },
+        include: { wallet: { select: { id: true, address: true } } },
       });
       if (!asset) return errorEnvelope(reply, "Inventory asset not found", 404);
       const data = { ...asset, currentBalance: asset.currentBalance.toString() };

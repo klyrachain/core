@@ -54,17 +54,25 @@ export async function cryptoTransactionsApiRoutes(app: FastifyInstance): Promise
           details: parse.error.flatten(),
         });
       }
+      const data = parse.data;
+      if (data.from_chain_id === data.to_chain_id && data.from_token.toLowerCase().trim() === data.to_token.toLowerCase().trim()) {
+        return reply.status(400).send({
+          success: false,
+          error: "Same token on same chain is not allowed; swap must be to a different token or chain",
+          code: "SAME_TOKEN_SAME_CHAIN",
+        });
+      }
       try {
         const { id } = await createCryptoTransaction({
-          provider: parse.data.provider,
-          fromChainId: parse.data.from_chain_id,
-          toChainId: parse.data.to_chain_id,
-          fromToken: parse.data.from_token,
-          toToken: parse.data.to_token,
-          fromAmount: parse.data.from_amount,
-          toAmount: parse.data.to_amount,
-          transactionId: parse.data.transaction_id,
-          metadata: parse.data.metadata,
+          provider: data.provider,
+          fromChainId: data.from_chain_id,
+          toChainId: data.to_chain_id,
+          fromToken: data.from_token,
+          toToken: data.to_token,
+          fromAmount: data.from_amount,
+          toAmount: data.to_amount,
+          transactionId: data.transaction_id,
+          metadata: data.metadata,
         });
         return successEnvelope(reply, { id }, 201);
       } catch (err) {

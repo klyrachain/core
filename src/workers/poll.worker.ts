@@ -34,9 +34,11 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
       if (tAsset) {
         await deductInventory({
           chain: tAsset.chain,
+          chainId: tAsset.chainId,
           tokenAddress: tAsset.tokenAddress,
           symbol: tAsset.symbol,
           amount: tx.t_amount,
+          address: tAsset.address,
           type: "SALE",
           providerQuotePrice: tx.t_price,
         });
@@ -47,9 +49,11 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
       if (fAsset) {
         await addInventory({
           chain: fAsset.chain,
+          chainId: fAsset.chainId,
           tokenAddress: fAsset.tokenAddress,
           symbol: fAsset.symbol,
           amount: tx.f_amount,
+          address: fAsset.address,
           type: "PURCHASE",
           providerQuotePrice: tx.f_price,
         });
@@ -64,9 +68,11 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
       if (fAsset) {
         await addInventory({
           chain: fAsset.chain,
+          chainId: fAsset.chainId,
           tokenAddress: fAsset.tokenAddress,
           symbol: fAsset.symbol,
           amount: tx.f_amount,
+          address: fAsset.address,
           type: "PURCHASE",
           providerQuotePrice: tx.f_price,
         });
@@ -77,9 +83,11 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
       if (tAsset) {
         await deductInventory({
           chain: tAsset.chain,
+          chainId: tAsset.chainId,
           tokenAddress: tAsset.tokenAddress,
           symbol: tAsset.symbol,
           amount: tx.t_amount,
+          address: tAsset.address,
           type: "SALE",
           providerQuotePrice: tx.t_price,
         });

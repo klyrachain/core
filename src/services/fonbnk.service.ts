@@ -78,6 +78,7 @@ function getConfig(): {
   const clientId = env.FONBNK_CLIENT_ID?.trim() ?? "";
   const clientSecret = env.FONBNK_CLIENT_SECRET?.trim() ?? "";
   const timeout = env.FONBNK_TIMEOUT_MS ?? 10000;
+  console.log('fonbnk config', { baseUrl, clientId, clientSecret, timeout });
   return { baseUrl, clientId, clientSecret, timeout };
 }
 
@@ -165,47 +166,47 @@ export async function getFonbnkQuote(
   const requestBody = isBuy
     ? amountIn === "crypto"
       ? {
-          deposit: {
-            paymentChannel: "mobile_money" as const,
-            currencyType: "fiat" as const,
-            currencyCode: currency,
-            countryIsoCode: countryCode,
-          },
-          payout: {
-            paymentChannel: "crypto" as const,
-            currencyType: "crypto" as const,
-            currencyCode: payoutCurrencyCode,
-            amount,
-          },
-        }
-      : {
-          deposit: {
-            paymentChannel: "mobile_money" as const,
-            currencyType: "fiat" as const,
-            currencyCode: currency,
-            countryIsoCode: countryCode,
-            amount,
-          },
-          payout: {
-            paymentChannel: "crypto" as const,
-            currencyType: "crypto" as const,
-            currencyCode: payoutCurrencyCode,
-          },
-        }
-    : {
         deposit: {
-          paymentChannel: "crypto" as const,
-          currencyType: "crypto" as const,
-          currencyCode: payoutCurrencyCode,
-          amount,
-        },
-        payout: {
           paymentChannel: "mobile_money" as const,
           currencyType: "fiat" as const,
           currencyCode: currency,
           countryIsoCode: countryCode,
         },
-      };
+        payout: {
+          paymentChannel: "crypto" as const,
+          currencyType: "crypto" as const,
+          currencyCode: payoutCurrencyCode,
+          amount,
+        },
+      }
+      : {
+        deposit: {
+          paymentChannel: "mobile_money" as const,
+          currencyType: "fiat" as const,
+          currencyCode: currency,
+          countryIsoCode: countryCode,
+          amount,
+        },
+        payout: {
+          paymentChannel: "crypto" as const,
+          currencyType: "crypto" as const,
+          currencyCode: payoutCurrencyCode,
+        },
+      }
+    : {
+      deposit: {
+        paymentChannel: "crypto" as const,
+        currencyType: "crypto" as const,
+        currencyCode: payoutCurrencyCode,
+        amount,
+      },
+      payout: {
+        paymentChannel: "mobile_money" as const,
+        currencyType: "fiat" as const,
+        currencyCode: currency,
+        countryIsoCode: countryCode,
+      },
+    };
 
   const abortController = new AbortController();
   const timeoutId = setTimeout(() => abortController.abort(), timeout);

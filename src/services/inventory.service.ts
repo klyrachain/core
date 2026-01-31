@@ -2,11 +2,26 @@ import { Decimal } from "@prisma/client/runtime/client";
 import { prisma } from "../lib/prisma.js";
 import { setBalance, getBalance, type BalanceEntry } from "../lib/redis.js";
 
+const CHAIN_NAME_TO_ID: Record<string, number> = {
+  ETHEREUM: 1,
+  BASE: 8453,
+  BNB: 56,
+  POLYGON: 137,
+  ARBITRUM: 42161,
+};
+
+function chainToChainId(chain: string): number {
+  const id = CHAIN_NAME_TO_ID[chain.toUpperCase()];
+  return id ?? 1;
+}
+
 export type InventoryDeductionInput = {
   chain: string;
+  chainId?: number;
   tokenAddress: string;
   symbol: string;
   amount: Decimal | string | number;
+  address: string;
   type?: "PURCHASE" | "SALE" | "REBALANCE";
   initialPurchasePrice?: Decimal | string | number;
   providerQuotePrice?: Decimal | string | number;
@@ -14,9 +29,11 @@ export type InventoryDeductionInput = {
 
 export type InventoryAdditionInput = {
   chain: string;
+  chainId?: number;
   tokenAddress: string;
   symbol: string;
   amount: Decimal | string | number;
+  address: string;
   type?: "PURCHASE" | "SALE" | "REBALANCE";
   initialPurchasePrice?: Decimal | string | number;
   providerQuotePrice?: Decimal | string | number;
@@ -29,15 +46,20 @@ export type InventoryAdditionInput = {
 export async function deductInventory(input: InventoryDeductionInput): Promise<void> {
   const amount = typeof input.amount === "object" ? new Decimal(input.amount) : new Decimal(input.amount);
   const type = input.type ?? "SALE";
+  const chainId = input.chainId ?? chainToChainId(input.chain);
 
   const asset = await prisma.inventoryAsset.findUnique({
     where: {
-      chain_tokenAddress: { chain: input.chain, tokenAddress: input.tokenAddress },
+      chainId_tokenAddress_address: {
+        chainId,
+        tokenAddress: input.tokenAddress,
+        address: input.address,
+      },
     },
   });
 
   if (!asset) {
-    throw new Error(`InventoryAsset not found: ${input.chain}/${input.tokenAddress}`);
+    throw new Error(`InventoryAsset not found: ${input.chain}/${input.tokenAddress}/${input.address}`);
   }
 
   const current = new Decimal(asset.currentBalance);
@@ -82,15 +104,20 @@ export async function deductInventory(input: InventoryDeductionInput): Promise<v
 export async function addInventory(input: InventoryAdditionInput): Promise<void> {
   const amount = typeof input.amount === "object" ? new Decimal(input.amount) : new Decimal(input.amount);
   const type = input.type ?? "PURCHASE";
+  const chainId = input.chainId ?? chainToChainId(input.chain);
 
   const asset = await prisma.inventoryAsset.findUnique({
     where: {
-      chain_tokenAddress: { chain: input.chain, tokenAddress: input.tokenAddress },
+      chainId_tokenAddress_address: {
+        chainId,
+        tokenAddress: input.tokenAddress,
+        address: input.address,
+      },
     },
   });
 
   if (!asset) {
-    throw new Error(`InventoryAsset not found: ${input.chain}/${input.tokenAddress}`);
+    throw new Error(`InventoryAsset not found: ${input.chain}/${input.tokenAddress}/${input.address}`);
   }
 
   const current = new Decimal(asset.currentBalance);
@@ -130,12 +157,22 @@ export async function getCachedBalance(chain: string, token: string): Promise<Ba
 }
 
 /**
- * Sync Redis balance from DB for a given chain/token (stub for TTL refresh).
+ * Sync Redis balance from DB for a given chain/token/address (stub for TTL refresh).
+ * When address is omitted, syncs the first matching asset (backward compat).
  */
-export async function refreshBalanceCache(chain: string, tokenAddress: string): Promise<void> {
-  const asset = await prisma.inventoryAsset.findUnique({
-    where: { chain_tokenAddress: { chain, tokenAddress } },
-  });
+export async function refreshBalanceCache(
+  chain: string,
+  tokenAddress: string,
+  address?: string
+): Promise<void> {
+  const chainId = chainToChainId(chain);
+  const asset = address
+    ? await prisma.inventoryAsset.findUnique({
+        where: { chainId_tokenAddress_address: { chainId, tokenAddress, address } },
+      })
+    : await prisma.inventoryAsset.findFirst({
+        where: { chainId, tokenAddress },
+      });
   if (!asset) return;
   const entry: BalanceEntry = {
     amount: asset.currentBalance.toString(),

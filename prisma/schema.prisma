@@ -221,21 +221,29 @@ model Wallet {
   encryptedKey     String
   supportedChains  String[] // e.g. ["ETHEREUM", "BASE"]
   supportedTokens  String[] // e.g. ["ETH", "USDC"]
+
+  inventoryAssets InventoryAsset[]
 }
 
 model InventoryAsset {
   id        String   @id @default(uuid())
   updatedAt DateTime @updatedAt
 
-  chain        String
+  chain        String   // display name e.g. ETHEREUM, BASE
+  chainId      Int      // chain ID e.g. 1, 8453
   tokenAddress String
   symbol       String
+  address      String   // wallet/account address that holds this balance (not unique)
 
   currentBalance Decimal @default(0) @db.Decimal(28, 8)
 
-  history InventoryHistory[]
+  walletId String?
+  wallet   Wallet?           @relation(fields: [walletId], references: [id], onDelete: SetNull)
+  history  InventoryHistory[]
 
-  @@unique([chain, tokenAddress])
+  @@unique([chainId, tokenAddress, address])
+  @@index([address])
+  @@index([walletId])
 }
 
 model InventoryHistory {

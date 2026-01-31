@@ -83,11 +83,16 @@ All list endpoints support `?page=1&limit=20` (default limit 20, max 100). Respo
 | `t_price` | `number` (≥ 0) | Yes | To-price (rate). |
 | `f_chain` | `string` (non-empty) | No | Source chain (e.g. `ETHEREUM`, `BASE`). Default: `ETHEREUM`. |
 | `t_chain` | `string` (non-empty) | No | Target chain. Default: `ETHEREUM`. Enables cross-chain (e.g. USDC on BASE → ETH on ETHEREUM). |
-| `f_token` | `string` (non-empty) | Yes | From-asset symbol (e.g. `USDC`, `GHS`). |
-| `t_token` | `string` (non-empty) | Yes | To-asset symbol (e.g. `ETH`). |
-| `f_provider` | `PaymentProvider` | No | Default: `NONE`. See §4. |
-| `t_provider` | `PaymentProvider` | No | Default: `NONE`. See §4. |
+| `f_token` | `string` (non-empty) | Yes | From-asset symbol (e.g. `USDC`, `ETH`). When provider is KLYRA, must be an **on-chain token**, not a fiat currency (see validation below). |
+| `t_token` | `string` (non-empty) | Yes | To-asset symbol (e.g. `ETH`, `USDC`). When provider is KLYRA, must be an **on-chain token**, not a fiat currency. |
+| `f_provider` | `PaymentProvider` | Yes | See §4. |
+| `t_provider` | `PaymentProvider` | Yes | See §4. |
 | `requestId` | `string` (UUID) \| `null` | No | Optional link to a request. |
+
+**Validation rules:**
+
+- **Currencies vs tokens:** Fiat currencies (e.g. `GHS`, `USD`, `NGN`, `KES`, `ZAR`) are **not** on-chain tokens. When `f_provider` or `t_provider` is **KLYRA**, the corresponding token (`f_token` or `t_token`) must **not** be a fiat currency — use on-chain symbols (e.g. `USDC`, `ETH`). Rejected with `400` and code `FIAT_NOT_ALLOWED_AS_TOKEN`.
+- **Same token, same chain:** If `f_chain === t_chain` and `f_token === t_token` (case-insensitive), the order is rejected — no same-token same-chain “swap”. Rejected with `400` and code `SAME_TOKEN_SAME_CHAIN`.
 
 **Success response:** `201 Created`
 
@@ -104,7 +109,7 @@ All list endpoints support `?page=1&limit=20` (default limit 20, max 100). Respo
 
 **Error responses:**
 
-- `400 Bad Request` — Validation failed (e.g. invalid `action`, missing required fields, wrong types).
+- `400 Bad Request` — Validation failed (e.g. invalid `action`, missing required fields, wrong types). May include `code`: `FIAT_NOT_ALLOWED_AS_TOKEN` (KLYRA with fiat as token), `SAME_TOKEN_SAME_CHAIN` (same token on same chain), or provider/identifier codes from §4.
 
 ```json
 {
@@ -130,7 +135,7 @@ All list endpoints support `?page=1&limit=20` (default limit 20, max 100). Respo
 Use these when building request bodies or handling responses/realtime payloads.
 
 - **IdentityType:** `ADDRESS` \| `EMAIL` \| `NUMBER`
-- **PaymentProvider:** `NONE` \| `ANY` \| `SQUID` \| `LIFI` \| `PAYSTACK`
+- **PaymentProvider:** `NONE` \| `ANY` \| `SQUID` \| `LIFI` \| `PAYSTACK` \| `KLYRA`
 - **TransactionType:** `BUY` \| `SELL` \| `TRANSFER` \| `REQUEST` \| `CLAIM`
 - **TransactionStatus:** `ACTIVE` \| `PENDING` \| `COMPLETED` \| `CANCELLED` \| `FAILED`
 - **ClaimStatus:** `ACTIVE` \| `CLAIMED` \| `CANCELLED` \| `FAIL`
@@ -207,12 +212,12 @@ We have a backend service called **Core** that handles order/transaction process
 
 2. **Endpoints**  
    - `GET /health` → liveness; `GET /ready` → readiness (DB + Redis).  
-   - `POST /webhook/order` → create order (called by our Backend, not by the browser). Request body must include: `action` (`"buy"` \| `"sell"` \| `"request"` \| `"claim"`), `f_amount`, `t_amount`, `f_price`, `t_price`, `f_token`, `t_token`; optional: `fromIdentifier`, `fromType`, `fromUserId`, `toIdentifier`, `toType`, `toUserId`, `f_provider`, `t_provider`, `requestId`.  
+   - `POST /webhook/order` → create order (called by our Backend, not by the browser). Request body must include: `action` (`"buy"` \| `"sell"` \| `"request"` \| `"claim"`), `f_amount`, `t_amount`, `f_price`, `t_price`, `f_token`, `t_token`, `f_provider`, `t_provider`; optional: `fromIdentifier`, `fromType`, `fromUserId`, `toIdentifier`, `toType`, `toUserId`, `requestId`.  
    - Success: `201` with `{ success: true, data: { id, status, type } }`.  
    - Errors: `400` with `{ success: false, error: "Validation failed", details }` or `500` with `{ success: false, error: "Something went wrong." }`.
 
 3. **Enums**  
-   Use for request/response and UI: IdentityType (`ADDRESS` \| `EMAIL` \| `NUMBER`), PaymentProvider (`NONE` \| `ANY` \| `SQUID` \| `LIFI` \| `PAYSTACK`), TransactionType (`BUY` \| `SELL` \| `TRANSFER` \| `REQUEST` \| `CLAIM`), TransactionStatus (`ACTIVE` \| `PENDING` \| `COMPLETED` \| `CANCELLED` \| `FAILED`).
+   Use for request/response and UI: IdentityType (`ADDRESS` \| `EMAIL` \| `NUMBER`), PaymentProvider (`NONE` \| `ANY` \| `SQUID` \| `LIFI` \| `PAYSTACK` \| `KLYRA`), TransactionType (`BUY` \| `SELL` \| `TRANSFER` \| `REQUEST` \| `CLAIM`), TransactionStatus (`ACTIVE` \| `PENDING` \| `COMPLETED` \| `CANCELLED` \| `FAILED`).
 
 4. **Realtime**  
    Subscribe to Pusher channels `notifications`, `email`, `number` (or the channel our Backend documents) and event `transaction-status`. Payload: `{ transactionId, status, type? }`.
@@ -226,6 +231,8 @@ We have a backend service called **Core** that handles order/transaction process
 
 | Date | Change |
 |------|--------|
+| 2025-01-30 | Validation: **currencies vs tokens** — KLYRA cannot use fiat (GHS, USD, NGN, KES, ZAR) as `f_token`/`t_token`; **same token same chain** rejected (order, quote, crypto-transactions). Codes: `FIAT_NOT_ALLOWED_AS_TOKEN`, `SAME_TOKEN_SAME_CHAIN`. |
+| 2025-01-30 | Order webhook: `f_provider` and `t_provider` are **required**. PaymentProvider enum includes `KLYRA`. |
 | (update) | Added fetch API (users, transactions, requests, claims, wallets, inventory, cache/balances, queue/poll) and POST /webhook/admin for admin dashboard. |
 | (initial) | Document created: health, ready, POST /webhook/order, enums, Pusher channels and event, integration checklist, and prompt. |
 
