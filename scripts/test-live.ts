@@ -22,7 +22,7 @@
 
 import "dotenv/config";
 
-const VALID_CATEGORIES = ["paystack", "order", "klyra", "quote", "fetch", "admin"] as const;
+const VALID_CATEGORIES = ["paystack", "order", "klyra", "quote", "fetch", "connect", "admin"] as const;
 const CATEGORY_ALIASES: Record<string, string> = { klyra: "order" };
 
 function parseArgs(): { from: string[]; to: string[]; help: boolean } {
@@ -74,7 +74,7 @@ Options:
   -t, --to <categories>     Only run actions in these "to" categories (comma-separated).
   -h, --help                Show this help.
 
-Categories: ${VALID_CATEGORIES.join(", ")}
+Categories: ${VALID_CATEGORIES.join(", ")} (connect = access + connect/overview, merchants, settlements)
 
 Examples:
   pnpm test:live                    Run all action types (default mix).
@@ -241,6 +241,18 @@ const OTHER_FETCH_ACTIONS: { path: string; name: string }[] = [
   { path: "/api/claims?limit=5", name: "claims" },
   { path: "/api/wallets?limit=5", name: "wallets" },
   { path: "/api/crypto-transactions?limit=5", name: "crypto-transactions" },
+  { path: "/api/access", name: "access" },
+  { path: "/api/connect/overview", name: "connect/overview" },
+  { path: "/api/connect/merchants?limit=5", name: "connect/merchants" },
+  { path: "/api/connect/settlements?limit=5", name: "connect/settlements" },
+];
+
+/** Connect (B2B) endpoints — platform key only for overview/merchants; use -f connect to run only these. */
+const CONNECT_FETCH_ACTIONS: { path: string; name: string }[] = [
+  { path: "/api/access", name: "access" },
+  { path: "/api/connect/overview", name: "connect/overview" },
+  { path: "/api/connect/merchants?limit=5", name: "connect/merchants" },
+  { path: "/api/connect/settlements?limit=5", name: "connect/settlements" },
 ];
 
 type Action =
@@ -254,6 +266,7 @@ type Action =
   | { type: "onrampQuote" }
   | { type: "quoteThenCrypto" }
   | { type: "fetch"; path: string; name: string }
+  | { type: "connect"; path: string; name: string }
   | { type: "admin"; event: string };
 
 function getActionCategory(action: Action): string {
@@ -272,6 +285,8 @@ function getActionCategory(action: Action): string {
       return "quote";
     case "fetch":
       return "fetch";
+    case "connect":
+      return "connect";
     case "admin":
       return "admin";
     default:
@@ -299,6 +314,9 @@ function buildAllActionTemplates(): Action[] {
   templates.push({ type: "quoteThenCrypto" });
   for (const a of OTHER_FETCH_ACTIONS) {
     templates.push({ type: "fetch", path: a.path, name: a.name });
+  }
+  for (const a of CONNECT_FETCH_ACTIONS) {
+    templates.push({ type: "connect", path: a.path, name: a.name });
   }
   for (const event of ["test.ping", "test.order.placed", "alert.low_balance"]) {
     templates.push({ type: "admin", event });
@@ -643,7 +661,7 @@ async function runAction(action: Action): Promise<void> {
     }
     return;
   }
-  if (action.type === "quote" || action.type === "fetch") {
+  if (action.type === "quote" || action.type === "fetch" || action.type === "connect") {
     const result = await fetchJson(action.path);
     if (result.ok) {
       const count = Array.isArray(result.data) ? result.data.length : result.data && typeof result.data === "object" ? "ok" : "-";

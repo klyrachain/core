@@ -472,6 +472,41 @@ model Payout {
 }
 
 // --------------------------------------
+// Platform Settings (dashboard: general, financials, providers, risk, team, api)
+// --------------------------------------
+// Single-row-per-key store for platform config. Keys: general, financials, providers, risk, api.
+
+model PlatformSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique // e.g. "general", "financials", "providers", "risk", "api"
+  value     Json     // section-specific shape
+  updatedAt DateTime @updatedAt
+
+  @@index([key])
+}
+
+enum PlatformAdminRole {
+  super_admin
+  support
+  developer
+  viewer
+}
+
+model PlatformAdmin {
+  id            String   @id @default(uuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  email         String   @unique
+  name          String?
+  role          PlatformAdminRole @default(viewer)
+  twoFaEnabled  Boolean  @default(false)
+
+  @@index([email])
+  @@index([role])
+}
+
+// --------------------------------------
 // API Key Management
 // --------------------------------------
 

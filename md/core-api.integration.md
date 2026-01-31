@@ -51,8 +51,11 @@ All list endpoints support `?page=1&limit=20` (default limit 20, max 100). Respo
 | `GET` | `/api/claims/:id` | Get claim by ID (with request, transaction). |
 | `GET` | `/api/wallets` | List wallets (paginated). Returns `supportedChains`, `supportedTokens`; `encryptedKey` is masked. |
 | `GET` | `/api/wallets/:id` | Get wallet by ID (`supportedChains`, `supportedTokens`; `encryptedKey` masked). |
-| `GET` | `/api/inventory` | List inventory assets (paginated). Query: `?chain=` optional. |
+| `GET` | `/api/inventory` | List inventory assets (paginated). Query: `?page=&limit=&chain=&chainId=&address=` optional. |
+| `POST` | `/api/inventory` | Create inventory asset. Body: `chain`, `chainId`, `tokenAddress`, `symbol`, `address`; optional: `currentBalance`, `walletId`. Unique: `(chainId, tokenAddress, address)`. |
 | `GET` | `/api/inventory/:id` | Get inventory asset by ID. |
+| `PATCH` | `/api/inventory/:id` | Update inventory asset. Body: any of `chain`, `chainId`, `tokenAddress`, `symbol`, `address`, `currentBalance`, `walletId` (all optional). |
+| `DELETE` | `/api/inventory/:id` | Delete inventory asset (and its history). |
 | `GET` | `/api/inventory/:id/history` | List inventory history for asset (paginated). |
 | `GET` | `/api/cache/balances` | List Redis balance keys (query: `?limit=50`). |
 | `GET` | `/api/cache/balances/:chain/:token` | Get Redis balance for chain/token. |

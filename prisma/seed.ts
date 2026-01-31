@@ -145,6 +145,90 @@ async function main() {
     }),
   ]);
 
+  console.log("Seeding businesses (B2B2C)...");
+  const [acme, betaCorp] = await Promise.all([
+    prisma.business.upsert({
+      where: { slug: "acme" },
+      create: {
+        name: "Acme Inc",
+        slug: "acme",
+        country: "US",
+        kybStatus: "APPROVED",
+        riskScore: 10,
+        settlementSchedule: "WEEKLY",
+        webhookUrl: "https://acme.example.com/webhook",
+      },
+      update: {},
+    }),
+    prisma.business.upsert({
+      where: { slug: "beta-corp" },
+      create: {
+        name: "Beta Corp",
+        slug: "beta-corp",
+        country: "GH",
+        kybStatus: "PENDING",
+        riskScore: 25,
+        settlementSchedule: "DAILY",
+      },
+      update: {},
+    }),
+  ]);
+
+  console.log("Seeding business members...");
+  await Promise.all([
+    prisma.businessMember.upsert({
+      where: { userId_businessId: { userId: alice.id, businessId: acme.id } },
+      create: { userId: alice.id, businessId: acme.id, role: "OWNER", isActive: true },
+      update: {},
+    }),
+    prisma.businessMember.upsert({
+      where: { userId_businessId: { userId: bob.id, businessId: acme.id } },
+      create: { userId: bob.id, businessId: acme.id, role: "ADMIN", isActive: true },
+      update: {},
+    }),
+    prisma.businessMember.upsert({
+      where: { userId_businessId: { userId: charlie.id, businessId: betaCorp.id } },
+      create: { userId: charlie.id, businessId: betaCorp.id, role: "DEVELOPER", isActive: true },
+      update: {},
+    }),
+  ]);
+
+  await prisma.feeSchedule.upsert({
+    where: { businessId: acme.id },
+    create: { businessId: acme.id, flatFee: 0, percentageFee: 1, maxFee: 50 },
+    update: {},
+  });
+
+  const acmePayoutMethod = await prisma.payoutMethod.upsert({
+    where: { id: "00000000-0000-0000-000a-000000000001" },
+    create: {
+      id: "00000000-0000-0000-000a-000000000001",
+      businessId: acme.id,
+      type: "BANK_ACCOUNT",
+      currency: "USD",
+      details: { accountNumber: "****1234", bankCode: "063", accountName: "Acme Inc" },
+      isPrimary: true,
+      isActive: true,
+    },
+    update: {},
+  });
+
+  await prisma.payout.upsert({
+    where: { id: "00000000-0000-0000-000b-000000000001" },
+    create: {
+      id: "00000000-0000-0000-000b-000000000001",
+      businessId: acme.id,
+      methodId: acmePayoutMethod.id,
+      amount: 50230,
+      fee: 25,
+      currency: "USD",
+      status: "PAID",
+      reference: "WIRE-REF-8821",
+      batchId: "batch-8821",
+    },
+    update: {},
+  });
+
   console.log("Seeding transactions...");
   const buyTx = await prisma.transaction.upsert({
     where: { id: "00000000-0000-0000-0000-000000000001" },
@@ -167,6 +251,9 @@ async function main() {
       t_token: "ETH",
       f_provider: "NONE",
       t_provider: "SQUID",
+      businessId: acme.id,
+      platformFee: 1,
+      merchantFee: 0.5,
     },
     update: {},
   });
@@ -190,6 +277,9 @@ async function main() {
       t_chain: "ETHEREUM",
       f_token: "ETH",
       t_token: "USDC",
+      businessId: acme.id,
+      platformFee: 0.4,
+      merchantFee: 0.2,
     },
     update: {},
   });
@@ -305,6 +395,33 @@ async function main() {
     });
   }
 
+  console.log("Seeding platform settings (defaults)...");
+  const platformSettingDefaults: Array<{ key: string; value: object }> = [
+    { key: "general", value: { publicName: "MyCryptoApp", supportEmail: "", supportPhone: "", defaultCurrency: "USD", timezone: "UTC", maintenanceMode: false } },
+    { key: "financials", value: { baseFeePercent: 1, fixedFee: 0, minTransactionSize: 0, maxTransactionSize: 1_000_000, lowBalanceAlert: 1000 } },
+    {
+      key: "providers",
+      value: {
+        maxSlippagePercent: 1,
+        providers: [
+          { id: "SQUID", enabled: true, priority: 1, apiKey: "", status: "operational", latencyMs: null },
+          { id: "LIFI", enabled: true, priority: 2, apiKey: "", status: "operational", latencyMs: null },
+          { id: "0X", enabled: true, priority: 3, apiKey: "", status: "operational", latencyMs: null },
+          { id: "PAYSTACK", enabled: true, priority: 4, apiKey: "", status: "operational", latencyMs: null },
+        ],
+      },
+    },
+    { key: "risk", value: { enforceKycOver1000: false, blockHighRiskIp: false, blacklist: [] } },
+    { key: "api", value: { webhookSigningSecret: "", slackWebhookUrl: "", alertEmails: "" } },
+  ];
+  for (const { key, value } of platformSettingDefaults) {
+    await prisma.platformSetting.upsert({
+      where: { key },
+      create: { key, value },
+      update: {},
+    });
+  }
+
   console.log("Seeding inventory history...");
   await Promise.all([
     prisma.inventoryHistory.upsert({
@@ -338,6 +455,8 @@ async function main() {
   console.log("Seed completed.");
   console.log({
     users: 3,
+    businesses: 2,
+    businessMembers: 3,
     wallets: 2,
     inventoryAssets: 3,
     transactions: 3,
@@ -347,6 +466,10 @@ async function main() {
     countries: countryData.length,
     chains: 2,
     supportedTokens: tokenData.length,
+    feeSchedules: 1,
+    payoutMethods: 1,
+    payouts: 1,
+    platformSettings: platformSettingDefaults.length,
   });
 }
 
