@@ -78,7 +78,6 @@ function getConfig(): {
   const clientId = env.FONBNK_CLIENT_ID?.trim() ?? "";
   const clientSecret = env.FONBNK_CLIENT_SECRET?.trim() ?? "";
   const timeout = env.FONBNK_TIMEOUT_MS ?? 10000;
-  console.log('fonbnk config', { baseUrl, clientId, clientSecret, timeout });
   return { baseUrl, clientId, clientSecret, timeout };
 }
 
