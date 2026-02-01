@@ -22,6 +22,7 @@ import { accessApiRoutes } from "./routes/api/access.js";
 import { connectApiRoutes } from "./routes/api/connect.js";
 import { settingsApiRoutes } from "./routes/api/settings.js";
 import { providersApiRoutes } from "./routes/api/providers.js";
+import { validationApiRoutes } from "./routes/api/validation.js";
 import { ratesApiRoutes } from "./routes/api/rates.js";
 import { cryptoTransactionsApiRoutes } from "./routes/api/crypto-transactions.js";
 import { logsApiRoutes } from "./routes/api/logs.js";
@@ -34,8 +35,11 @@ import { paystackTransfersApiRoutes } from "./routes/api/paystack-transfers.js";
 import { paystackWebhookRoutes } from "./routes/webhook/paystack.js";
 import { onRequestLog, onResponseLog } from "./lib/request-log-hooks.js";
 import { requireApiKey } from "./lib/auth.guard.js";
+import { ensureValidationCache, loadValidationCache } from "./services/validation-cache.service.js";
 
 loadEnv();
+
+const VALIDATION_CACHE_REFRESH_MS = 24 * 60 * 60 * 1000; // 24h
 
 const app = Fastify({
   logger: {
@@ -95,6 +99,7 @@ await app.register(accessApiRoutes, { prefix: "" });
 await app.register(connectApiRoutes, { prefix: "" });
 await app.register(settingsApiRoutes, { prefix: "" });
 await app.register(providersApiRoutes, { prefix: "" });
+await app.register(validationApiRoutes, { prefix: "" });
 await app.register(ratesApiRoutes, { prefix: "" });
 await app.register(cryptoTransactionsApiRoutes, { prefix: "" });
 await app.register(logsApiRoutes, { prefix: "" });
@@ -108,7 +113,10 @@ await app.register(paystackWebhookRoutes, { prefix: "" });
 
 const pollWorker = createPollWorker(processPollJob);
 
+let validationCacheInterval: ReturnType<typeof setInterval> | null = null;
+
 const shutdown = async () => {
+  if (validationCacheInterval) clearInterval(validationCacheInterval);
   await pollWorker.close();
   await closeQueue();
   await disconnectRedis();
@@ -121,10 +129,14 @@ process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
 const port = getEnv().PORT;
-app.listen({ port, host: "0.0.0.0" }, (err, address) => {
+app.listen({ port, host: "0.0.0.0" }, async (err, address) => {
   if (err) {
     console.error(err);
     process.exit(1);
   }
   console.log(`Server listening at ${address}`);
+  await ensureValidationCache().catch((e) => console.warn("Validation cache initial load failed:", e));
+  validationCacheInterval = setInterval(() => {
+    loadValidationCache().catch((e) => console.warn("Validation cache refresh failed:", e));
+  }, VALIDATION_CACHE_REFRESH_MS);
 });

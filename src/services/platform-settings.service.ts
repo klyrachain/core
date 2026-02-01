@@ -3,6 +3,7 @@
  * Values stored as JSON. Used by /api/settings/* routes.
  */
 
+import type { Prisma } from "../../prisma/generated/prisma/client.js";
 import { prisma } from "../lib/prisma.js";
 
 const SETTING_KEYS = ["general", "financials", "providers", "risk", "api"] as const;
@@ -32,10 +33,11 @@ export async function setPlatformSetting(
   key: PlatformSettingKey,
   value: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
+  const jsonValue = value as unknown as Prisma.InputJsonValue;
   await prisma.platformSetting.upsert({
     where: { key },
-    create: { key, value },
-    update: { value },
+    create: { key, value: jsonValue },
+    update: { value: jsonValue },
   });
   return value;
 }

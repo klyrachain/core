@@ -56,7 +56,7 @@ All list endpoints support `?page=1&limit=20` (default limit 20, max 100). Respo
 | `GET` | `/api/inventory/:id` | Get inventory asset by ID. |
 | `GET` | `/api/inventory/:id/lots` | List lots for asset (FIFO order). Query: `?onlyAvailable=true` to exclude fully consumed lots. Used for order-book style fulfillment. |
 | `GET` | `/api/inventory/:id/cost-basis` | Volume-weighted average cost per token for available lots. Use as **minSellingPrice** (floor) in pricing engine on-ramp so the platform never sells below cost. |
-| `PATCH` | `/api/inventory/:id` | Update inventory asset. Body: any of `chain`, `chainId`, `tokenAddress`, `symbol`, `address`, `currentBalance`, `walletId` (all optional). |
+| `PATCH` | `/api/inventory/:id` | Update inventory asset. Body: any of `chain`, `chainId`, `tokenAddress`, `symbol` (or `token`), `address`, `currentBalance` (or `balance`), `walletId` (all optional). |
 | `DELETE` | `/api/inventory/:id` | Delete inventory asset (and its history and lots). |
 | `GET` | `/api/inventory/:id/history` | List inventory history for asset (paginated). |
 | `GET` | `/api/cache/balances` | List Redis balance keys (query: `?limit=50`). |
@@ -70,6 +70,7 @@ All list endpoints support `?page=1&limit=20` (default limit 20, max 100). Respo
 - Each **inventory asset** has **lots**: each acquisition (e.g. from a completed BUY/SELL) is stored as a lot with `quantity`, `costPerToken`, and `acquiredAt`. Sell orders are fulfilled **FIFO** (oldest lots first); lot quantities are reduced when inventory is deducted.
 - **GET /api/inventory/:id/cost-basis** returns the volume-weighted average cost per token of available lots. Use this value as **minSellingPrice** (floor) in the Merchant Pricing Engine’s **on-ramp** quote so the platform never sells below cost. See `md/PRICING_ENGINE_IMPLEMENTATION_PLAN.md` for formulas.
 - **GET /api/inventory/:id/lots** returns lots in FIFO order for reporting or order-book style UIs. Query `?onlyAvailable=true` to list only lots with remaining quantity.
+- **Validation pricing quote (platform key):** GET `/api/validation/pricing-quote` with optional `?chain=&token=` returns a per-token quote: **buy price = cost price** from inventory lots (volume-weighted average), plus providerSellPrice and volatility. Cost basis is loaded from inventory into Redis on cache load and refreshed when the poll worker updates inventory (add/deduct). This ensures on-ramp/offramp validation uses the correct cost price per token and conversion + fee.
 
 ### 3.3 Order webhook (used by Backend → Core)
 

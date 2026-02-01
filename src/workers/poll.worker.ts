@@ -2,6 +2,7 @@ import { Job } from "bullmq";
 import { prisma } from "../lib/prisma.js";
 import { type PollJobData } from "../lib/queue.js";
 import { deductInventory, addInventory } from "../services/inventory.service.js";
+import { refreshCostBasisForChainToken } from "../services/validation-cache.service.js";
 import { triggerTransactionStatusChange } from "../services/pusher.service.js";
 import { getFeeForOrder } from "../services/fee.service.js";
 import { sendToAdminDashboard } from "../services/admin-dashboard.service.js";
@@ -43,6 +44,7 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
           providerQuotePrice: tx.t_price,
           sourceTransactionId: transactionId,
         });
+        await refreshCostBasisForChainToken(tChain, tx.t_token).catch(() => {});
       }
       const fAsset = await prisma.inventoryAsset.findFirst({
         where: { symbol: tx.f_token, chain: fChain },
@@ -59,6 +61,7 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
           providerQuotePrice: tx.f_price,
           sourceTransactionId: transactionId,
         });
+        await refreshCostBasisForChainToken(fChain, tx.f_token).catch(() => {});
       }
     }
 
@@ -79,6 +82,7 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
           providerQuotePrice: tx.f_price,
           sourceTransactionId: transactionId,
         });
+        await refreshCostBasisForChainToken(fChain, tx.f_token).catch(() => {});
       }
       const tAsset = await prisma.inventoryAsset.findFirst({
         where: { symbol: tx.t_token, chain: tChain },
@@ -95,6 +99,7 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
           providerQuotePrice: tx.t_price,
           sourceTransactionId: transactionId,
         });
+        await refreshCostBasisForChainToken(tChain, tx.t_token).catch(() => {});
       }
     }
 

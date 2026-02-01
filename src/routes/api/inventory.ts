@@ -226,8 +226,10 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
           chainId?: number;
           tokenAddress?: string;
           symbol?: string;
+          token?: string; // alias for symbol (e.g. frontend InventoryAssetRow.token)
           address?: string;
           currentBalance?: number;
+          balance?: number; // alias for currentBalance (e.g. frontend sends balance)
           walletId?: string | null;
         };
       }>,
@@ -256,9 +258,11 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
           updates.chainId = chainId;
         }
         if (body.tokenAddress !== undefined) updates.tokenAddress = String(body.tokenAddress).trim();
-        if (body.symbol !== undefined) updates.symbol = String(body.symbol).trim();
+        const symbol = body.symbol ?? body.token;
+        if (symbol !== undefined) updates.symbol = String(symbol).trim();
         if (body.address !== undefined) updates.address = String(body.address).trim();
-        if (body.currentBalance !== undefined) updates.currentBalance = toDecimal(body.currentBalance);
+        const balanceValue = body.currentBalance ?? body.balance;
+        if (balanceValue !== undefined) updates.currentBalance = toDecimal(balanceValue);
         if (body.walletId !== undefined) updates.walletId = body.walletId === null || body.walletId === "" ? null : (body.walletId as string);
 
         const chainId = updates.chainId ?? existing.chainId;

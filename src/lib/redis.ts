@@ -7,6 +7,26 @@ let redis: RedisClient | null = null;
 
 const BALANCE_TTL_SECONDS = 60;
 
+/** Validation cache: providers, chains, tokens. Refreshed every 24h. */
+export const VALIDATION_CACHE_TTL_SECONDS = 86400; // 24h
+export const VALIDATION_KEY_PROVIDERS = "validation:providers";
+export const VALIDATION_KEY_CHAINS = "validation:chains";
+export const VALIDATION_KEY_TOKENS = "validation:tokens";
+export const VALIDATION_KEY_LOADED_AT = "validation:loaded_at";
+/** Recent failed validations (list, max 1000). TTL 7 days. */
+export const VALIDATION_FAILED_LIST_KEY = "validation:failed:list";
+export const VALIDATION_FAILED_LIST_TTL_SECONDS = 604800; // 7d
+/** Pricing quote (provider buy/sell, volatility). Required for onramp/offramp validation. */
+export const VALIDATION_KEY_PRICING_QUOTE = "validation:pricing_quote";
+/** Cost basis per chain+token (from inventory lots). Buy price = cost price for validation. */
+export const VALIDATION_KEY_COST_BASIS_PREFIX = "validation:cost_basis:";
+/** Platform fee (baseFeePercent, fixedFee). Required for fee validation. */
+export const VALIDATION_KEY_PLATFORM_FEE = "validation:platform_fee";
+
+export function costBasisKey(chain: string, token: string): string {
+  return `${VALIDATION_KEY_COST_BASIS_PREFIX}${chain.toUpperCase()}:${token.toUpperCase()}`;
+}
+
 export type BalanceEntry = {
   amount: string;
   status: string;

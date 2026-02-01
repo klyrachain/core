@@ -368,7 +368,10 @@ async function main() {
   console.log("Seeding supported chains and tokens...");
   const CHAIN_ID_BASE = 8453;
   const CHAIN_ID_ETHEREUM = 1;
+  const CHAIN_ID_MOMO = 0; // fiat/offchain (onramp, offramp)
+  const CHAIN_ID_BANK = 2;
   const NATIVE = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+  const FIAT_SENTINEL = "0x0000000000000000000000000000000000000000";
 
   await prisma.chain.upsert({
     where: { chainId: CHAIN_ID_BASE },
@@ -380,12 +383,25 @@ async function main() {
     create: { chainId: CHAIN_ID_ETHEREUM, name: "Ethereum", iconUri: null },
     update: { name: "Ethereum", iconUri: undefined },
   });
+  await prisma.chain.upsert({
+    where: { chainId: CHAIN_ID_MOMO },
+    create: { chainId: CHAIN_ID_MOMO, name: "MOMO", iconUri: null },
+    update: { name: "MOMO", iconUri: undefined },
+  });
+  await prisma.chain.upsert({
+    where: { chainId: CHAIN_ID_BANK },
+    create: { chainId: CHAIN_ID_BANK, name: "BANK", iconUri: null },
+    update: { name: "BANK", iconUri: undefined },
+  });
 
   const tokenData: Array<{ chainId: number; tokenAddress: string; symbol: string; decimals: number; name: string | null; logoUri: string | null; fonbnkCode: string | null }> = [
     { chainId: CHAIN_ID_BASE, tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", symbol: "USDC", decimals: 6, name: "USD Coin", logoUri: null, fonbnkCode: "BASE_USDC" },
     { chainId: CHAIN_ID_BASE, tokenAddress: NATIVE, symbol: "ETH", decimals: 18, name: "Ether", logoUri: null, fonbnkCode: "BASE_ETH" },
     { chainId: CHAIN_ID_ETHEREUM, tokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", symbol: "USDC", decimals: 6, name: "USD Coin", logoUri: null, fonbnkCode: "ETHEREUM_USDC" },
     { chainId: CHAIN_ID_ETHEREUM, tokenAddress: NATIVE, symbol: "ETH", decimals: 18, name: "Ether", logoUri: null, fonbnkCode: "ETHEREUM_NATIVE" },
+    { chainId: CHAIN_ID_MOMO, tokenAddress: FIAT_SENTINEL, symbol: "GHS", decimals: 2, name: "Ghana Cedi", logoUri: null, fonbnkCode: "MOMO_GHS" },
+    { chainId: CHAIN_ID_MOMO, tokenAddress: "0x0000000000000000000000000000000000000001", symbol: "USD", decimals: 2, name: "US Dollar", logoUri: null, fonbnkCode: "MOMO_USD" },
+    { chainId: CHAIN_ID_BANK, tokenAddress: FIAT_SENTINEL, symbol: "USD", decimals: 2, name: "US Dollar", logoUri: null, fonbnkCode: "BANK_USD" },
   ];
   for (const t of tokenData) {
     await prisma.supportedToken.upsert({
@@ -483,7 +499,7 @@ async function main() {
     claim: claim.id,
     inventoryHistory: 2,
     countries: countryData.length,
-    chains: 2,
+    chains: 4,
     supportedTokens: tokenData.length,
     feeSchedules: 1,
     payoutMethods: 1,

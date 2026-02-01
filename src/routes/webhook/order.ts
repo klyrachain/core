@@ -5,7 +5,7 @@ import { prisma } from "../../lib/prisma.js";
 import { addPollJob } from "../../lib/queue.js";
 import { getFeeForOrder } from "../../services/fee.service.js";
 import { sendToAdminDashboard } from "../../services/admin-dashboard.service.js";
-import { validateProviderPayload } from "../../services/provider.server.js";
+import { validateOrder, storeFailedValidation, type OrderValidationInput } from "../../services/order-validation.service.js";
 
 const OrderWebhookSchema = z.object({
   action: z.enum(["buy", "sell", "request", "claim"]),
@@ -74,27 +74,39 @@ export async function orderWebhookRoutes(app: FastifyInstance): Promise<void> {
     const body = parse.data;
     const type = actionToType[body.action];
 
-    const providerValidation = validateProviderPayload({
+    const validationInput: OrderValidationInput = {
       action: body.action,
       fromIdentifier: body.fromIdentifier,
       fromType: body.fromType,
+      fromUserId: body.fromUserId,
       toIdentifier: body.toIdentifier,
       toType: body.toType,
-      f_provider: body.f_provider,
-      t_provider: body.t_provider,
+      toUserId: body.toUserId,
+      f_amount: body.f_amount,
+      t_amount: body.t_amount,
+      f_price: body.f_price,
+      t_price: body.t_price,
       f_chain: body.f_chain,
       t_chain: body.t_chain,
       f_token: body.f_token,
       t_token: body.t_token,
-    });
-    if (!providerValidation.valid) {
+      f_provider: body.f_provider,
+      t_provider: body.t_provider,
+      requestId: body.requestId,
+    };
+
+    const validation = await validateOrder(validationInput);
+    if (!validation.valid) {
+      await storeFailedValidation(validationInput, { error: validation.error, code: validation.code }).catch((err) =>
+        req.log.warn({ err }, "Store failed validation")
+      );
       notifyAdminOrder(
         {
           event: "order.rejected",
           data: {
-            reason: "provider_validation_failed",
-            error: providerValidation.error,
-            code: providerValidation.code,
+            reason: "validation_failed",
+            error: validation.error,
+            code: validation.code,
             body: req.body,
           },
         },
@@ -102,8 +114,8 @@ export async function orderWebhookRoutes(app: FastifyInstance): Promise<void> {
       );
       return reply.status(400).send({
         success: false,
-        error: providerValidation.error,
-        code: providerValidation.code,
+        error: validation.error,
+        code: validation.code,
       });
     }
 

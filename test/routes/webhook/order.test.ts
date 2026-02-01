@@ -5,6 +5,8 @@ import { orderWebhookRoutes } from "../../../src/routes/webhook/order.js";
 const mockCreate = vi.fn();
 const mockAddPollJob = vi.fn();
 const mockSendToAdminDashboard = vi.fn();
+const mockValidateOrder = vi.fn();
+const mockStoreFailedValidation = vi.fn();
 
 vi.mock("../../../src/lib/prisma.js", () => ({
   prisma: {
@@ -20,6 +22,11 @@ vi.mock("../../../src/lib/queue.js", () => ({
 
 vi.mock("../../../src/services/admin-dashboard.service.js", () => ({
   sendToAdminDashboard: (...args: unknown[]) => mockSendToAdminDashboard(...args),
+}));
+
+vi.mock("../../../src/services/order-validation.service.js", () => ({
+  validateOrder: (...args: unknown[]) => mockValidateOrder(...args),
+  storeFailedValidation: (...args: unknown[]) => mockStoreFailedValidation(...args),
 }));
 
 const validBody = {
@@ -47,7 +54,11 @@ describe("webhook order", () => {
     mockCreate.mockReset();
     mockAddPollJob.mockReset();
     mockSendToAdminDashboard.mockReset();
+    mockValidateOrder.mockReset();
+    mockStoreFailedValidation.mockReset();
     mockSendToAdminDashboard.mockResolvedValue(undefined);
+    mockStoreFailedValidation.mockResolvedValue(undefined);
+    mockValidateOrder.mockResolvedValue({ valid: true });
     app = Fastify();
     app.addContentTypeParser("application/json", { parseAs: "string" }, (_, body, done) => {
       try {
@@ -102,6 +113,12 @@ describe("webhook order", () => {
     });
 
     it("should return 400 and send order.rejected when provider validation fails (e.g. PayStack requires toIdentifier)", async () => {
+      mockValidateOrder.mockResolvedValueOnce({
+        valid: false,
+        error: "t_provider PAYSTACK requires toIdentifier (e.g. wallet address for Klyra, phone for PayStack)",
+        code: "MISSING_TO_IDENTIFIER",
+      });
+
       const res = await app.inject({
         method: "POST",
         url: "/webhook/order",
@@ -123,7 +140,7 @@ describe("webhook order", () => {
         expect.objectContaining({
           event: "order.rejected",
           data: expect.objectContaining({
-            reason: "provider_validation_failed",
+            reason: "validation_failed",
             code: "MISSING_TO_IDENTIFIER",
           }),
         })
@@ -189,6 +206,7 @@ describe("webhook order", () => {
     });
 
     it("should return 500 and send order.rejected to admin when prisma.transaction.create throws", async () => {
+      mockValidateOrder.mockResolvedValue({ valid: true });
       mockCreate.mockRejectedValue(new Error("DB error"));
 
       const res = await app.inject({
@@ -199,7 +217,9 @@ describe("webhook order", () => {
       });
 
       expect(res.statusCode).toBe(500);
-      expect((res.json() as { success: boolean; error: string }).error).toBe("Something went wrong.");
+      const body = res.json() as { success: boolean; error: string };
+      expect(body.success).toBe(false);
+      expect(body.error).toContain("Something went wrong");
       expect(mockSendToAdminDashboard).toHaveBeenCalledWith(
         expect.objectContaining({
           event: "order.rejected",

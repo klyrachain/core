@@ -4,6 +4,8 @@
  */
 
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { Prisma } from "../../../prisma/generated/prisma/client.js";
+import { KybStatus, PayoutStatus } from "../../../prisma/generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import {
   parsePagination,
@@ -166,10 +168,10 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
         const status = req.query.status?.trim();
         const riskLevel = req.query.riskLevel?.trim();
 
-        const where: { kybStatus?: unknown; riskScore?: { gte?: number; lte?: number } } = {};
+        const where: Prisma.BusinessWhereInput = {};
         if (status && status !== "all") {
-          const valid = ["NOT_STARTED", "PENDING", "APPROVED", "REJECTED", "RESTRICTED"];
-          if (valid.includes(status)) where.kybStatus = status;
+          const valid: KybStatus[] = ["NOT_STARTED", "PENDING", "APPROVED", "REJECTED", "RESTRICTED"];
+          if (valid.includes(status as KybStatus)) where.kybStatus = status as KybStatus;
         }
         if (riskLevel === "high") where.riskScore = { gte: 50 };
         if (riskLevel === "low") where.riskScore = { lte: 49 };
@@ -180,23 +182,15 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
             skip,
             take: limit,
             orderBy: { createdAt: "desc" },
-            select: {
-              id: true,
-              name: true,
-              slug: true,
-              logoUrl: true,
-              kybStatus: true,
-              riskScore: true,
-              createdAt: true,
-              feeSchedule: {
-                select: { percentageFee: true, flatFee: true, maxFee: true },
-              },
+            include: {
+              feeSchedule: { select: { percentageFee: true, flatFee: true, maxFee: true } },
             },
           }),
           prisma.business.count({ where }),
         ]);
 
-        const data = businesses.map((b) => ({
+        type BusinessWithFee = (typeof businesses)[number];
+        const data = businesses.map((b: BusinessWithFee) => ({
           id: b.id,
           accountId: `acct_${b.slug}`,
           name: b.name,
@@ -310,11 +304,11 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
         const status = req.query.status?.trim();
         const businessId = req.apiKey.businessId; // merchant sees only their payouts
 
-        const where: { businessId?: string; status?: unknown } = {};
+        const where: Prisma.PayoutWhereInput = {};
         if (businessId) where.businessId = businessId;
         if (status && status !== "all") {
-          const valid = ["SCHEDULED", "PROCESSING", "PAID", "FAILED", "REVERSED"];
-          if (valid.includes(status)) where.status = status;
+          const valid: PayoutStatus[] = ["SCHEDULED", "PROCESSING", "PAID", "FAILED", "REVERSED"];
+          if (valid.includes(status as PayoutStatus)) where.status = status as PayoutStatus;
         }
 
         const [payouts, total] = await Promise.all([
@@ -334,8 +328,8 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
           id: p.id,
           batchId: p.batchId ?? p.id,
           businessId: p.businessId,
-          businessName: p.business.name,
-          businessSlug: p.business.slug,
+          businessName: (p as { business: { name: string; slug: string } }).business.name,
+          businessSlug: (p as { business: { name: string; slug: string } }).business.slug,
           amount: toNum(p.amount),
           fee: toNum(p.fee),
           currency: p.currency,

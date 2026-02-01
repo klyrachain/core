@@ -1,173 +1,233 @@
 #!/usr/bin/env node
 /**
- * Live test script — simulates user actions for testing and development.
- * Runs until Ctrl+C. After random intervals (seconds/minutes), performs
- * order actions (buy, sell, request, claim), Paystack API calls (prioritized),
- * quote API (fee, swap, onramp), crypto-transactions record, and other fetch APIs.
+ * Live test script — swap, onramp, offramp scenarios with pricing validation.
+ * Runs sequentially (fast). Ensures prices are validated before orders enter the poll.
  *
- * Real-world flows: order→Paystack initialize; banks list→resolve (dynamic bank_code);
- * swap quote→POST crypto-transactions; onramp quote; payout request (when COMPLETED tx exists).
- * Fetch variants: transactions (status/type), inventory/history, crypto-transactions list.
+ * Scenarios:
+ * 1. Swap: get quote (from/to amount, token, chain) → if KLYRA has t_token, use KLYRA; else expect INSUFFICIENT_FUNDS.
+ *    Best case: valid prices + sufficient balance → 201. Worst: bad price (PRICE_OUT_OF_TOLERANCE) or insufficient balance (INSUFFICIENT_FUNDS).
+ * 2. Onramp: fiat→token (buy). Check KLYRA has t_token + amount → add fee, user receivable → initiate. Best/worst.
+ * 3. Offramp: check inventory (t_token we pay) → if sufficient, user receivable + fee → initiate (sell). Best/worst.
  *
- * Usage: pnpm test:live [options]
- *   -f, --from <cats>  Only run actions in these "from" categories (comma-separated).
- *   -t, --to <cats>    Only run actions in these "to" categories (comma-separated).
- *   -f paystack -t klyra  → run only paystack and order (klyra) actions.
- *   Categories: paystack, order, klyra (alias of order), quote, fetch, admin.
- *   --help             Show this help and exit.
+ * Usage: pnpm test:live [--scenario swap|onramp|offramp|all] [--delay ms] [--live]
+ *   --scenario all   Run all scenarios (default).
+ *   --delay 1000     Ms between scenarios (default 1000; ~1 tx/sec with --live).
+ *   --live           Run in a loop every --delay ms (transact every second by default).
+ * Only uses chains/tokens returned by GET /api/chains and GET /api/tokens; amounts within balance.
+ * For onramp/offramp, fiat chains (MOMO, BANK) can have chainId 0 (offchain).
  *
- * Env: CORE_URL (default http://localhost:4000), CORE_API_KEY (required for protected routes),
- *      INTERVAL_MIN_MS, INTERVAL_MAX_MS. Paystack routes return 503 if PAYSTACK_SECRET_KEY is not set.
+ * Env: CORE_URL (default http://localhost:4000), CORE_API_KEY (required; platform key for /api/validation/pricing-quote).
  */
 
 import "dotenv/config";
 
-const VALID_CATEGORIES = ["paystack", "order", "klyra", "quote", "fetch", "connect", "admin"] as const;
-const CATEGORY_ALIASES: Record<string, string> = { klyra: "order" };
-
-function parseArgs(): { from: string[]; to: string[]; help: boolean } {
-  const argv = process.argv.slice(2);
-  let from: string[] = [];
-  let to: string[] = [];
-  let help = false;
-
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === "--help" || arg === "-h") {
-      help = true;
-      continue;
-    }
-    if (arg === "-f" || arg === "--from") {
-      const val = argv[++i];
-      if (val) from.push(...val.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean));
-      continue;
-    }
-    if (arg === "-t" || arg === "--to") {
-      const val = argv[++i];
-      if (val) to.push(...val.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean));
-      continue;
-    }
-  }
-
-  from = from.map((c) => CATEGORY_ALIASES[c] ?? c);
-  to = to.map((c) => CATEGORY_ALIASES[c] ?? c);
-  const validSet = new Set(VALID_CATEGORIES);
-  const validFrom = from.filter((c) => validSet.has(c as (typeof VALID_CATEGORIES)[number]));
-  const validTo = to.filter((c) => validSet.has(c as (typeof VALID_CATEGORIES)[number]));
-  if (validFrom.length !== from.length || validTo.length !== to.length) {
-    const unknown = [...from.filter((c) => !validSet.has(c as (typeof VALID_CATEGORIES)[number])), ...to.filter((c) => !validSet.has(c as (typeof VALID_CATEGORIES)[number]))];
-    if (unknown.length > 0) {
-      console.warn(`Unknown category(ies) ignored: ${[...new Set(unknown)].join(", ")}. Valid: ${VALID_CATEGORIES.join(", ")}`);
-    }
-  }
-  return { from: validFrom, to: validTo, help };
-}
-
-function printHelp(): void {
-  console.log(`
-Live test — hit Core API at random intervals.
-
-Usage: pnpm test:live [options]
-
-Options:
-  -f, --from <categories>   Only run actions in these "from" categories (comma-separated).
-  -t, --to <categories>     Only run actions in these "to" categories (comma-separated).
-  -h, --help                Show this help.
-
-Categories: ${VALID_CATEGORIES.join(", ")} (connect = access + connect/overview, merchants, settlements)
-
-Examples:
-  pnpm test:live                    Run all action types (default mix).
-  pnpm test:live -f paystack        Run only Paystack API calls.
-  pnpm test:live -t klyra            Run only order webhooks (KLYRA provider).
-  pnpm test:live -f paystack -t klyra   Run Paystack + order actions only.
-  pnpm test:live -f quote,fetch     Run only quote (fee + swap) and fetch APIs.
-`);
-}
-
 const CORE_URL = process.env.CORE_URL ?? "http://localhost:4000";
 const CORE_API_KEY = process.env.CORE_API_KEY ?? "";
-const INTERVAL_MIN_MS = parseInt(process.env.INTERVAL_MIN_MS ?? "3000", 10) || 2000; // 2s default
-const INTERVAL_MAX_MS = parseInt(process.env.INTERVAL_MAX_MS ?? "60000", 10) || 3000; // 1/2 min default
+
+// --- Pricing math (must match src/lib/pricing-engine.ts for validation to pass) ---
+const TOTAL_PREMIUM_CAP = 0.06;
+const TOTAL_DISCOUNT_CAP = 0.06;
+const PRICE_TOLERANCE = 0.02;
+
+function volatilityToPremium(volatility: number): number {
+  const v = volatility < 0 ? 0 : volatility;
+  if (v < 0.005) return 0;
+  if (v < 0.015) return 0.005;
+  if (v < 0.03) return 0.015;
+  return 0.03;
+}
+
+function effectiveBaseProfit(platformFeePercent: number, providerFeeDecimal: number): number {
+  const platform = platformFeePercent / 100;
+  const provider = typeof providerFeeDecimal === "number" ? providerFeeDecimal : 0;
+  return Math.min(platform + provider, 0.06);
+}
+
+function quoteOnRamp(input: {
+  providerPrice: number;
+  baseProfit: number;
+  volatility: number;
+  avgBuyPrice?: number;
+}): number {
+  const { providerPrice, baseProfit, volatility } = input;
+  if (providerPrice <= 0) throw new Error("providerPrice must be positive");
+  const avgBuyPrice = input.avgBuyPrice ?? 0;
+  const inventoryRisk =
+    avgBuyPrice > providerPrice ? Math.max(0, (avgBuyPrice - providerPrice) / providerPrice) : 0;
+  const volatilityPremium = volatilityToPremium(volatility);
+  const totalPremium = Math.min(baseProfit + inventoryRisk + volatilityPremium, TOTAL_PREMIUM_CAP);
+  return providerPrice * (1 + totalPremium);
+}
+
+function quoteOffRamp(input: {
+  providerPrice: number;
+  baseProfit: number;
+  volatility: number;
+  fiatUtilization?: number;
+}): number {
+  const { providerPrice, baseProfit, volatility } = input;
+  if (providerPrice <= 0) throw new Error("providerPrice must be positive");
+  const fiatUtil = Math.min(1, Math.max(0, input.fiatUtilization ?? 0));
+  const volatilityPremium = volatilityToPremium(volatility);
+  const fiatRiskPremium = fiatUtil * 0.02;
+  const totalDiscount = Math.min(
+    baseProfit + volatilityPremium + fiatRiskPremium,
+    TOTAL_DISCOUNT_CAP
+  );
+  return providerPrice * (1 - totalDiscount);
+}
+
+// Default provider fee when not returned by API (match seed if possible)
+const DEFAULT_PROVIDER_FEE = 0.005;
 
 const TEST_USERS = [
   { email: "alice@example.com", address: "0xf0830060f836B8d54bF02049E5905F619487989e", type: "EMAIL" as const },
   { email: "bob@example.com", address: "0xf0830060f836B8d54bF02049E5905F619487989e", type: "EMAIL" as const },
-  { email: "charlie@example.com", number: "233201234567", type: "NUMBER" as const },
+  { number: "233201234567", address: "0xf0830060f836B8d54bF02049E5905F619487989e", type: "NUMBER" as const },
 ];
+const TO_USER = TEST_USERS[0];
+/** For Paystack (MOMO/bank): payer/recipient identifier. */
+const PAYSTACK_IDENTIFIER = TEST_USERS[0].email ?? (TEST_USERS[2] as { number?: string }).number ?? "";
+const PAYSTACK_FROM_TYPE = "EMAIL" as const;
+const PAYSTACK_TO_TYPE = "NUMBER" as const;
 
-/** Token + chain options for cross-chain (e.g. USDC on BASE → ETH on ETHEREUM). */
-const TOKEN_CHAINS: { symbol: string; chain: string }[] = [
-  { symbol: "USDC", chain: "ETHEREUM" },
-  { symbol: "USDC", chain: "BASE" },
-  { symbol: "ETH", chain: "ETHEREUM" },
-  // { symbol: "GHS", chain: "ETHEREUM" },
-  { symbol: "DAI", chain: "ETHEREUM" },
-];
+/** Supported onchain (chain + token) from GET /api/chains + GET /api/tokens. Chain code = name.toUpperCase() for validation. */
+type SupportedPair = { chainCode: string; chainId: number; symbol: string };
+/** Fiat chain codes (e.g. MOMO, BANK) if present in Chain table. ChainId for fiat/offchain can be 0. */
+let supportedOnchain: SupportedPair[] = [];
+let supportedFiatChains: string[] = ["0"];
 
-/** Token prices (e.g. 1 USDC = 1, 1 ETH = 3000). Used with /api/quote to build consistent order payloads. */
-const TOKEN_PRICES: Record<string, number> = {
-  USDC: 1,
-  ETH: 3000,
-  GHS: 1,
-  DAI: 1,
-};
+async function getSupportedChainsAndTokens(): Promise<{ onchain: SupportedPair[]; fiatChains: string[] }> {
+  const chainsRes = await fetchJson("/api/chains");
+  const tokensRes = await fetchJson("/api/tokens");
+  const chainsData = chainsRes.data as { chains?: Array<{ chainId: number; name: string }> } | undefined;
+  const tokensData = tokensRes.data as { tokens?: Array<{ chainId: number; symbol: string; networkName?: string }> } | undefined;
+  const chains = chainsData?.chains ?? [];
+  const tokens = tokensData?.tokens ?? [];
 
-function randomInt(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+  // Debug: why "no supported fiat chain"? Fiat chains come from Chain table (name in MOMO, BANK, CARD). Seed only adds Base + Ethereum by default.
+  const chainNames = chains.map((c) => `${c.name} (chainId=${c.chainId})`).join(", ");
+  const fiatCodes = ["MOMO", "BANK", "CARD"];
+  const fiatChains = chains
+    .map((c) => c.name.toUpperCase())
+    .filter((code) => fiatCodes.includes(code));
+  if (fiatChains.length === 0 && chains.length > 0) {
+    console.log(
+      `[debug] Chains from API: ${chainNames}. Looking for fiat names: ${fiatCodes.join(", ")} → none match. Add MOMO/BANK to Chain table (e.g. run seed with fiat chains).`
+    );
+  }
+
+  // chainId can be 0 for fiat/offchain (MOMO, BANK)
+  const chainIdToCode = new Map(chains.map((c) => [c.chainId, c.name.toUpperCase()]));
+  const onchain: SupportedPair[] = [];
+  for (const t of tokens) {
+    const code = chainIdToCode.get(t.chainId);
+    if (code) onchain.push({ chainCode: code, chainId: t.chainId, symbol: t.symbol });
+  }
+  return { onchain, fiatChains };
 }
 
 function randomChoice<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-function randomAmount(min: number, max: number): number {
-  return Math.round((Math.random() * (max - min) + min) * 1e8) / 1e8;
-}
-
-function randomDelayMs(): number {
-  return randomInt(INTERVAL_MIN_MS, INTERVAL_MAX_MS);
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function round8(n: number): number {
+  return Math.round(n * 1e8) / 1e8;
 }
 
 async function fetchJson(
   path: string,
   options?: RequestInit
-): Promise<{ ok: boolean; status: number; data?: unknown; error?: string }> {
+): Promise<{ ok: boolean; status: number; data?: unknown; error?: string; code?: string }> {
   try {
-    const headers: Record<string, string> = { "Content-Type": "application/json", ...(options?.headers as Record<string, string>) };
-    if (CORE_API_KEY) headers["x-api-key"] = CORE_API_KEY;
-    const res = await fetch(`${CORE_URL}${path}`, {
-      ...options,
-      headers,
-    });
-    const body = await res.json().catch(() => ({}));
-    return {
-      ok: res.ok,
-      status: res.status,
-      data: (body as { data?: unknown }).data,
-      error: (body as { error?: string }).error,
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...(options?.headers as Record<string, string>),
     };
+    if (CORE_API_KEY) headers["x-api-key"] = CORE_API_KEY;
+    const res = await fetch(`${CORE_URL}${path}`, { ...options, headers });
+    const body = await res.json().catch(() => ({}));
+    const data = (body as { data?: unknown }).data;
+    const error = (body as { error?: string }).error;
+    const code = (body as { code?: string }).code;
+    return { ok: res.ok, status: res.status, data, error, code };
   } catch (err) {
-    return { ok: false, status: 0, error: err instanceof Error ? err.message : String(err) };
+    return {
+      ok: false,
+      status: 0,
+      error: err instanceof Error ? err.message : String(err),
+    };
   }
 }
 
-type QuoteData = {
-  feeAmount: number;
-  feePercent: number;
-  totalCost: number;
-  totalReceived: number;
-  rate: number;
-  grossValue: number;
-  profit: number;
+type PricingQuote = {
+  providerBuyPrice: number;
+  providerSellPrice: number;
+  volatility: number;
+  costPrice?: number;
 };
+type PlatformFee = { baseFeePercent: number; fixedFee: number };
 
-/** Fetch quote from /api/quote; used to set t_price, t_amount etc. consistently. */
-async function fetchQuote(params: {
+async function getPricingQuote(chain?: string, token?: string): Promise<{
+  pricingQuote: PricingQuote | null;
+  platformFee: PlatformFee | null;
+}> {
+  const q = new URLSearchParams();
+  if (chain) q.set("chain", chain);
+  if (token) q.set("token", token);
+  const path = q.toString() ? `/api/validation/pricing-quote?${q.toString()}` : "/api/validation/pricing-quote";
+  const res = await fetchJson(path);
+  if (!res.ok || !res.data || typeof res.data !== "object") {
+    return { pricingQuote: null, platformFee: null };
+  }
+  const o = res.data as {
+    pricingQuote?: { providerBuyPrice?: number; providerSellPrice?: number; volatility?: number; costPrice?: number };
+    platformFee?: { baseFeePercent?: number; fixedFee?: number };
+  };
+  const pricingQuote =
+    o.pricingQuote &&
+      typeof o.pricingQuote.providerBuyPrice === "number" &&
+      typeof o.pricingQuote.providerSellPrice === "number" &&
+      typeof o.pricingQuote.volatility === "number"
+      ? (o.pricingQuote as PricingQuote)
+      : null;
+  const platformFee =
+    o.platformFee && typeof o.platformFee.baseFeePercent === "number"
+      ? { baseFeePercent: o.platformFee.baseFeePercent, fixedFee: o.platformFee.fixedFee ?? 0 }
+      : null;
+  return { pricingQuote, platformFee };
+}
+
+/** Log token tracking: t_token, f_token, t_price, f_price, buy price, cost price, fee, profit. */
+function logTokenTrack(opts: {
+  scenario: string;
+  f_token: string;
+  t_token: string;
+  f_price: number;
+  t_price: number;
+  buyPrice?: number;
+  costPrice?: number;
+  feeAmount?: number;
+  profit?: number;
+  totalCost?: number;
+  totalReceived?: number;
+}): void {
+  const { scenario, f_token, t_token, f_price, t_price, buyPrice, costPrice, feeAmount, profit, totalCost, totalReceived } = opts;
+  console.log(
+    `  [track] ${scenario} | f_token=${f_token} t_token=${t_token} | f_price=${f_price} t_price=${t_price} | buyPrice=${buyPrice ?? "-"} costPrice=${costPrice ?? "-"} | fee=${feeAmount ?? "-"} profit=${profit ?? "-"} | totalCost=${totalCost ?? "-"} totalReceived=${totalReceived ?? "-"}`
+  );
+}
+
+async function getBalance(chain: string, token: string): Promise<number | null> {
+  const res = await fetchJson(`/api/cache/balances/${encodeURIComponent(chain)}/${encodeURIComponent(token)}`);
+  if (!res.ok || !res.data || typeof res.data !== "object") return null;
+  const amount = (res.data as { amount?: string }).amount;
+  if (amount == null) return null;
+  const n = parseFloat(amount);
+  return Number.isFinite(n) ? n : null;
+}
+
+async function getFeeQuote(params: {
   action: string;
   f_amount: number;
   t_amount: number;
@@ -177,7 +237,7 @@ async function fetchQuote(params: {
   t_chain: string;
   f_token: string;
   t_token: string;
-}): Promise<{ ok: boolean; quote?: QuoteData; error?: string }> {
+}): Promise<{ feeAmount?: number; totalCost?: number; totalReceived?: number; profit?: number } | null> {
   const q = new URLSearchParams({
     action: params.action,
     f_amount: String(params.f_amount),
@@ -190,545 +250,603 @@ async function fetchQuote(params: {
     t_token: params.t_token,
   });
   const res = await fetchJson(`/api/quote?${q.toString()}`);
-  if (!res.ok) return { ok: false, error: res.error };
-  const quote = res.data as QuoteData | undefined;
-  return quote ? { ok: true, quote } : { ok: false, error: "No quote data" };
+  if (!res.ok || !res.data || typeof res.data !== "object") return null;
+  const d = res.data as { feeAmount?: number; totalCost?: number; totalReceived?: number; profit?: number };
+  return d;
 }
 
-/** Paystack GET endpoints for live testing. 503 when PAYSTACK_SECRET_KEY is not set. */
-const PAYSTACK_ACTIONS: { path: string; name: string }[] = [
-  { path: "/api/paystack/banks?country=ghana", name: "paystack/banks (ghana)" },
-  { path: "/api/paystack/banks?country=nigeria", name: "paystack/banks (nigeria)" },
-  { path: "/api/paystack/banks/resolve?account_number=0123456789&bank_code=063", name: "paystack/banks/resolve" },
-  { path: "/api/paystack/mobile/providers?currency=GHS", name: "paystack/mobile (GHS)" },
-  { path: "/api/paystack/mobile/providers?currency=KES", name: "paystack/mobile (KES)" },
-  { path: "/api/paystack/transactions?perPage=5", name: "paystack/transactions" },
-  { path: "/api/paystack/transfers?perPage=5", name: "paystack/transfers" },
-  { path: "/api/paystack/payouts/history?perPage=5", name: "paystack/payouts/history" },
-];
-
-/** Quote API: fee (GET) and swap (POST) variants. */
-const QUOTE_FETCH_ACTIONS: { path: string; name: string }[] = [
-  {
-    path: "/api/quote?action=buy&f_amount=100&t_amount=0.033&f_price=1&t_price=3000&f_chain=BASE&t_chain=ETHEREUM&f_token=USDC&t_token=ETH",
-    name: "quote (buy)",
-  },
-  {
-    path: "/api/quote?action=sell&f_amount=100&t_amount=0.033&f_price=1&t_price=3000&f_chain=ETHEREUM&t_chain=BASE&f_token=USDC&t_token=ETH",
-    name: "quote (sell)",
-  },
-  {
-    path: "/api/quote?action=request&f_amount=50&t_amount=50&f_price=1&t_price=1&f_chain=ETHEREUM&t_chain=BASE&f_token=GHS&t_token=USDC",
-    name: "quote (request)",
-  },
-  {
-    path: "/api/quote?action=claim&f_amount=25&t_amount=25&f_price=1&t_price=3000&f_chain=BASE&t_chain=ETHEREUM&f_token=USDC&t_token=ETH",
-    name: "quote (claim)",
-  },
-];
-
-const OTHER_FETCH_ACTIONS: { path: string; name: string }[] = [
-  { path: "/api/transactions?limit=5", name: "transactions" },
-  { path: "/api/transactions?status=PENDING&limit=5", name: "transactions (PENDING)" },
-  { path: "/api/transactions?status=COMPLETED&limit=5", name: "transactions (COMPLETED)" },
-  { path: "/api/transactions?type=BUY&limit=5", name: "transactions (type=BUY)" },
-  { path: "/api/users?limit=5", name: "users" },
-  { path: "/api/inventory?limit=5", name: "inventory" },
-  { path: "/api/inventory/history?limit=5", name: "inventory/history" },
-  { path: "/api/queue/poll", name: "queue/poll" },
-  { path: "/api/cache/balances?limit=10", name: "cache/balances" },
-  { path: "/api/requests?limit=5", name: "requests" },
-  { path: "/api/claims?limit=5", name: "claims" },
-  { path: "/api/wallets?limit=5", name: "wallets" },
-  { path: "/api/crypto-transactions?limit=5", name: "crypto-transactions" },
-  { path: "/api/access", name: "access" },
-  { path: "/api/connect/overview", name: "connect/overview" },
-  { path: "/api/connect/merchants?limit=5", name: "connect/merchants" },
-  { path: "/api/connect/settlements?limit=5", name: "connect/settlements" },
-];
-
-/** Connect (B2B) endpoints — platform key only for overview/merchants; use -f connect to run only these. */
-const CONNECT_FETCH_ACTIONS: { path: string; name: string }[] = [
-  { path: "/api/access", name: "access" },
-  { path: "/api/connect/overview", name: "connect/overview" },
-  { path: "/api/connect/merchants?limit=5", name: "connect/merchants" },
-  { path: "/api/connect/settlements?limit=5", name: "connect/settlements" },
-];
-
-type Action =
-  | { type: "order"; action: "buy" | "sell" | "request" | "claim" }
-  | { type: "paystack"; path: string; name: string }
-  | { type: "paystackInit" }
-  | { type: "paystackBanksResolve" }
-  | { type: "payoutRequest" }
-  | { type: "quote"; path: string; name: string }
-  | { type: "quoteSwap" }
-  | { type: "onrampQuote" }
-  | { type: "quoteThenCrypto" }
-  | { type: "fetch"; path: string; name: string }
-  | { type: "connect"; path: string; name: string }
-  | { type: "admin"; event: string };
-
-function getActionCategory(action: Action): string {
-  switch (action.type) {
-    case "paystack":
-    case "paystackInit":
-    case "paystackBanksResolve":
-    case "payoutRequest":
-      return "paystack";
-    case "order":
-      return "order";
-    case "quote":
-    case "quoteSwap":
-    case "onrampQuote":
-    case "quoteThenCrypto":
-      return "quote";
-    case "fetch":
-      return "fetch";
-    case "connect":
-      return "connect";
-    case "admin":
-      return "admin";
-    default:
-      return "fetch";
-  }
-}
-
-/** Build full list of action "templates" for filtering. One entry per concrete option. */
-function buildAllActionTemplates(): Action[] {
-  const templates: Action[] = [];
-  for (const a of PAYSTACK_ACTIONS) {
-    templates.push({ type: "paystack", path: a.path, name: a.name });
-  }
-  templates.push({ type: "paystackInit" });
-  templates.push({ type: "paystackBanksResolve" });
-  templates.push({ type: "payoutRequest" });
-  for (const action of ["buy", "sell", "request", "claim"] as const) {
-    templates.push({ type: "order", action });
-  }
-  for (const a of QUOTE_FETCH_ACTIONS) {
-    templates.push({ type: "quote", path: a.path, name: a.name });
-  }
-  templates.push({ type: "quoteSwap" });
-  templates.push({ type: "onrampQuote" });
-  templates.push({ type: "quoteThenCrypto" });
-  for (const a of OTHER_FETCH_ACTIONS) {
-    templates.push({ type: "fetch", path: a.path, name: a.name });
-  }
-  for (const a of CONNECT_FETCH_ACTIONS) {
-    templates.push({ type: "connect", path: a.path, name: a.name });
-  }
-  for (const event of ["test.ping", "test.order.placed", "alert.low_balance"]) {
-    templates.push({ type: "admin", event });
-  }
-  return templates;
-}
-
-const ALL_ACTION_TEMPLATES = buildAllActionTemplates();
-
-/** When filter is active, only these templates are used; never the default mix. */
-let FILTERED_TEMPLATES: Action[] | null = null;
-
-function setFilteredTemplates(filterFrom: string[], filterTo: string[]): void {
-  const hasFilter = filterFrom.length > 0 || filterTo.length > 0;
-  if (!hasFilter) {
-    FILTERED_TEMPLATES = null;
-    return;
-  }
-  const union = [...new Set([...filterFrom, ...filterTo])];
-  const filtered = ALL_ACTION_TEMPLATES.filter((a) => union.includes(getActionCategory(a)));
-  if (filtered.length === 0) {
-    console.warn("Filter matched no actions; valid categories: " + VALID_CATEGORIES.join(", "));
-    FILTERED_TEMPLATES = null;
-    return;
-  }
-  FILTERED_TEMPLATES = filtered;
-}
-
-function pickRandomAction(filterFrom: string[], filterTo: string[]): Action {
-  if (FILTERED_TEMPLATES && FILTERED_TEMPLATES.length > 0) {
-    return randomChoice(FILTERED_TEMPLATES);
-  }
-
-  const roll = Math.random();
-  if (roll < 0.38) {
-    const a = randomChoice(PAYSTACK_ACTIONS);
-    return { type: "paystack", path: a.path, name: a.name };
-  }
-  if (roll < 0.42) {
-    return { type: "paystackInit" };
-  }
-  if (roll < 0.44) {
-    return { type: "paystackBanksResolve" };
-  }
-  if (roll < 0.45) {
-    return { type: "payoutRequest" };
-  }
-  if (roll < 0.62) {
-    return { type: "order", action: randomChoice(["buy", "sell", "request", "claim"]) };
-  }
-  if (roll < 0.74) {
-    const pool = [...QUOTE_FETCH_ACTIONS, ...OTHER_FETCH_ACTIONS];
-    const f = randomChoice(pool);
-    return f.path.startsWith("/api/quote") ? { type: "quote", path: f.path, name: f.name } : { type: "fetch", path: f.path, name: f.name };
-  }
-  if (roll < 0.80) {
-    return { type: "quoteSwap" };
-  }
-  if (roll < 0.84) {
-    return { type: "onrampQuote" };
-  }
-  if (roll < 0.88) {
-    return { type: "quoteThenCrypto" };
-  }
-  return { type: "admin", event: randomChoice(["test.ping", "test.order.placed", "alert.low_balance"]) };
-}
-
-/**
- * Build order payload using token+chain and /api/quote.
- * Supports cross-chain (e.g. USDC on BASE → ETH on ETHEREUM). Fetches quote then sends f_chain, t_chain, f_token, t_token.
- */
-const TEST_USERS_WITH_ADDRESS = TEST_USERS.filter((u) => "address" in u && (u as { address?: string }).address);
-
-async function buildOrderPayloadWithQuote(
-  action: "buy" | "sell" | "request" | "claim"
-): Promise<{ payload: Record<string, unknown>; quote?: QuoteData }> {
-  const providers = providersForAction(action);
-  const from = randomChoice(TEST_USERS);
-  const to =
-    providers.t_provider === "KLYRA" && TEST_USERS_WITH_ADDRESS.length > 0
-      ? randomChoice(TEST_USERS_WITH_ADDRESS)
-      : action === "request" || action === "claim"
-        ? randomChoice(TEST_USERS_WITH_ADDRESS.length > 0 ? TEST_USERS_WITH_ADDRESS : TEST_USERS)
-        : randomChoice(TEST_USERS);
-
-  let fToken: string;
-  let tToken: string;
-  let fChain: string;
-  let tChain: string;
-  let fAmount: number;
-  let tAmount: number;
-  let fPrice: number;
-  let tPrice: number;
-
-  // request/claim: t_provider is KLYRA (on-chain) so t_token must be on-chain (not GHS/USD). Avoid same-token same-chain.
-  if (action === "request" || action === "claim") {
-    fToken = "GHS"; // payer pays fiat (f_provider ANY)
-    tToken = randomChoice(["USDC", "ETH"]); // requester receives on-chain (t_provider KLYRA)
-    fChain = "ETHEREUM";
-    tChain = tToken === "USDC" ? randomChoice(["ETHEREUM", "BASE"]) : "ETHEREUM";
-    fAmount = randomAmount(10, 100);
-    tAmount = tToken === "ETH" ? randomAmount(0.001, 0.1) : randomAmount(10, 100);
-    fPrice = TOKEN_PRICES[fToken] ?? 1;
-    tPrice = TOKEN_PRICES[tToken] ?? 1;
-    tAmount = Math.round(tAmount * 1e8) / 1e8;
-    fAmount = Math.round(fAmount * 1e8) / 1e8;
-  } else {
-    const fromOpt = randomChoice(TOKEN_CHAINS);
-    const toOpt = randomChoice(TOKEN_CHAINS.filter((x) => x.symbol !== fromOpt.symbol || x.chain !== fromOpt.chain));
-    fToken = fromOpt.symbol;
-    fChain = fromOpt.chain;
-    tToken = toOpt.symbol;
-    tChain = toOpt.chain;
-    fPrice = TOKEN_PRICES[fToken] ?? 1;
-    tPrice = TOKEN_PRICES[tToken] ?? 1;
-    if (action === "buy") {
-      fAmount = randomAmount(10, 500);
-      tAmount = (fAmount * fPrice) / tPrice;
-    } else {
-      tAmount = randomAmount(0.001, 2);
-      fAmount = (tAmount * tPrice) / fPrice;
-    }
-    tAmount = Math.round(tAmount * 1e8) / 1e8;
-    fAmount = Math.round(fAmount * 1e8) / 1e8;
-  }
-
-  const quoteResult = await fetchQuote({
+/** Build order payload. Swap: both KLYRA. Onramp: f_provider PAYSTACK, t_provider KLYRA. Offramp: f_provider KLYRA, t_provider PAYSTACK. */
+function buildOrderPayload(opts: {
+  action: "buy" | "sell" | "request" | "claim";
+  f_amount: number;
+  t_amount: number;
+  f_price: number;
+  t_price: number;
+  f_chain: string;
+  t_chain: string;
+  f_token: string;
+  t_token: string;
+  f_provider: "KLYRA" | "PAYSTACK" | "ANY";
+  t_provider: "KLYRA" | "PAYSTACK" | "ANY";
+  fromType?: "ADDRESS" | "EMAIL" | "NUMBER";
+  toType?: "ADDRESS" | "EMAIL" | "NUMBER";
+}): Record<string, unknown> {
+  const { action, f_amount, t_amount, f_price, t_price, f_chain, t_chain, f_token, t_token, f_provider, t_provider } = opts;
+  const fromId = opts.fromType === "ADDRESS" ? (TO_USER as { address?: string }).address : PAYSTACK_IDENTIFIER;
+  const toId = opts.toType === "ADDRESS" ? (TO_USER as { address?: string }).address : PAYSTACK_IDENTIFIER;
+  const fromType = opts.fromType ?? (f_provider === "PAYSTACK" ? PAYSTACK_FROM_TYPE : "ADDRESS");
+  const toType = opts.toType ?? (t_provider === "KLYRA" ? "ADDRESS" : PAYSTACK_TO_TYPE);
+  return {
     action,
-    f_amount: fAmount,
-    t_amount: tAmount,
-    f_price: fPrice,
-    t_price: tPrice,
-    f_chain: fChain,
-    t_chain: tChain,
-    f_token: fToken,
-    t_token: tToken,
+    fromIdentifier: fromId,
+    fromType,
+    toIdentifier: toId,
+    toType,
+    f_amount: round8(f_amount),
+    t_amount: round8(t_amount),
+    f_price: round8(f_price),
+    t_price: round8(t_price),
+    f_chain,
+    t_chain,
+    f_token,
+    t_token,
+    f_provider,
+    t_provider,
+  };
+}
+
+function parseArgs(): { scenario: string; delayMs: number; live: boolean; help: boolean } {
+  const argv = process.argv.slice(2);
+  let scenario = "all";
+  let delayMs = 1000;
+  let live = false;
+  let help = false;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--help" || argv[i] === "-h") help = true;
+    else if (argv[i] === "--live") live = true;
+    else if (argv[i] === "--scenario" && argv[i + 1]) scenario = argv[++i];
+    else if (argv[i] === "--delay" && argv[i + 1]) delayMs = Math.max(100, parseInt(argv[++i], 10) || 1000);
+  }
+  return { scenario, delayMs, live, help };
+}
+
+function log(ts: string, msg: string): void {
+  console.log(`[${ts}] ${msg}`);
+}
+
+async function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// ---------- Scenario: Swap ----------
+async function runSwapBest(): Promise<boolean> {
+  const ts = new Date().toISOString();
+  if (supportedOnchain.length < 2) {
+    log(ts, "Swap (best): skip — need at least 2 supported chain+token pairs");
+    return false;
+  }
+  const fromOpt = randomChoice(supportedOnchain);
+  const toOpt = randomChoice(supportedOnchain.filter((x) => x.symbol !== fromOpt.symbol || x.chainCode !== fromOpt.chainCode));
+  const f_token = fromOpt.symbol;
+  const t_token = toOpt.symbol;
+  const f_chain = fromOpt.chainCode;
+  const t_chain = toOpt.chainCode;
+  const { pricingQuote, platformFee } = await getPricingQuote(t_chain, t_token);
+  if (!pricingQuote || !platformFee) {
+    log(ts, "Swap (best): skip — pricing quote or platform fee not available");
+    return false;
+  }
+
+  const baseProfitOn = effectiveBaseProfit(platformFee.baseFeePercent, DEFAULT_PROVIDER_FEE);
+  const expectedTPrice = quoteOnRamp({
+    providerPrice: pricingQuote.providerBuyPrice,
+    baseProfit: baseProfitOn,
+    volatility: pricingQuote.volatility,
+    avgBuyPrice: pricingQuote.costPrice,
+  });
+  const expectedFPrice = f_token === t_token ? expectedTPrice : pricingQuote.providerSellPrice;
+  const f_price = expectedFPrice;
+  const t_price = expectedTPrice;
+
+  const balance = await getBalance(t_chain, t_token);
+  if (balance == null || balance <= 0) {
+    log(ts, `Swap (best): skip — KLYRA balance for ${t_chain}/${t_token} = n/a`);
+    return false;
+  }
+  const t_amount = Math.min(t_token === "ETH" ? 0.033 : 50, balance * 0.1);
+  if (t_amount <= 0) {
+    log(ts, `Swap (best): skip — KLYRA balance for ${t_chain}/${t_token} = ${balance}, need > 0`);
+    return false;
+  }
+  const f_amount = round8(t_amount * (t_price / f_price));
+
+  const feeQuote = await getFeeQuote({
+    action: "buy",
+    f_amount,
+    t_amount,
+    f_price,
+    t_price,
+    f_chain,
+    t_chain,
+    f_token,
+    t_token,
+  });
+  logTokenTrack({
+    scenario: "swap(best)",
+    f_token,
+    t_token,
+    f_price,
+    t_price,
+    buyPrice: pricingQuote.providerBuyPrice,
+    costPrice: pricingQuote.costPrice,
+    feeAmount: feeQuote?.feeAmount,
+    profit: feeQuote?.profit,
+    totalCost: feeQuote?.totalCost,
+    totalReceived: feeQuote?.totalReceived,
   });
 
-  const getIdentifier = (u: (typeof TEST_USERS)[number]): string => {
-    const o = u as { email?: string; number?: string; address?: string };
-    return o.email ?? o.number ?? o.address ?? "";
-  };
-
-  const toUser = to as { email?: string; number?: string; address?: string; type?: string };
-  const toIdentifier =
-    providers.t_provider === "KLYRA" && toUser.address ? toUser.address : getIdentifier(to);
-  const toType =
-    providers.t_provider === "KLYRA" && toUser.address ? "ADDRESS" : (to as { type: string }).type;
-
-  const payload: Record<string, unknown> = {
-    action,
-    fromIdentifier: getIdentifier(from),
-    fromType: from.type,
-    toIdentifier,
-    toType,
-    f_amount: fAmount,
-    t_amount: tAmount,
-    f_price: fPrice,
-    t_price: tPrice,
-    f_chain: fChain,
-    t_chain: tChain,
-    f_token: fToken,
-    t_token: tToken,
-    f_provider: providers.f_provider,
-    t_provider: providers.t_provider,
-  };
-
-  return { payload, quote: quoteResult.quote };
-}
-
-/** Use available providers per action; required for all transactions. */
-function providersForAction(action: "buy" | "sell" | "request" | "claim"): {
-  f_provider: "KLYRA" | "ANY";
-  t_provider: "KLYRA";
-} {
-  switch (action) {
-    case "request":
-    case "claim":
-      return { f_provider: "ANY", t_provider: "KLYRA" };
-    case "buy":
-    case "sell":
-    default:
-      return { f_provider: "KLYRA", t_provider: "KLYRA" };
+  const payload = buildOrderPayload({
+    action: "buy",
+    f_amount,
+    t_amount,
+    f_price,
+    t_price,
+    f_chain,
+    t_chain,
+    f_token,
+    t_token,
+    f_provider: "KLYRA",
+    t_provider: "KLYRA",
+  });
+  const result = await fetchJson("/webhook/order", { method: "POST", body: JSON.stringify(payload) });
+  if (result.ok && result.data && typeof result.data === "object" && "id" in result.data) {
+    log(ts, `Swap (best) → 201 id=${(result.data as { id: string }).id} (prices validated, order in poll)`);
+    return true;
   }
+  log(ts, `Swap (best) → ${result.status} ${result.error ?? ""} ${result.code ?? ""}`);
+  return false;
 }
 
-async function runAction(action: Action): Promise<void> {
+async function runSwapWorstPrice(): Promise<boolean> {
   const ts = new Date().toISOString();
-  if (action.type === "order") {
-    const { payload, quote } = await buildOrderPayloadWithQuote(action.action);
-    const result = await fetchJson("/webhook/order", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-    if (result.ok && result.data && typeof result.data === "object" && "id" in result.data) {
-      const quoteInfo = quote ? ` fee=${quote.feeAmount.toFixed(2)} totalCost=${quote.totalCost.toFixed(2)}` : "";
-      console.log(`[${ts}] ORDER ${action.action.toUpperCase()} → 201 id=${(result.data as { id: string }).id}${quoteInfo}`);
-    } else {
-      console.log(`[${ts}] ORDER ${action.action.toUpperCase()} → ${result.status} ${result.error ?? "error"}`);
-    }
-    return;
+  if (supportedOnchain.length < 2) {
+    log(ts, "Swap (worst price): skip — need at least 2 supported pairs");
+    return false;
   }
-  if (action.type === "paystack") {
-    const result = await fetchJson(action.path);
-    if (result.ok) {
-      const count = Array.isArray(result.data) ? result.data.length : result.data && typeof result.data === "object" ? "ok" : "-";
-      console.log(`[${ts}] GET ${action.name} → 200 (${count})`);
-    } else if (result.status === 503) {
-      console.log(`[${ts}] GET ${action.name} → 503 (Paystack not configured)`);
-    } else {
-      console.log(`[${ts}] GET ${action.name} → ${result.status} ${result.error ?? "error"}`);
-    }
-    return;
+  const fromOpt = randomChoice(supportedOnchain);
+  const toOpt = randomChoice(supportedOnchain.filter((x) => x.symbol !== fromOpt.symbol || x.chainCode !== fromOpt.chainCode));
+  const { pricingQuote, platformFee } = await getPricingQuote(toOpt.chainCode, toOpt.symbol);
+  if (!pricingQuote || !platformFee) {
+    log(ts, "Swap (worst price): skip — no pricing quote");
+    return false;
   }
-  if (action.type === "paystackInit") {
-    const { payload } = await buildOrderPayloadWithQuote("buy");
-    const orderRes = await fetchJson("/webhook/order", { method: "POST", body: JSON.stringify(payload) });
-    const txId = orderRes.ok && orderRes.data && typeof orderRes.data === "object" && "id" in orderRes.data ? (orderRes.data as { id: string }).id : null;
-    if (!txId) {
-      console.log(`[${ts}] Paystack init (order first) → order ${orderRes.status}; skip initialize`);
-      return;
-    }
-    // Supported currencies: GHS, USD
-    const currency = randomChoice(["GHS", "USD"] as const);
-    const amountSubunits = currency === "GHS" ? 5000 : 1000; // 50 GHS or 10 USD (cents)
-    const initRes = await fetchJson("/api/paystack/payments/initialize", {
-      method: "POST",
-      body: JSON.stringify({
-        email: "test@example.com",
-        amount: amountSubunits,
-        currency,
-        transaction_id: txId,
-      }),
-    });
-    if (initRes.ok && initRes.data && typeof initRes.data === "object" && "authorization_url" in (initRes.data as object)) {
-      console.log(`[${ts}] Paystack init → 201 tx=${txId} currency=${currency} (authorization_url present)`);
-    } else if (initRes.status === 503) {
-      console.log(`[${ts}] Paystack init → 503 (Paystack not configured)`);
-    } else {
-      console.log(`[${ts}] Paystack init → ${initRes.status} ${initRes.error ?? "error"}`);
-    }
-    return;
+
+  const f_amount = 100;
+  const t_amount = 0.05;
+  const baseProfitOn = effectiveBaseProfit(platformFee.baseFeePercent, DEFAULT_PROVIDER_FEE);
+  const expectedTPrice = quoteOnRamp({
+    providerPrice: pricingQuote.providerBuyPrice,
+    baseProfit: baseProfitOn,
+    volatility: pricingQuote.volatility,
+  });
+  const badTPrice = expectedTPrice * (1 - PRICE_TOLERANCE - 0.01);
+  const f_price = 1;
+  const t_price = round8(badTPrice);
+
+  const payload = buildOrderPayload({
+    action: "buy",
+    f_amount,
+    t_amount,
+    f_price,
+    t_price,
+    f_chain: fromOpt.chainCode,
+    t_chain: toOpt.chainCode,
+    f_token: fromOpt.symbol,
+    t_token: toOpt.symbol,
+    f_provider: "KLYRA",
+    t_provider: "KLYRA",
+  });
+  const result = await fetchJson("/webhook/order", { method: "POST", body: JSON.stringify(payload) });
+  if (!result.ok && result.code === "PRICE_OUT_OF_TOLERANCE") {
+    log(ts, `Swap (worst price) → 400 PRICE_OUT_OF_TOLERANCE (expected; price rejected before poll)`);
+    return true;
   }
-  if (action.type === "paystackBanksResolve") {
-    const country = randomChoice(["nigeria", "ghana"]);
-    const banksRes = await fetchJson(`/api/paystack/banks?country=${country}`);
-    if (!banksRes.ok || !banksRes.data || typeof banksRes.data !== "object" || !("banks" in (banksRes.data as object))) {
-      console.log(`[${ts}] Paystack banks→resolve → banks ${banksRes.status}; skip resolve`);
-      return;
-    }
-    console.log(`[${ts}] Paystack banks→resolve → banksRes=${JSON.stringify(banksRes.data)}`);
-    const banks = (banksRes.data as { banks?: { code: string }[] }).banks;
-    const bank = Array.isArray(banks) && banks.length > 0 ? randomChoice(banks) : null;
-    const bankCode = bank?.code ?? "063";
-    console.log(`[${ts}] Paystack banks→resolve → bankCode=${bankCode}`);
-    console.log(`[${ts}] Paystack banks→resolve → country=${country}`);
-    const resolveRes = await fetchJson(`/api/paystack/banks/resolve?account_number=1400005000124&bank_code=${encodeURIComponent(bankCode)}`);
-    console.log(`[${ts}] Paystack banks->details → ${resolveRes.data}`);
-    if (resolveRes.ok) {
-      const name = resolveRes.data && typeof resolveRes.data === "object" && "account_name" in (resolveRes.data as object) ? (resolveRes.data as { account_name: string }).account_name : "-";
-      console.log(`[${ts}] Paystack banks→resolve → 200 account_name=${name}`);
-    } else if (resolveRes.status === 503) {
-      console.log(`[${ts}] Paystack banks→resolve → 503 (Paystack not configured)`);
-    } else {
-      console.log(`[${ts}] Paystack banks→resolve → ${resolveRes.status} ${resolveRes.error ?? "error"}`);
-    }
-    return;
+  log(ts, `Swap (worst price) → ${result.status} ${result.code ?? result.error ?? ""}`);
+  return false;
+}
+
+async function runSwapWorstBalance(): Promise<boolean> {
+  const ts = new Date().toISOString();
+  if (supportedOnchain.length < 2) {
+    log(ts, "Swap (worst balance): skip — need at least 2 supported pairs");
+    return false;
   }
-  if (action.type === "payoutRequest") {
-    const listRes = await fetchJson("/api/transactions?status=COMPLETED&limit=1");
-    const list = listRes.ok && Array.isArray(listRes.data) ? listRes.data : listRes.ok && listRes.data && typeof listRes.data === "object" && "transactions" in (listRes.data as object) ? (listRes.data as { transactions: unknown[] }).transactions : [];
-    const first = Array.isArray(list) && list.length > 0 && list[0] && typeof list[0] === "object" && "id" in (list[0] as object) ? (list[0] as { id: string }).id : null;
-    if (!first) {
-      console.log(`[${ts}] Payout request → no COMPLETED tx; skip`);
-      return;
-    }
-    const payoutRes = await fetchJson("/api/paystack/payouts/request", {
-      method: "POST",
-      body: JSON.stringify({ transaction_id: first }),
-    });
-    if (payoutRes.ok && payoutRes.data && typeof payoutRes.data === "object" && "code" in (payoutRes.data as object)) {
-      console.log(`[${ts}] Payout request → 201 tx=${first} code present`);
-    } else if (payoutRes.status === 503) {
-      console.log(`[${ts}] Payout request → 503 (Paystack not configured)`);
-    } else {
-      console.log(`[${ts}] Payout request → ${payoutRes.status} ${payoutRes.error ?? "error"}`);
-    }
-    return;
+  const toOpt = randomChoice(supportedOnchain);
+  const { pricingQuote, platformFee } = await getPricingQuote(toOpt.chainCode, toOpt.symbol);
+  if (!pricingQuote || !platformFee) {
+    log(ts, "Swap (worst balance): skip — no pricing quote");
+    return false;
   }
-  if (action.type === "onrampQuote") {
-    const country = randomChoice(["GH", "NG"]);
-    const chainId = randomChoice([1, 8453]);
-    const token = randomChoice(["USDC", "ETH"]);
-    const amount = randomAmount(10, 200);
-    const amountIn = randomChoice(["fiat", "crypto"]);
-    const body = { country, chain_id: chainId, token, amount, amount_in: amountIn };
-    const res = await fetchJson("/api/quote/onramp", { method: "POST", body: JSON.stringify(body) });
-    if (res.ok) {
-      const data = res.data as { total_crypto?: string; total_fiat?: number } | undefined;
-      const info = data ? ` total_crypto=${data.total_crypto ?? "-"} total_fiat=${data.total_fiat ?? "-"}` : "";
-      console.log(`[${ts}] POST quote/onramp → 200${info}`);
-    } else if (res.status === 503) {
-      console.log(`[${ts}] POST quote/onramp → 503 (Fonbnk not configured)`);
-    } else {
-      console.log(`[${ts}] POST quote/onramp → ${res.status} ${res.error ?? "error"}`);
-    }
-    return;
+
+  const balance = await getBalance(toOpt.chainCode, toOpt.symbol);
+  const required = (balance ?? 0) + 1000;
+  const baseProfitOn = effectiveBaseProfit(platformFee.baseFeePercent, DEFAULT_PROVIDER_FEE);
+  const expectedTPrice = quoteOnRamp({
+    providerPrice: pricingQuote.providerBuyPrice,
+    baseProfit: baseProfitOn,
+    volatility: pricingQuote.volatility,
+    avgBuyPrice: pricingQuote.costPrice,
+  });
+  const f_amount = 100;
+  const t_amount = round8(required);
+  const f_price = 1;
+  const t_price = expectedTPrice;
+  const fromOpt = randomChoice(supportedOnchain.filter((x) => x.symbol !== toOpt.symbol || x.chainCode !== toOpt.chainCode));
+
+  const payload = buildOrderPayload({
+    action: "buy",
+    f_amount,
+    t_amount,
+    f_price,
+    t_price,
+    f_chain: fromOpt.chainCode,
+    t_chain: toOpt.chainCode,
+    f_token: fromOpt.symbol,
+    t_token: toOpt.symbol,
+    f_provider: "KLYRA",
+    t_provider: "KLYRA",
+  });
+  const result = await fetchJson("/webhook/order", { method: "POST", body: JSON.stringify(payload) });
+  if (!result.ok && result.code === "INSUFFICIENT_FUNDS") {
+    log(ts, `Swap (worst balance) → 400 INSUFFICIENT_FUNDS (expected; rejected before poll)`);
+    return true;
   }
-  if (action.type === "quoteThenCrypto") {
-    const swapBody = {
-      provider: "0x",
-      from_token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-      to_token: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-      amount: "1000000",
-      from_chain: 1,
-      to_chain: 1,
-      from_address: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
-    };
-    const swapRes = await fetchJson("/api/quote/swap", { method: "POST", body: JSON.stringify(swapBody) });
-    const data = swapRes.ok && swapRes.data && typeof swapRes.data === "object" ? (swapRes.data as { from_chain_id?: number; to_chain_id?: number; from_token?: string; to_token?: string; from_amount?: string; to_amount?: string; provider?: string }) : null;
-    if (data && typeof data.from_chain_id === "number" && typeof data.to_chain_id === "number" && data.from_token && data.to_token && data.from_amount && data.to_amount) {
-      const createRes = await fetchJson("/api/crypto-transactions", {
-        method: "POST",
-        body: JSON.stringify({
-          provider: data.provider ?? "0x",
-          from_chain_id: data.from_chain_id,
-          to_chain_id: data.to_chain_id,
-          from_token: data.from_token,
-          to_token: data.to_token,
-          from_amount: data.from_amount,
-          to_amount: data.to_amount,
-        }),
-      });
-      if (createRes.ok && createRes.data && typeof createRes.data === "object" && "id" in (createRes.data as object)) {
-        console.log(`[${ts}] Quote→crypto-transactions → 201 id=${(createRes.data as { id: string }).id}`);
-      } else {
-        console.log(`[${ts}] Quote→crypto-transactions → ${createRes.status} ${createRes.error ?? "error"}`);
-      }
-    } else {
-      const msg = swapRes.status === 503 ? " (swap not configured)" : swapRes.status === 502 ? ` ${swapRes.error ?? ""}` : "";
-      console.log(`[${ts}] Quote→crypto-transactions (swap first) → swap ${swapRes.status}${msg}; skip record`);
-    }
-    return;
+  log(ts, `Swap (worst balance) → ${result.status} ${result.code ?? result.error ?? ""}`);
+  return false;
+}
+
+// ---------- Scenario: Onramp (fiat → onchain token, action buy). f_provider PAYSTACK; f_chain from supported (MOMO, BANK, etc.); t_provider KLYRA. ----------
+async function runOnrampBest(): Promise<boolean> {
+  const ts = new Date().toISOString();
+  if (supportedFiatChains.length === 0) {
+    log(ts, "Onramp (best): skip — no supported fiat chain (MOMO/BANK)");
+    return false;
   }
-  if (action.type === "quote" || action.type === "fetch" || action.type === "connect") {
-    const result = await fetchJson(action.path);
-    if (result.ok) {
-      const count = Array.isArray(result.data) ? result.data.length : result.data && typeof result.data === "object" ? "ok" : "-";
-      console.log(`[${ts}] GET ${action.name} → 200 (${count})`);
-    } else {
-      console.log(`[${ts}] GET ${action.name} → ${result.status} ${result.error ?? "error"}`);
-    }
-    return;
+  if (supportedOnchain.length === 0) {
+    log(ts, "Onramp (best): skip — no supported onchain pairs");
+    return false;
   }
-  if (action.type === "quoteSwap") {
-    const result = await fetchJson("/api/quote/swap", {
-      method: "POST",
-      body: JSON.stringify({
-        "provider": "squid",
-        "from_token": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-        "to_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        "amount": "100000000000",
-        "from_chain": 8453,
-        "to_chain": 1,
-        "from_address": "0xf0830060f836B8d54bF02049E5905F619487989e"
-      }),
-    });
-    if (result.ok) {
-      const data = result.data as { provider?: string; to_amount?: string } | undefined;
-      const info = data?.to_amount ? ` to_amount=${data.to_amount}` : "";
-      console.log(`[${ts}] POST quote/swap → 200${info}`);
-    } else {
-      const msg = result.status === 503 ? " (swap not configured)" : result.status === 502 ? ` ${result.error ?? ""}` : "";
-      console.log(`[${ts}] POST quote/swap → ${result.status}${msg}`);
-    }
-    return;
+  const f_chain = supportedFiatChains[0];
+  const f_token = f_chain === "MOMO" ? "GHS" : "USD";
+  const tOpt = randomChoice(supportedOnchain);
+  const t_chain = tOpt.chainCode;
+  const t_token = tOpt.symbol;
+  const { pricingQuote, platformFee } = await getPricingQuote(t_chain, t_token);
+  if (!pricingQuote || !platformFee) {
+    log(ts, "Onramp (best): skip — no pricing quote");
+    return false;
   }
-  if (action.type === "admin") {
-    const result = await fetchJson("/webhook/admin", {
-      method: "POST",
-      body: JSON.stringify({ event: action.event, data: { source: "test-live", ts } }),
-    });
-    if (result.ok) {
-      console.log(`[${ts}] POST /webhook/admin event=${action.event} → 202`);
-    } else {
-      console.log(`[${ts}] POST /webhook/admin → ${result.status} ${result.error ?? "error"}`);
-    }
-    return;
+
+  const balance = await getBalance(t_chain, t_token);
+  const t_amount = Math.min(t_token === "ETH" ? 0.033 : 50, (balance ?? 0) * 0.1);
+  if (balance == null || balance <= 0 || t_amount <= 0) {
+    log(ts, `Onramp (best): skip — KLYRA ${t_chain}/${t_token} balance ${balance ?? "n/a"}`);
+    return false;
   }
+
+  const baseProfitOn = effectiveBaseProfit(platformFee.baseFeePercent, DEFAULT_PROVIDER_FEE);
+  const t_price = quoteOnRamp({
+    providerPrice: pricingQuote.providerBuyPrice,
+    baseProfit: baseProfitOn,
+    volatility: pricingQuote.volatility,
+    avgBuyPrice: pricingQuote.costPrice,
+  });
+  const f_price = 1;
+  const f_amount = round8(t_amount * t_price);
+
+  const feeQuote = await getFeeQuote({
+    action: "buy",
+    f_amount,
+    t_amount,
+    f_price,
+    t_price,
+    f_chain,
+    t_chain,
+    f_token,
+    t_token,
+  });
+  const userReceivable = feeQuote?.totalReceived ?? t_amount;
+  logTokenTrack({
+    scenario: "onramp(best)",
+    f_token,
+    t_token,
+    f_price,
+    t_price,
+    buyPrice: pricingQuote.providerBuyPrice,
+    costPrice: pricingQuote.costPrice,
+    feeAmount: feeQuote?.feeAmount,
+    profit: feeQuote?.profit,
+    totalCost: feeQuote?.totalCost,
+    totalReceived: feeQuote?.totalReceived,
+  });
+  log(ts, `Onramp (best): fiat ${f_token} (${f_chain}) → ${t_token} on ${t_chain}; user receives ${userReceivable}`);
+
+  const payload = buildOrderPayload({
+    action: "buy",
+    f_amount: round8(f_amount),
+    t_amount: round8(t_amount),
+    f_price: round8(f_price),
+    t_price: round8(t_price),
+    f_chain,
+    t_chain,
+    f_token,
+    t_token,
+    f_provider: "PAYSTACK",
+    t_provider: "KLYRA",
+    fromType: PAYSTACK_FROM_TYPE,
+    toType: "ADDRESS",
+  });
+  const result = await fetchJson("/webhook/order", { method: "POST", body: JSON.stringify(payload) });
+  if (result.ok && result.data && typeof result.data === "object" && "id" in result.data) {
+    log(ts, `Onramp (best) → 201 id=${(result.data as { id: string }).id} (price validated, order in poll)`);
+    return true;
+  }
+  log(ts, `Onramp (best) → ${result.status} ${result.error ?? ""} ${result.code ?? ""}`);
+  return false;
+}
+
+async function runOnrampWorst(): Promise<boolean> {
+  const ts = new Date().toISOString();
+  if (supportedFiatChains.length === 0) {
+    log(ts, "Onramp (worst): skip — no supported fiat chain");
+    return false;
+  }
+  if (supportedOnchain.length === 0) {
+    log(ts, "Onramp (worst): skip — no supported onchain pairs");
+    return false;
+  }
+  const f_chain = supportedFiatChains[0];
+  const f_token = f_chain === "MOMO" ? "GHS" : "USD";
+  const tOpt = randomChoice(supportedOnchain);
+  const t_chain = tOpt.chainCode;
+  const t_token = tOpt.symbol;
+  const { pricingQuote, platformFee } = await getPricingQuote(t_chain, t_token);
+  if (!pricingQuote || !platformFee) {
+    log(ts, "Onramp (worst): skip — no pricing quote");
+    return false;
+  }
+
+  const baseProfitOn = effectiveBaseProfit(platformFee.baseFeePercent, DEFAULT_PROVIDER_FEE);
+  const expectedTPrice = quoteOnRamp({
+    providerPrice: pricingQuote.providerBuyPrice,
+    baseProfit: baseProfitOn,
+    volatility: pricingQuote.volatility,
+  });
+  const badTPrice = expectedTPrice * 0.5;
+  const t_amount = 25;
+  const f_amount = 100;
+  const payload = buildOrderPayload({
+    action: "buy",
+    f_amount,
+    t_amount,
+    f_price: 1,
+    t_price: round8(badTPrice),
+    f_chain,
+    t_chain,
+    f_token,
+    t_token,
+    f_provider: "PAYSTACK",
+    t_provider: "KLYRA",
+    fromType: PAYSTACK_FROM_TYPE,
+    toType: "ADDRESS",
+  });
+  const result = await fetchJson("/webhook/order", { method: "POST", body: JSON.stringify(payload) });
+  if (!result.ok && result.code === "PRICE_OUT_OF_TOLERANCE") {
+    log(ts, `Onramp (worst) → 400 PRICE_OUT_OF_TOLERANCE (expected)`);
+    return true;
+  }
+  log(ts, `Onramp (worst) → ${result.status} ${result.code ?? result.error ?? ""}`);
+  return false;
+}
+
+// ---------- Scenario: Offramp (onchain token → fiat, action sell). f_provider KLYRA, t_provider PAYSTACK. ----------
+async function runOfframpBest(): Promise<boolean> {
+  const ts = new Date().toISOString();
+  if (supportedFiatChains.length === 0) {
+    log(ts, "Offramp (best): skip — no supported fiat chain (MOMO/BANK)");
+    return false;
+  }
+  if (supportedOnchain.length === 0) {
+    log(ts, "Offramp (best): skip — no supported onchain pairs");
+    return false;
+  }
+  const t_chain = supportedFiatChains[0];
+  const t_token = t_chain === "MOMO" ? "GHS" : "USD";
+  const fromOpt = randomChoice(supportedOnchain);
+  const f_chain = fromOpt.chainCode;
+  const f_token = fromOpt.symbol;
+  const { pricingQuote: quoteF, platformFee } = await getPricingQuote(f_chain, f_token);
+  const { pricingQuote: quoteT } = await getPricingQuote(t_chain, t_token);
+  if (!quoteF || !platformFee) {
+    log(ts, "Offramp (best): skip — no pricing quote");
+    return false;
+  }
+
+  const balance = await getBalance(f_chain, f_token);
+  const f_amount = Math.min(30, (balance ?? 0) * 0.1);
+  if (balance == null || balance <= 0 || f_amount <= 0) {
+    log(ts, `Offramp (best): skip — KLYRA ${f_chain}/${f_token} balance ${balance ?? "n/a"}`);
+    return false;
+  }
+
+  const baseProfitOff = effectiveBaseProfit(platformFee.baseFeePercent, DEFAULT_PROVIDER_FEE);
+  const baseProfitOn = effectiveBaseProfit(platformFee.baseFeePercent, DEFAULT_PROVIDER_FEE);
+  const f_price = quoteOffRamp({
+    providerPrice: quoteF.providerSellPrice,
+    baseProfit: baseProfitOff,
+    volatility: quoteF.volatility,
+  });
+  const t_price = quoteOnRamp({
+    providerPrice: quoteT?.providerBuyPrice ?? 1,
+    baseProfit: baseProfitOn,
+    volatility: quoteT?.volatility ?? 0.01,
+    avgBuyPrice: quoteT?.costPrice,
+  });
+  const t_amount = f_price > 0 ? round8((f_amount * f_price) / t_price) : 30;
+
+  const feeQuote = await getFeeQuote({
+    action: "sell",
+    f_amount,
+    t_amount,
+    f_price,
+    t_price,
+    f_chain,
+    t_chain,
+    f_token,
+    t_token,
+  });
+  const userReceivable = feeQuote?.totalReceived ?? t_amount - (t_amount * 0.01);
+  logTokenTrack({
+    scenario: "offramp(best)",
+    f_token,
+    t_token,
+    f_price,
+    t_price,
+    buyPrice: quoteT?.providerBuyPrice,
+    costPrice: quoteT?.costPrice,
+    feeAmount: feeQuote?.feeAmount,
+    profit: feeQuote?.profit,
+    totalCost: feeQuote?.totalCost,
+    totalReceived: feeQuote?.totalReceived,
+  });
+  log(ts, `Offramp (best): ${f_token} on ${f_chain} → fiat ${t_token} (${t_chain}); user receivable → ${userReceivable}`);
+
+  const payload = buildOrderPayload({
+    action: "sell",
+    f_amount: round8(f_amount),
+    t_amount: round8(t_amount),
+    f_price: round8(f_price),
+    t_price: round8(t_price),
+    f_chain,
+    t_chain,
+    f_token,
+    t_token,
+    f_provider: "KLYRA",
+    t_provider: "PAYSTACK",
+    fromType: "ADDRESS",
+    toType: PAYSTACK_TO_TYPE,
+  });
+  const result = await fetchJson("/webhook/order", { method: "POST", body: JSON.stringify(payload) });
+  if (result.ok && result.data && typeof result.data === "object" && "id" in result.data) {
+    log(ts, `Offramp (best) → 201 id=${(result.data as { id: string }).id} (price validated, order in poll)`);
+    return true;
+  }
+  log(ts, `Offramp (best) → ${result.status} ${result.error ?? ""} ${result.code ?? ""}`);
+  return false;
+}
+
+async function runOfframpWorst(): Promise<boolean> {
+  const ts = new Date().toISOString();
+  if (supportedFiatChains.length === 0) {
+    log(ts, "Offramp (worst): skip — no supported fiat chain");
+    return false;
+  }
+  if (supportedOnchain.length === 0) {
+    log(ts, "Offramp (worst): skip — no supported onchain pairs");
+    return false;
+  }
+  const t_chain = supportedFiatChains[0];
+  const t_token = t_chain === "MOMO" ? "GHS" : "USD";
+  const fromOpt = randomChoice(supportedOnchain);
+  const f_chain = fromOpt.chainCode;
+  const f_token = fromOpt.symbol;
+  const { pricingQuote: quoteF, platformFee } = await getPricingQuote(f_chain, f_token);
+  const { pricingQuote: quoteT } = await getPricingQuote(t_chain, t_token);
+  if (!quoteF || !platformFee) {
+    log(ts, "Offramp (worst): skip — no pricing quote");
+    return false;
+  }
+
+  const baseProfitOff = effectiveBaseProfit(platformFee.baseFeePercent, DEFAULT_PROVIDER_FEE);
+  const expectedFPrice = quoteOffRamp({
+    providerPrice: quoteF.providerSellPrice,
+    baseProfit: baseProfitOff,
+    volatility: quoteF.volatility,
+  });
+  const badFPrice = expectedFPrice * 0.5;
+  const f_amount = 30;
+  const t_amount = 100;
+  const t_price = quoteT?.providerBuyPrice ?? 1;
+  const payload = buildOrderPayload({
+    action: "sell",
+    f_amount: round8(f_amount),
+    t_amount: round8(t_amount),
+    f_price: round8(badFPrice),
+    t_price: round8(t_price),
+    f_chain,
+    t_chain,
+    f_token,
+    t_token,
+    f_provider: "KLYRA",
+    t_provider: "PAYSTACK",
+    fromType: "ADDRESS",
+    toType: PAYSTACK_TO_TYPE,
+  });
+  const result = await fetchJson("/webhook/order", { method: "POST", body: JSON.stringify(payload) });
+  if (!result.ok && result.code === "PRICE_OUT_OF_TOLERANCE") {
+    log(ts, `Offramp (worst) → 400 PRICE_OUT_OF_TOLERANCE (expected)`);
+    return true;
+  }
+  log(ts, `Offramp (worst) → ${result.status} ${result.code ?? result.error ?? ""}`);
+  return false;
+}
+
+async function runOneRound(scenario: string): Promise<{ ok: number; total: number }> {
+  const run = scenario === "all" ? ["swap", "onramp", "offramp"] : [scenario];
+  let ok = 0;
+  let total = 0;
+  for (const s of run) {
+    if (s === "swap") {
+      total += 3;
+      if (await runSwapBest()) ok++;
+      await delay(100);
+      if (await runSwapWorstPrice()) ok++;
+      await delay(100);
+      if (await runSwapWorstBalance()) ok++;
+    } else if (s === "onramp") {
+      total += 2;
+      if (await runOnrampBest()) ok++;
+      await delay(100);
+      if (await runOnrampWorst()) ok++;
+    } else if (s === "offramp") {
+      total += 2;
+      if (await runOfframpBest()) ok++;
+      await delay(100);
+      if (await runOfframpWorst()) ok++;
+    }
+  }
+  return { ok, total };
 }
 
 async function main(): Promise<void> {
-  const { from: filterFrom, to: filterTo, help } = parseArgs();
+  const { scenario, delayMs, live, help } = parseArgs();
   if (help) {
-    printHelp();
+    console.log(`
+Live test — swap, onramp, offramp with pricing validation.
+
+Usage: pnpm test:live [options]
+  --scenario swap|onramp|offramp|all   Run scenario(s). Default: all.
+  --delay <ms>                        Delay between rounds (default 1000).
+  --live                              Run in a loop every --delay ms (transact every second by default).
+  -h, --help                          Show this help.
+
+Env: CORE_URL, CORE_API_KEY (required for /api/validation/pricing-quote).
+`);
     process.exit(0);
   }
 
-  setFilteredTemplates(filterFrom, filterTo);
-  const filterActive = filterFrom.length > 0 || filterTo.length > 0;
-  const filterLabel = filterActive
-    ? ` (filter: from=[${filterFrom.join(",") || "any"}] to=[${filterTo.join(",") || "any"}])`
-    : "";
-  const onlyRunning =
-    filterActive && FILTERED_TEMPLATES && FILTERED_TEMPLATES.length > 0
-      ? ` Only running: ${[...new Set(FILTERED_TEMPLATES.map(getActionCategory))].join(", ")} (${FILTERED_TEMPLATES.length} actions).`
-      : "";
-
-  console.log(`Live test → ${CORE_URL} (interval ${INTERVAL_MIN_MS}–${INTERVAL_MAX_MS} ms)${filterLabel}.${onlyRunning} Ctrl+C to stop.\n`);
-
   if (!CORE_API_KEY) {
-    console.error("CORE_API_KEY is not set. Protected routes require x-api-key. Add it to .env (e.g. from pnpm key:generate).");
+    console.error("CORE_API_KEY is not set. Required for /api/validation/pricing-quote.");
     process.exit(1);
   }
 
@@ -737,24 +855,29 @@ async function main(): Promise<void> {
     console.error("Health check failed. Is the server running at", CORE_URL, "?");
     process.exit(1);
   }
-  console.log("Health check OK.\n");
 
-  let run = true;
-  process.on("SIGINT", () => {
-    run = false;
-  });
+  const { onchain, fiatChains } = await getSupportedChainsAndTokens();
+  supportedOnchain = onchain;
+  supportedFiatChains = fiatChains;
+  console.log(
+    `Health OK. Supported: ${onchain.length} chain+token pairs, fiat chains: ${fiatChains.length > 0 ? fiatChains.join(", ") : "none"}. Running scenarios.\n`
+  );
 
-  while (run) {
-    const action = pickRandomAction(filterFrom, filterTo);
-    await runAction(action);
-    const wait = randomDelayMs();
-    if (run) {
-      await delay(wait);
+  if (live) {
+    let round = 0;
+    while (true) {
+      round++;
+      const ts = new Date().toISOString();
+      console.log(`[${ts}] --- Round ${round} ---`);
+      const { ok, total } = await runOneRound(scenario);
+      console.log(`[${ts}] Round ${round}: ${ok}/${total} passed.\n`);
+      await delay(delayMs);
     }
   }
 
-  console.log("\nStopped.");
-  process.exit(0);
+  const { ok, total } = await runOneRound(scenario);
+  console.log(`\nDone. ${ok}/${total} scenario checks passed.`);
+  process.exit(ok === total ? 0 : 1);
 }
 
 main().catch((err) => {

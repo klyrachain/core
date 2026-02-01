@@ -540,6 +540,20 @@ model ProviderRouting {
   @@index([enabled, priority])
 }
 
+// Lightweight storage for failed order validations (management/debugging).
+model FailedOrderValidation {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  reason   String   // human-readable error
+  code     String?  // e.g. INSUFFICIENT_FUNDS, PROVIDER_DISABLED
+  payload  Json     // summary: action, f_chain, t_chain, f_token, t_token, f_amount, t_amount, f_provider, t_provider
+  requestId String?  // optional link to request
+
+  @@index([createdAt])
+  @@index([code])
+}
+
 model PlatformAdmin {
   id            String   @id @default(uuid())
   createdAt     DateTime @default(now())
