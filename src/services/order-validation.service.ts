@@ -20,10 +20,12 @@ import { prisma } from "../lib/prisma.js";
 import {
   VALIDATION_FAILED_LIST_KEY,
   VALIDATION_FAILED_LIST_TTL_SECONDS,
+  getStoredQuote,
+  deleteStoredQuote,
 } from "../lib/redis.js";
 import { getRedis } from "../lib/redis.js";
 import { getSwapQuote } from "./swap-quote.service.js";
-import { getOnrampQuote } from "./onramp-quote.service.js";
+import { buildPublicQuote, type QuoteResponseDto } from "./public-quote.service.js";
 
 /** Chain IDs used for fiat/offchain (onramp, offramp). */
 const FIAT_CHAIN_IDS = new Set([0, 2]);
@@ -35,11 +37,6 @@ const FIAT_CHAIN_TO_COUNTRY: Record<string, string> = {
 
 function isFiatChain(chainCode: string, chainId: number): boolean {
   return FIAT_CHAIN_IDS.has(chainId) || FIAT_CHAIN_TO_COUNTRY[chainCode] != null;
-}
-
-function getCountryForOrder(input: OrderValidationInput, fiatChainCode: string): string {
-  if (input.country?.trim()) return input.country.trim().toUpperCase().slice(0, 2);
-  return FIAT_CHAIN_TO_COUNTRY[fiatChainCode] ?? "GH";
 }
 
 /** Convert human amount to wei string for swap quote. */
@@ -57,6 +54,47 @@ function weiToHuman(wei: string, decimals: number): number {
   const whole = Number(big / div);
   const rem = Number(big % div);
   return whole + rem / 10 ** d;
+}
+
+/** Validate order amounts/price against a v1 quote. Returns error result or null if valid. */
+function validateOrderAgainstQuote(
+  input: OrderValidationInput,
+  data: QuoteResponseDto,
+  kind: "onramp" | "offramp",
+  tolerance: number
+): OrderValidationResult | null {
+  const quoteInputAmount = parseFloat(data.input.amount);
+  const quoteOutputAmount = parseFloat(data.output.amount);
+  const quoteExchangeRate = parseFloat(data.exchangeRate);
+  if (!Number.isFinite(quoteInputAmount) || !Number.isFinite(quoteOutputAmount) || !Number.isFinite(quoteExchangeRate)) {
+    return { valid: false, error: "Invalid quote response", code: "QUOTE_INVALID" };
+  }
+  const ratioF = quoteInputAmount > 0 ? input.f_amount / quoteInputAmount : 0;
+  const ratioT = quoteOutputAmount > 0 ? input.t_amount / quoteOutputAmount : 0;
+  const orderPrice = kind === "onramp" ? input.t_price : input.f_price;
+  const ratioPrice = quoteExchangeRate > 0 ? orderPrice / quoteExchangeRate : 0;
+  if (ratioF < 1 - tolerance || ratioF > 1 + tolerance) {
+    return {
+      valid: false,
+      error: `Order f_amount (${input.f_amount}) is outside allowed range for ${kind} (expected ~${quoteInputAmount.toFixed(6)}, ±${tolerance * 100}%)`,
+      code: "AMOUNT_OUT_OF_TOLERANCE",
+    };
+  }
+  if (ratioT < 1 - tolerance || ratioT > 1 + tolerance) {
+    return {
+      valid: false,
+      error: `Order t_amount (${input.t_amount}) is outside allowed range for ${kind} (expected ~${quoteOutputAmount.toFixed(6)}, ±${tolerance * 100}%)`,
+      code: "AMOUNT_OUT_OF_TOLERANCE",
+    };
+  }
+  if (ratioPrice < 1 - tolerance || ratioPrice > 1 + tolerance) {
+    return {
+      valid: false,
+      error: `Order ${kind === "onramp" ? "t_price" : "f_price"} (${orderPrice}) is outside allowed range for ${kind} (expected ~${quoteExchangeRate.toFixed(6)}, ±${tolerance * 100}%)`,
+      code: "PRICE_OUT_OF_TOLERANCE",
+    };
+  }
+  return null;
 }
 
 export type OrderValidationInput = {
@@ -82,6 +120,8 @@ export type OrderValidationInput = {
   country?: string | null;
   /** Optional from address for swap quote (required for cross-chain Squid/LiFi). */
   fromAddress?: string | null;
+  /** Optional quote ID from POST /api/v1/quotes; if provided and still valid, validation uses that quote. */
+  quoteId?: string | null;
 };
 
 export type OrderValidationResult =
@@ -194,6 +234,9 @@ export async function validateOrder(input: OrderValidationInput): Promise<OrderV
     };
   }
 
+  const fFiat = isFiatChain(fChainNorm, fChainRecord.chainId);
+  const tFiat = isFiatChain(tChainNorm, tChainRecord.chainId);
+
   if (input.t_provider === "KLYRA") {
     const balance = await getBalance(input.t_chain, input.t_token);
     const available = balance?.amount ? parseFloat(balance.amount) : 0;
@@ -228,7 +271,7 @@ export async function validateOrder(input: OrderValidationInput): Promise<OrderV
     const baseProfitOffRamp = effectiveBaseProfit(platformFee.baseFeePercent, fProvider.fee ?? 0);
     const PRICE_TOLERANCE = 0.02;
 
-    if (input.action === "buy") {
+    if (input.action === "buy" && !(fFiat && !tFiat)) {
       const quote = await getCachedPricingQuote(input.t_chain, input.t_token);
       if (!quote) {
         return {
@@ -256,7 +299,7 @@ export async function validateOrder(input: OrderValidationInput): Promise<OrderV
       }
     }
 
-    if (input.action === "sell") {
+    if (input.action === "sell" && !(!fFiat && tFiat)) {
       const quoteF = await getCachedPricingQuote(input.f_chain, input.f_token);
       const quoteT = await getCachedPricingQuote(input.t_chain, input.t_token);
       if (!quoteF || !quoteT) {
@@ -301,10 +344,8 @@ export async function validateOrder(input: OrderValidationInput): Promise<OrderV
     }
   }
 
-  // --- Amount/currency conversion validation via swap and onramp quote endpoints ---
+  // --- Amount/currency conversion validation via swap and v1 quote (onramp/offramp) ---
   const AMOUNT_TOLERANCE = 0.02;
-  const fFiat = isFiatChain(fChainNorm, fChainRecord.chainId);
-  const tFiat = isFiatChain(tChainNorm, tChainRecord.chainId);
 
   // Swap: both chains onchain — validate t_amount against swap quote
   if (!fFiat && !tFiat && input.action === "buy") {
@@ -335,56 +376,86 @@ export async function validateOrder(input: OrderValidationInput): Promise<OrderV
     // If quote unavailable (e.g. 503), we do not fail validation here; price tolerance already applied
   }
 
-  // Onramp (buy): fiat → crypto — validate t_amount against onramp quote
+  // Onramp (buy): fiat → crypto — validate via v1 quote (optional quoteId: use stored quote if valid, else build new)
   if (fFiat && !tFiat && input.action === "buy") {
-    const country = getCountryForOrder(input, fChainNorm);
-    const onrampResult = await getOnrampQuote({
-      country,
-      chain_id: tChainRecord.chainId,
-      token: input.t_token,
-      amount: input.f_amount,
-      amount_in: "fiat",
-      purchase_method: "buy",
-    });
-    if (onrampResult.ok) {
-      const expectedCrypto = parseFloat(onrampResult.data.total_crypto);
-      if (Number.isFinite(expectedCrypto) && expectedCrypto > 0) {
-        const ratio = input.t_amount / expectedCrypto;
-        if (ratio < 1 - AMOUNT_TOLERANCE || ratio > 1 + AMOUNT_TOLERANCE) {
-          return {
-            valid: false,
-            error: `Order t_amount (${input.t_amount}) is outside allowed range for onramp (expected ~${expectedCrypto.toFixed(6)} from quote, ±${AMOUNT_TOLERANCE * 100}%)`,
-            code: "AMOUNT_OUT_OF_TOLERANCE",
-          };
+    let data: QuoteResponseDto | null = null;
+    const quoteId = input.quoteId?.trim();
+    if (quoteId) {
+      const raw = await getStoredQuote(quoteId);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as QuoteResponseDto;
+          const expiresAt = parsed.expiresAt ? new Date(parsed.expiresAt).getTime() : 0;
+          if (expiresAt > Date.now()) {
+            data = parsed;
+          } else {
+            await deleteStoredQuote(quoteId);
+          }
+        } catch {
+          await deleteStoredQuote(quoteId);
         }
       }
     }
+    if (!data) {
+      const quoteResult = await buildPublicQuote({
+        action: "ONRAMP",
+        inputAmount: String(input.f_amount),
+        inputCurrency: input.f_token,
+        outputCurrency: input.t_token,
+        chain: input.t_chain,
+      });
+      if (!quoteResult.success) {
+        return {
+          valid: false,
+          error: quoteResult.error ?? "Quote unavailable",
+          code: quoteResult.code ?? "RATE_UNAVAILABLE",
+        };
+      }
+      data = quoteResult.data;
+    }
+    const onrampErr = validateOrderAgainstQuote(input, data, "onramp", AMOUNT_TOLERANCE);
+    if (onrampErr) return onrampErr;
   }
 
-  // Offramp (sell): crypto → fiat — validate t_amount against onramp quote
+  // Offramp (sell): crypto → fiat — validate via v1 quote (optional quoteId: use stored quote if valid, else build new)
   if (!fFiat && tFiat && input.action === "sell") {
-    const country = getCountryForOrder(input, tChainNorm);
-    const onrampResult = await getOnrampQuote({
-      country,
-      chain_id: fChainRecord.chainId,
-      token: input.f_token,
-      amount: input.f_amount,
-      amount_in: "crypto",
-      purchase_method: "sell",
-    });
-    if (onrampResult.ok) {
-      const expectedFiat = onrampResult.data.total_fiat;
-      if (Number.isFinite(expectedFiat) && expectedFiat > 0) {
-        const ratio = input.t_amount / expectedFiat;
-        if (ratio < 1 - AMOUNT_TOLERANCE || ratio > 1 + AMOUNT_TOLERANCE) {
-          return {
-            valid: false,
-            error: `Order t_amount (${input.t_amount}) is outside allowed range for offramp (expected ~${expectedFiat.toFixed(6)} from quote, ±${AMOUNT_TOLERANCE * 100}%)`,
-            code: "AMOUNT_OUT_OF_TOLERANCE",
-          };
+    let data: QuoteResponseDto | null = null;
+    const quoteId = input.quoteId?.trim();
+    if (quoteId) {
+      const raw = await getStoredQuote(quoteId);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as QuoteResponseDto;
+          const expiresAt = parsed.expiresAt ? new Date(parsed.expiresAt).getTime() : 0;
+          if (expiresAt > Date.now()) {
+            data = parsed;
+          } else {
+            await deleteStoredQuote(quoteId);
+          }
+        } catch {
+          await deleteStoredQuote(quoteId);
         }
       }
     }
+    if (!data) {
+      const quoteResult = await buildPublicQuote({
+        action: "OFFRAMP",
+        inputAmount: String(input.f_amount),
+        inputCurrency: input.f_token,
+        outputCurrency: input.t_token,
+        chain: input.f_chain,
+      });
+      if (!quoteResult.success) {
+        return {
+          valid: false,
+          error: quoteResult.error ?? "Quote unavailable",
+          code: quoteResult.code ?? "RATE_UNAVAILABLE",
+        };
+      }
+      data = quoteResult.data;
+    }
+    const offrampErr = validateOrderAgainstQuote(input, data, "offramp", AMOUNT_TOLERANCE);
+    if (offrampErr) return offrampErr;
   }
 
   return { valid: true };

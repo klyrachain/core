@@ -290,6 +290,36 @@ export async function getAverageCostBasis(assetId: string): Promise<Decimal | nu
 }
 
 /**
+ * Volume-weighted average cost basis across all InventoryAssets with the same chain+symbol.
+ * Used for validation cache so cost basis reflects all inventory (not just the first asset).
+ * Returns null if no lots or total quantity is zero.
+ */
+export async function getAggregateCostBasis(chain: string, symbol: string): Promise<Decimal | null> {
+  const assets = await prisma.inventoryAsset.findMany({
+    where: {
+      chain: { equals: chain.trim(), mode: "insensitive" },
+      symbol: { equals: symbol.trim(), mode: "insensitive" },
+    },
+    select: { id: true },
+  });
+  if (assets.length === 0) return null;
+  const assetIds = assets.map((a) => a.id);
+  const lots = await prisma.inventoryLot.findMany({
+    where: { assetId: { in: assetIds }, quantity: { gt: 0 } },
+  });
+  if (lots.length === 0) return null;
+  let totalQty = new Decimal(0);
+  let totalCost = new Decimal(0);
+  for (const lot of lots) {
+    const q = new Decimal(lot.quantity);
+    totalQty = totalQty.plus(q);
+    totalCost = totalCost.plus(q.mul(lot.costPerToken));
+  }
+  if (totalQty.lte(0)) return null;
+  return totalCost.div(totalQty);
+}
+
+/**
  * Lots for an asset (FIFO order). Used for order-book style fulfillment and reporting.
  */
 export async function getLotsForAsset(

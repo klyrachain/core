@@ -32,9 +32,10 @@ import { paystackPaymentsApiRoutes } from "./routes/api/paystack-payments.js";
 import { paystackPayoutsApiRoutes } from "./routes/api/paystack-payouts.js";
 import { paystackTransactionsApiRoutes } from "./routes/api/paystack-transactions.js";
 import { paystackTransfersApiRoutes } from "./routes/api/paystack-transfers.js";
+import { v1QuotesRoutes } from "./routes/api/v1/quotes.js";
 import { paystackWebhookRoutes } from "./routes/webhook/paystack.js";
 import { onRequestLog, onResponseLog } from "./lib/request-log-hooks.js";
-import { requireApiKey } from "./lib/auth.guard.js";
+import { requireApiKey, resolveApiKeyIfPresent } from "./lib/auth.guard.js";
 import { ensureValidationCache, loadValidationCache } from "./services/validation-cache.service.js";
 
 loadEnv();
@@ -63,6 +64,10 @@ app.addHook("onResponse", onResponseLog);
 app.addHook("preHandler", async (request, reply) => {
   const path = (request.url ?? "").split("?")[0];
   if (path === "/health" || path === "/ready" || path.startsWith("/api/quote") || path === "/api/countries" || path.startsWith("/api/rates") || path === "/api/chains" || path === "/api/tokens" || path === "/webhook/paystack") return;
+  if (path === "/api/v1/quotes") {
+    await resolveApiKeyIfPresent(request);
+    return;
+  }
   await requireApiKey(request, reply);
 });
 
@@ -92,6 +97,7 @@ await app.register(inventoryApiRoutes, { prefix: "" });
 await app.register(cacheApiRoutes, { prefix: "" });
 await app.register(queueApiRoutes, { prefix: "" });
 await app.register(quoteApiRoutes, { prefix: "" });
+await app.register(v1QuotesRoutes, { prefix: "/api/v1" });
 await app.register(countriesApiRoutes, { prefix: "" });
 await app.register(chainsTokensApiRoutes, { prefix: "" });
 await app.register(invoicesApiRoutes, { prefix: "" });

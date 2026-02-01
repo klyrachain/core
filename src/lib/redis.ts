@@ -23,6 +23,29 @@ export const VALIDATION_KEY_COST_BASIS_PREFIX = "validation:cost_basis:";
 /** Platform fee (baseFeePercent, fixedFee). Required for fee validation. */
 export const VALIDATION_KEY_PLATFORM_FEE = "validation:platform_fee";
 
+/** Stored v1 quote by quoteId. Quotes expire in 30s; TTL 32s. */
+export const QUOTE_KEY_PREFIX = "quote:";
+export const QUOTE_TTL_SECONDS = 32;
+
+export function quoteKey(quoteId: string): string {
+  return `${QUOTE_KEY_PREFIX}${quoteId}`;
+}
+
+export async function getStoredQuote(quoteId: string): Promise<string | null> {
+  const r = getRedis();
+  return r.get(quoteKey(quoteId));
+}
+
+export async function setStoredQuote(quoteId: string, value: string, ttlSeconds = QUOTE_TTL_SECONDS): Promise<void> {
+  const r = getRedis();
+  await r.set(quoteKey(quoteId), value, "EX", ttlSeconds);
+}
+
+export async function deleteStoredQuote(quoteId: string): Promise<void> {
+  const r = getRedis();
+  await r.del(quoteKey(quoteId));
+}
+
 export function costBasisKey(chain: string, token: string): string {
   return `${VALIDATION_KEY_COST_BASIS_PREFIX}${chain.toUpperCase()}:${token.toUpperCase()}`;
 }

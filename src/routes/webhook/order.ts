@@ -27,6 +27,7 @@ const OrderWebhookSchema = z.object({
   t_provider: z.nativeEnum(PaymentProvider),
   providerSessionId: z.string().min(1).optional().nullable(),
   requestId: z.string().uuid().optional().nullable(),
+  quoteId: z.string().uuid().optional().nullable(),
 });
 
 type OrderWebhookBody = z.infer<typeof OrderWebhookSchema>;
@@ -93,6 +94,7 @@ export async function orderWebhookRoutes(app: FastifyInstance): Promise<void> {
       f_provider: body.f_provider,
       t_provider: body.t_provider,
       requestId: body.requestId,
+      quoteId: body.quoteId,
     };
 
     const validation = await validateOrder(validationInput);

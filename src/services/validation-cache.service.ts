@@ -15,7 +15,7 @@ import {
   costBasisKey,
 } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
-import { getAverageCostBasis } from "./inventory.service.js";
+import { getAggregateCostBasis } from "./inventory.service.js";
 import { getPlatformSettingOrDefault } from "./platform-settings.service.js";
 
 export type CachedProvider = {
@@ -45,11 +45,14 @@ export type CachedPlatformFee = {
 };
 
 export type CachedPricingQuote = {
-  providerBuyPrice: number; // buy price: cost price from inventory (per token) or global default
+  /** When chain+token provided: inventory cost basis (volume-weighted). Otherwise: global default. Used as buy-price floor for validation. */
+  providerBuyPrice: number;
   providerSellPrice: number;
   volatility: number;
-  /** Cost price from inventory lots (floor for on-ramp). Present when chain+token provided. */
+  /** Inventory cost basis (volume-weighted across all assets with that chain+symbol). Present when chain+token provided. */
   costPrice?: number;
+  /** 'inventory' when chain+token provided and cost basis found; 'default' otherwise. Lets clients know providerBuyPrice/costPrice source. */
+  costBasisSource?: "inventory" | "default";
 };
 
 const PAYMENT_PROVIDER_CODES = ["NONE", "ANY", "KLYRA", "SQUID", "LIFI", "PAYSTACK"] as const;
@@ -132,22 +135,23 @@ export async function loadValidationCache(): Promise<void> {
   await loadInventoryCostBasisCache();
 }
 
-/** Load inventory cost basis (per chain+token) from lots into Redis. Called on startup and when cache is refreshed. */
+/** Load inventory cost basis (per chain+token) from lots into Redis. Uses volume-weighted average across all assets with the same chain+symbol. Called on startup and when cache is refreshed. */
 export async function loadInventoryCostBasisCache(): Promise<void> {
   const assets = await prisma.inventoryAsset.findMany({
-    select: { id: true, chain: true, symbol: true },
+    select: { chain: true, symbol: true },
   });
   const r = getRedis();
-  const seen = new Set<string>();
+  const keyToPair = new Map<string, { chain: string; symbol: string }>();
   for (const asset of assets) {
     const key = `${asset.chain.toUpperCase()}:${asset.symbol.toUpperCase()}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const avg = await getAverageCostBasis(asset.id);
+    if (!keyToPair.has(key)) keyToPair.set(key, { chain: asset.chain, symbol: asset.symbol });
+  }
+  for (const [, { chain, symbol }] of keyToPair) {
+    const avg = await getAggregateCostBasis(chain, symbol);
     if (avg != null) {
       const val = Number(avg);
       if (Number.isFinite(val)) {
-        await r.set(costBasisKey(asset.chain, asset.symbol), String(val), "EX", VALIDATION_CACHE_TTL_SECONDS);
+        await r.set(costBasisKey(chain, symbol), String(val), "EX", VALIDATION_CACHE_TTL_SECONDS);
       }
     }
   }
@@ -162,22 +166,18 @@ export async function getCachedCostBasis(chain: string, token: string): Promise<
   return Number.isFinite(n) ? n : null;
 }
 
-/** Refresh cost basis cache for one chain+token (e.g. after poll worker updates inventory). */
+/** Refresh cost basis cache for one chain+token (e.g. after poll worker updates inventory). Uses aggregate cost basis across all assets with that chain+symbol. */
 export async function refreshCostBasisForChainToken(chain: string, token: string): Promise<void> {
-  const asset = await prisma.inventoryAsset.findFirst({
-    where: { chain: { equals: chain, mode: "insensitive" }, symbol: { equals: token, mode: "insensitive" } },
-    select: { id: true, chain: true, symbol: true },
-  });
-  if (!asset) return;
-  const avg = await getAverageCostBasis(asset.id);
+  const avg = await getAggregateCostBasis(chain, token);
   const r = getRedis();
+  const key = costBasisKey(chain, token);
   if (avg != null) {
     const val = Number(avg);
     if (Number.isFinite(val)) {
-      await r.set(costBasisKey(asset.chain, asset.symbol), String(val), "EX", VALIDATION_CACHE_TTL_SECONDS);
+      await r.set(key, String(val), "EX", VALIDATION_CACHE_TTL_SECONDS);
     }
   } else {
-    await r.del(costBasisKey(asset.chain, asset.symbol));
+    await r.del(key);
   }
 }
 
@@ -261,9 +261,10 @@ export async function getCachedPricingQuote(chain?: string, token?: string): Pro
       providerSellPrice: global.providerSellPrice,
       volatility: global.volatility,
       costPrice: cost ?? undefined,
+      costBasisSource: cost != null ? "inventory" : "default",
     };
   }
-  return global;
+  return { ...global, costBasisSource: "default" as const };
 }
 
 /** Ensure cache is populated; load from DB if missing. If LOADED_AT exists but platform fee is missing (stale cache), reload. */

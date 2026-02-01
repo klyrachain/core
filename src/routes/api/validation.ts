@@ -11,7 +11,9 @@ import {
   ensureValidationCache,
   getCachedPricingQuote,
   getCachedPlatformFee,
+  getCachedChains,
 } from "../../services/validation-cache.service.js";
+import { getOnrampQuote } from "../../services/onramp-quote.service.js";
 import { getRedis } from "../../lib/redis.js";
 import {
   VALIDATION_FAILED_LIST_KEY,
@@ -44,11 +46,11 @@ export async function validationApiRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  /** GET /api/validation/pricing-quote — pricing quote for validation. Optional ?chain=&token= returns per-token quote: buy price = cost price from inventory lots. */
+  /** GET /api/validation/pricing-quote — pricing quote for validation. Optional ?chain=&token= returns per-token quote. costPrice = volume-weighted inventory cost basis. When ?country= is also provided, providerBuyPrice = onramp provider rate (e.g. GHS per USDC from Fonbnk); otherwise providerBuyPrice = cost basis. costBasisSource indicates 'inventory' or 'default'. */
   app.get(
     "/api/validation/pricing-quote",
     async (
-      req: FastifyRequest<{ Querystring: { chain?: string; token?: string } }>,
+      req: FastifyRequest<{ Querystring: { chain?: string; token?: string; country?: string } }>,
       reply
     ) => {
       try {
@@ -56,13 +58,39 @@ export async function validationApiRoutes(app: FastifyInstance): Promise<void> {
         await ensureValidationCache();
         const chain = (req.query.chain as string)?.trim();
         const token = (req.query.token as string)?.trim();
+        const country = (req.query.country as string)?.trim();
         const quote = await getCachedPricingQuote(chain || undefined, token || undefined);
+        let pricingQuote = quote ?? null;
+        if (pricingQuote && chain && token && country) {
+          const chains = await getCachedChains();
+          const chainRecord = chains?.find((c) => c.code === chain.toUpperCase());
+          if (chainRecord) {
+            const onrampResult = await getOnrampQuote({
+              country: country.toUpperCase().slice(0, 2),
+              chain_id: chainRecord.chainId,
+              token,
+              amount: 1,
+              amount_in: "crypto",
+              purchase_method: "buy",
+            });
+            if (onrampResult.ok) {
+              const rateFiatPerCrypto = onrampResult.data.total_fiat;
+              if (Number.isFinite(rateFiatPerCrypto) && rateFiatPerCrypto > 0) {
+                pricingQuote = {
+                  ...pricingQuote,
+                  providerBuyPrice: rateFiatPerCrypto,
+                };
+              }
+            }
+          }
+        }
         const platformFee = await getCachedPlatformFee();
         return successEnvelope(reply, {
-          pricingQuote: quote ?? null,
+          pricingQuote,
           platformFee: platformFee ?? null,
           chain: chain || null,
           token: token || null,
+          country: country || null,
         });
       } catch (err) {
         req.log.error({ err }, "GET /api/validation/pricing-quote");

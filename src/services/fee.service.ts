@@ -90,7 +90,15 @@ export function getFeeForOrder(input: FeeQuoteInput): FeeQuoteResult {
       profit = 0;
   }
 
-  const rate = t_price !== 0 ? f_price / t_price : 0;
+  // Effective rate (f_token per t_token): for buy (onramp) t_price = output price (fiat per crypto); for sell (offramp) f_price = output price (fiat per crypto).
+  const rate =
+    action === "buy"
+      ? t_price
+      : action === "sell"
+        ? (f_price !== 0 ? 1 / f_price : 0)
+        : t_price !== 0
+          ? f_price / t_price
+          : 0;
 
   return {
     feeAmount: Math.round(feeAmount * 1e8) / 1e8,

@@ -94,6 +94,37 @@ export async function requireApiKey(
 }
 
 /**
+ * Resolve API key when header is present and attach to request. Does not send 401/403.
+ * Use for public routes that optionally show more (e.g. debug) when a valid platform key is sent.
+ */
+export async function resolveApiKeyIfPresent(request: FastifyRequest): Promise<void> {
+  const rawKey = request.headers[HEADER_API_KEY];
+  const keyValue = typeof rawKey === "string" ? rawKey.trim() : undefined;
+  if (!keyValue) return;
+
+  const record = await findApiKeyByRawKey(keyValue);
+  if (!record || !record.isActive) return;
+  if (record.expiresAt && record.expiresAt.getTime() < Date.now()) return;
+
+  const origin = request.headers[HEADER_ORIGIN];
+  const originValue = typeof origin === "string" ? origin.trim() : undefined;
+  if (!isOriginAllowed(record.domains, originValue)) return;
+
+  touchLastUsed(record.id).catch(() => {});
+
+  request.apiKey = {
+    id: record.id,
+    name: record.name,
+    domains: record.domains,
+    permissions: record.permissions,
+    isActive: record.isActive,
+    expiresAt: record.expiresAt,
+    lastUsedAt: record.lastUsedAt,
+    businessId: record.businessId ?? null,
+  };
+}
+
+/**
  * Optional helper: check if the authenticated key has a given permission.
  * Use after requireApiKey. "*" means super admin (all permissions).
  */
