@@ -128,8 +128,11 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
 
     const feeAmount = computeTransactionFee(tx);
 
-    const updateData: { status: "COMPLETED"; fee?: number } = { status: "COMPLETED" };
-    if (Number.isFinite(feeAmount)) updateData.fee = feeAmount;
+    const updateData: { status: "COMPLETED"; fee?: number; platformFee?: number } = { status: "COMPLETED" };
+    if (Number.isFinite(feeAmount)) {
+      updateData.fee = feeAmount;
+      updateData.platformFee = feeAmount;
+    }
     await prisma.transaction.update({
       where: { id: transactionId },
       data: updateData,

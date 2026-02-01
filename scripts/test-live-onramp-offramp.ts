@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Live test — onramp & offramp using POST /api/v1/quotes (source of truth).
- * Runs continuously with random amounts until process is stopped (Ctrl+C).
+ * Covers both input sides: "from" (enter fiat/crypto to pay) and "to" (enter crypto/fiat you want).
+ * Runs continuously until Ctrl+C. Scenarios: onramp, onramp-reversed (want crypto), offramp, offramp-reversed (want fiat).
  *
  * Usage: pnpm test:live:onramp-offramp [--delay ms] [--submit]
  *   --delay   ms between iterations (default 2000)
@@ -18,6 +19,7 @@ type QuoteResponseData = {
   quoteId: string;
   expiresAt: string;
   exchangeRate: string;
+  basePrice?: string;
   input: { amount: string; currency: string };
   output: { amount: string; currency: string; chain?: string };
   fees: { networkFee: string; platformFee: string; totalFee: string };
@@ -87,7 +89,7 @@ function randomInRange(min: number, max: number, decimals = 2): string {
   return v.toFixed(decimals);
 }
 
-/** POST /api/v1/quotes — get quote (source of truth). Optionally retry once on 502/500. */
+/** POST /api/v1/quotes — get quote (source of truth). inputSide "from" = amount is paying side; "to" = amount is receiving side. */
 async function getV1Quote(
   body: {
     action: "ONRAMP" | "OFFRAMP";
@@ -95,11 +97,14 @@ async function getV1Quote(
     inputCurrency: string;
     outputCurrency: string;
     chain: string;
+    inputSide?: "from" | "to";
   },
   options?: { retryOn5xx?: boolean }
 ): Promise<{ ok: true; data: QuoteResponseData } | { ok: false; error: string; code?: string; status: number }> {
   const attempt = async (): Promise<{ ok: true; data: QuoteResponseData } | { ok: false; error: string; code?: string; status: number }> => {
-    const res = await fetchJson("/api/v1/quotes", { method: "POST", body: JSON.stringify(body) });
+    const payload = { ...body };
+    if (body.inputSide) payload.inputSide = body.inputSide;
+    const res = await fetchJson("/api/v1/quotes", { method: "POST", body: JSON.stringify(payload) });
     if (!res.ok) {
       return { ok: false, error: res.error ?? "Unknown error", code: res.code, status: res.status };
     }
@@ -118,7 +123,7 @@ async function getV1Quote(
   return first;
 }
 
-/** POST /webhook/order — submit order using quote amounts (optional). */
+/** POST /webhook/order — submit order using quote amounts. Sends quoteId and providerPrice so fee is computed correctly. */
 async function submitOrder(opts: {
   action: "buy" | "sell";
   f_amount: number;
@@ -129,8 +134,10 @@ async function submitOrder(opts: {
   t_chain: string;
   f_token: string;
   t_token: string;
+  quoteId?: string;
+  providerPrice?: number;
 }): Promise<{ ok: boolean; orderId?: string; error?: string; code?: string }> {
-  const payload = {
+  const payload: Record<string, unknown> = {
     action: opts.action,
     fromIdentifier: "alice@example.com",
     fromType: opts.f_chain === "MOMO" || opts.f_chain === "BANK" ? "EMAIL" : "ADDRESS",
@@ -147,6 +154,8 @@ async function submitOrder(opts: {
     f_provider: opts.f_chain === "MOMO" || opts.f_chain === "BANK" ? "PAYSTACK" : "KLYRA",
     t_provider: opts.t_chain === "MOMO" || opts.t_chain === "BANK" ? "PAYSTACK" : "KLYRA",
   };
+  if (opts.quoteId) payload.quoteId = opts.quoteId;
+  if (opts.providerPrice != null && Number.isFinite(opts.providerPrice)) payload.providerPrice = opts.providerPrice;
   const res = await fetchJson("/webhook/order", { method: "POST", body: JSON.stringify(payload) });
   if (res.ok && res.data && typeof res.data === "object" && "id" in res.data) {
     return { ok: true, orderId: (res.data as { id: string }).id };
@@ -154,7 +163,7 @@ async function submitOrder(opts: {
   return { ok: false, error: res.error, code: res.code };
 }
 
-function logQuote(flow: "ONRAMP" | "OFFRAMP", data: QuoteResponseData, submitResult?: { ok: boolean; orderId?: string; error?: string }): void {
+function logQuote(flow: string, data: QuoteResponseData, submitResult?: { ok: boolean; orderId?: string; error?: string }): void {
   const ts = new Date().toISOString();
   const lines = [
     `[${ts}] ---------- ${flow} ----------`,
@@ -202,6 +211,7 @@ async function runOnramp(doSubmit: boolean): Promise<boolean | void> {
     const f_amount = parseFloat(quote.data.input.amount);
     const t_amount = parseFloat(quote.data.output.amount);
     const exchangeRate = parseFloat(quote.data.exchangeRate);
+    const basePrice = quote.data.basePrice ?? quote.data.debug?.basePrice;
     submitResult = await submitOrder({
       action: "buy",
       f_amount,
@@ -212,6 +222,8 @@ async function runOnramp(doSubmit: boolean): Promise<boolean | void> {
       t_chain: pair.chainCode,
       f_token: "GHS",
       t_token: pair.symbol,
+      quoteId: quote.data.quoteId,
+      providerPrice: basePrice != null ? parseFloat(basePrice) : undefined,
     });
   }
   logQuote("ONRAMP", quote.data, submitResult);
@@ -246,6 +258,7 @@ async function runOfframp(doSubmit: boolean): Promise<boolean | void> {
     const f_amount = parseFloat(quote.data.input.amount);
     const t_amount = parseFloat(quote.data.output.amount);
     const f_price = parseFloat(quote.data.exchangeRate);
+    const basePrice = quote.data.basePrice ?? quote.data.debug?.basePrice;
     submitResult = await submitOrder({
       action: "sell",
       f_amount,
@@ -256,9 +269,109 @@ async function runOfframp(doSubmit: boolean): Promise<boolean | void> {
       t_chain: "MOMO",
       f_token: pair.symbol,
       t_token: "GHS",
+      quoteId: quote.data.quoteId,
+      providerPrice: basePrice != null ? parseFloat(basePrice) : undefined,
     });
   }
   logQuote("OFFRAMP", quote.data, submitResult);
+  return true;
+}
+
+/** Onramp reversed: user enters crypto amount ("I want X USDC") → get fiat to pay. inputSide "to". */
+async function runOnrampReversed(doSubmit: boolean): Promise<boolean | void> {
+  if (onchainPairs.length === 0) {
+    console.log("[skip] No onchain pairs for onramp reversed.");
+    return;
+  }
+  const pair = randomChoice(onchainPairs);
+  const cryptoAmount = randomInRange(1, 15, 2);
+  const quote = await getV1Quote(
+    {
+      action: "ONRAMP",
+      inputAmount: cryptoAmount,
+      inputCurrency: pair.symbol,
+      outputCurrency: "GHS",
+      chain: pair.chainCode,
+      inputSide: "to",
+    },
+    { retryOn5xx: true }
+  );
+  if (!quote.ok) {
+    console.log(
+      `[ONRAMP-reversed] quote failed: ${quote.status} ${quote.error} (${quote.code ?? ""}) — want ${cryptoAmount} ${pair.symbol}`
+    );
+    return false;
+  }
+  let submitResult: { ok: boolean; orderId?: string; error?: string } | undefined;
+  if (doSubmit) {
+    const f_amount = parseFloat(quote.data.input.amount);
+    const t_amount = parseFloat(quote.data.output.amount);
+    const exchangeRate = parseFloat(quote.data.exchangeRate);
+    const basePrice = quote.data.basePrice ?? quote.data.debug?.basePrice;
+    submitResult = await submitOrder({
+      action: "buy",
+      f_amount,
+      t_amount,
+      f_price: 1,
+      t_price: exchangeRate,
+      f_chain: "MOMO",
+      t_chain: pair.chainCode,
+      f_token: "GHS",
+      t_token: pair.symbol,
+      quoteId: quote.data.quoteId,
+      providerPrice: basePrice != null ? parseFloat(basePrice) : undefined,
+    });
+  }
+  logQuote("ONRAMP (want crypto)", quote.data, submitResult);
+  return true;
+}
+
+/** Offramp reversed: user enters fiat amount ("I want X GHS") → get crypto to sell. inputSide "to". */
+async function runOfframpReversed(doSubmit: boolean): Promise<boolean | void> {
+  if (onchainPairs.length === 0) {
+    console.log("[skip] No onchain pairs for offramp reversed.");
+    return;
+  }
+  const pair = randomChoice(onchainPairs);
+  const fiatAmount = randomInRange(50, 400, 2);
+  const quote = await getV1Quote(
+    {
+      action: "OFFRAMP",
+      inputAmount: fiatAmount,
+      inputCurrency: "GHS",
+      outputCurrency: pair.symbol,
+      chain: pair.chainCode,
+      inputSide: "to",
+    },
+    { retryOn5xx: true }
+  );
+  if (!quote.ok) {
+    console.log(
+      `[OFFRAMP-reversed] quote failed: ${quote.status} ${quote.error} (${quote.code ?? ""}) — want ${fiatAmount} GHS`
+    );
+    return false;
+  }
+  let submitResult: { ok: boolean; orderId?: string; error?: string } | undefined;
+  if (doSubmit) {
+    const f_amount = parseFloat(quote.data.input.amount);
+    const t_amount = parseFloat(quote.data.output.amount);
+    const f_price = parseFloat(quote.data.exchangeRate);
+    const basePrice = quote.data.basePrice ?? quote.data.debug?.basePrice;
+    submitResult = await submitOrder({
+      action: "sell",
+      f_amount,
+      t_amount,
+      f_price,
+      t_price: 1,
+      f_chain: pair.chainCode,
+      t_chain: "MOMO",
+      f_token: pair.symbol,
+      t_token: "GHS",
+      quoteId: quote.data.quoteId,
+      providerPrice: basePrice != null ? parseFloat(basePrice) : undefined,
+    });
+  }
+  logQuote("OFFRAMP (want fiat)", quote.data, submitResult);
   return true;
 }
 
@@ -290,6 +403,7 @@ Usage: pnpm test:live:onramp-offramp [options]
   --submit       Also POST to /webhook/order with quote amounts.
   -h, --help     Show this help.
 
+Scenarios (25% each): onramp (enter fiat), onramp-reversed (want crypto), offramp (enter crypto), offramp-reversed (want fiat).
 Env: CORE_URL, CORE_API_KEY (optional).
 `);
     process.exit(0);
@@ -317,14 +431,23 @@ Env: CORE_URL, CORE_API_KEY (optional).
 
   for (;;) {
     round++;
-    const scenario = Math.random() < 0.5 ? "onramp" : "offramp";
+    const r = Math.random();
+    const scenario = r < 0.25 ? "onramp" : r < 0.5 ? "onramp-reversed" : r < 0.75 ? "offramp" : "offramp-reversed";
     try {
       if (scenario === "onramp") {
         const hadQuote = await runOnramp(submit);
         if (hadQuote === true) okCount++;
         else if (hadQuote === false) failCount++;
-      } else {
+      } else if (scenario === "onramp-reversed") {
+        const hadQuote = await runOnrampReversed(submit);
+        if (hadQuote === true) okCount++;
+        else if (hadQuote === false) failCount++;
+      } else if (scenario === "offramp") {
         const hadQuote = await runOfframp(submit);
+        if (hadQuote === true) okCount++;
+        else if (hadQuote === false) failCount++;
+      } else {
+        const hadQuote = await runOfframpReversed(submit);
         if (hadQuote === true) okCount++;
         else if (hadQuote === false) failCount++;
       }

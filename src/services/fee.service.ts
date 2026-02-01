@@ -118,9 +118,9 @@ export function getProfitForOrder(input: FeeQuoteInput): number {
   return getFeeForOrder(input).profit;
 }
 
-/** Transaction-like shape for fee computation (spread-based). */
+/** Transaction-like shape for fee computation (spread-based). TRANSFER yields 0. */
 export type TransactionForFee = {
-  type: "BUY" | "SELL" | "REQUEST" | "CLAIM";
+  type: "BUY" | "SELL" | "REQUEST" | "CLAIM" | "TRANSFER";
   f_amount: number | { toString(): string };
   t_amount: number | { toString(): string };
   f_price: number | { toString(): string };
@@ -135,8 +135,12 @@ function toNum(v: number | { toString(): string } | null | undefined): number {
 
 /**
  * Compute transaction fee for completion (spread-based).
- * BUY: fee = (sellingPrice - providerPrice) * t_amount (in f_token). sellingPrice = t_price.
- * SELL: fee in f_token = (f_price - t_price) * f_amount / t_price when t_price != 0 (spread in fiat converted to f_token).
+ * Fee = platform gain = (platform price − provider price) × quantity = what the pricing engine added for the platform
+ * (what the user paid extra vs the provider). Requires Transaction.providerPrice at order time for accuracy.
+ *
+ * BUY (onramp): fee in fiat = (t_price - providerPrice) * t_amount. t_price = platform sell price (fiat per crypto).
+ * SELL (offramp): fee in fiat = (providerPrice - f_price) * f_amount. f_price = platform buy price (fiat per crypto).
+ *   When providerPrice is null, returns 0 (cannot compute spread).
  * REQUEST/CLAIM: fallback to getFeeForOrder (percentage).
  */
 export function computeTransactionFee(tx: TransactionForFee): number {
@@ -154,10 +158,11 @@ export function computeTransactionFee(tx: TransactionForFee): number {
       return Math.round(fee * 1e8) / 1e8;
     }
     case "SELL": {
-      if (tPrice === 0) return 0;
-      const spreadFiat = (fPrice - tPrice) * fAmount;
-      const feeInFToken = spreadFiat / tPrice;
-      return Math.round(feeInFToken * 1e8) / 1e8;
+      // f_price = platform buy price (fiat per 1 crypto). providerPrice = provider sell price (fiat per 1 crypto).
+      // Fee (platform gain in fiat) = (providerPrice - f_price) * f_amount.
+      if (providerPrice == null || !Number.isFinite(providerPrice)) return 0;
+      const spreadFiat = (providerPrice - fPrice) * fAmount;
+      return Math.round(spreadFiat * 1e8) / 1e8;
     }
     case "REQUEST":
     case "CLAIM":

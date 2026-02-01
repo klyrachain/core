@@ -66,10 +66,13 @@ export async function paystackWebhookRoutes(app: FastifyInstance): Promise<void>
             });
             if (tx && tx.providerSessionId === reference) {
               const newStatus = event === "charge.success" ? ("COMPLETED" as const) : ("FAILED" as const);
-              const updateData: { status: "COMPLETED" | "FAILED"; fee?: number } = { status: newStatus };
+              const updateData: { status: "COMPLETED" | "FAILED"; fee?: number; platformFee?: number } = { status: newStatus };
               if (newStatus === "COMPLETED") {
                 const feeAmount = computeTransactionFee(tx);
-                if (Number.isFinite(feeAmount)) updateData.fee = feeAmount;
+                if (Number.isFinite(feeAmount)) {
+                  updateData.fee = feeAmount;
+                  updateData.platformFee = feeAmount;
+                }
               }
               await prisma.transaction.update({
                 where: { id: ourTransactionId },

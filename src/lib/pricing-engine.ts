@@ -95,3 +95,52 @@ export function effectiveBaseProfit(platformFeePercent: number, providerFeeDecim
   const provider = typeof providerFeeDecimal === "number" ? providerFeeDecimal : 0;
   return Math.min(platform + provider, 0.06);
 }
+
+// --- Auto base profit (plan §4.2–4.5) ---
+
+/** Inventory → base profit (auto mode). 1% at balanced (0.5), 2.5% at 0 or 1. Clamp ratio to [0, 1]. */
+export function inventoryBaseProfitFromRatio(params: {
+  inventoryRatio: number;
+  targetInventory?: number;
+  minPct?: number;
+  maxPct?: number;
+}): number {
+  const target = params.targetInventory ?? 0.5;
+  const minPct = params.minPct ?? 0.01;
+  const maxPct = params.maxPct ?? 0.025;
+  const ratio = Math.min(1, Math.max(0, params.inventoryRatio));
+  const deviation = Math.abs(ratio - target);
+  const normalized = Math.min(deviation * 2, 1);
+  return minPct + (maxPct - minPct) * normalized;
+}
+
+/** Velocity → adjustment (auto mode). >30/h: -0.5%; >15: -0.2%; <5: +0.5%; 5–15: 0. */
+export function velocityAdjustment(tradesPerHour: number): number {
+  const t = tradesPerHour < 0 ? 0 : tradesPerHour;
+  if (t > 30) return -0.005;
+  if (t > 15) return -0.002;
+  if (t < 5) return 0.005;
+  return 0;
+}
+
+/** Volatility → base adjustment (auto mode). Adds 0–1.5% when volatility is high. */
+export function volatilityAdjustmentToBase(volatility: number): number {
+  const v = volatility < 0 ? 0 : volatility;
+  if (v < 0.005) return 0;
+  if (v < 0.015) return 0.005;
+  if (v < 0.03) return 0.01;
+  return 0.015;
+}
+
+/** Effective base profit in auto mode: inventory + velocity + volatility, clamped to [1%, 4.5%]. */
+export function calculateBaseProfit(params: {
+  inventoryRatio: number;
+  tradesPerHour: number;
+  volatility?: number;
+}): number {
+  const inventoryPart = inventoryBaseProfitFromRatio({ inventoryRatio: params.inventoryRatio });
+  const velocityAdj = velocityAdjustment(params.tradesPerHour);
+  const volAdj = params.volatility != null ? volatilityAdjustmentToBase(params.volatility) : 0;
+  const raw = inventoryPart + velocityAdj + volAdj;
+  return Math.min(0.045, Math.max(0.01, raw));
+}

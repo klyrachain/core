@@ -42,6 +42,9 @@ export async function transactionsApiRoutes(app: FastifyInstance): Promise<void>
           f_price: t.f_price.toString(),
           t_price: t.t_price.toString(),
           fee: t.fee != null ? t.fee.toString() : null,
+          platformFee: t.platformFee != null ? t.platformFee.toString() : null,
+          merchantFee: t.merchantFee != null ? t.merchantFee.toString() : null,
+          providerPrice: t.providerPrice != null ? t.providerPrice.toString() : null,
         }));
         return successEnvelopeWithMeta(reply, data, { page, limit, total });
       } catch (err) {
@@ -69,6 +72,9 @@ export async function transactionsApiRoutes(app: FastifyInstance): Promise<void>
         f_price: tx.f_price.toString(),
         t_price: tx.t_price.toString(),
         fee: tx.fee != null ? tx.fee.toString() : null,
+        platformFee: tx.platformFee != null ? tx.platformFee.toString() : null,
+        merchantFee: tx.merchantFee != null ? tx.merchantFee.toString() : null,
+        providerPrice: tx.providerPrice != null ? tx.providerPrice.toString() : null,
       };
       return successEnvelope(reply, data);
     } catch (err) {

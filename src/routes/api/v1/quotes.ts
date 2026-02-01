@@ -15,6 +15,8 @@ const QuoteRequestBodySchema = z.object({
   inputCurrency: z.string().min(1),
   outputCurrency: z.string().min(1),
   chain: z.string().optional(),
+  /** "from" = amount is paying side (default). "to" = amount is receiving side (e.g. "I want X crypto"). */
+  inputSide: z.enum(["from", "to"]).optional().default("from"),
 });
 
 export async function v1QuotesRoutes(app: FastifyInstance): Promise<void> {
@@ -37,6 +39,7 @@ export async function v1QuotesRoutes(app: FastifyInstance): Promise<void> {
         inputCurrency: body.inputCurrency.trim().toUpperCase(),
         outputCurrency: body.outputCurrency.trim().toUpperCase(),
         chain: body.chain?.trim(),
+        inputSide: body.inputSide === "to" ? "to" : "from",
       };
 
       const apiKey = (req as FastifyRequest & { apiKey?: { businessId?: string } }).apiKey;

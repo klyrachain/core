@@ -52,6 +52,7 @@ export async function paystackPaymentsApiRoutes(app: FastifyInstance): Promise<v
       let ourTransactionId = transaction_id;
       if (!ourTransactionId) {
         try {
+          // providerPrice not set here; for accurate fee at completion, set via metadata/quote when linking to a v1 quote.
           const tx = await prisma.transaction.create({
             data: {
               type: "BUY" as TransactionType,
@@ -68,6 +69,7 @@ export async function paystackPaymentsApiRoutes(app: FastifyInstance): Promise<v
               t_token: "USDC",
               f_provider: "PAYSTACK" as PaymentProvider,
               t_provider: "NONE",
+              providerPrice: null,
             },
           });
           ourTransactionId = tx.id;

@@ -14,7 +14,7 @@ import {
   getCachedPricingQuote,
   ensureValidationCache,
 } from "./validation-cache.service.js";
-import { quoteOnRamp, quoteOffRamp, effectiveBaseProfit } from "../lib/pricing-engine.js";
+import { quoteOnRamp, quoteOffRamp, calculateBaseProfit } from "../lib/pricing-engine.js";
 import { getBalance } from "../lib/redis.js";
 import { prisma } from "../lib/prisma.js";
 import {
@@ -267,8 +267,10 @@ export async function validateOrder(input: OrderValidationInput): Promise<OrderV
   }
 
   if (input.action === "buy" || input.action === "sell") {
-    const baseProfitOnRamp = effectiveBaseProfit(platformFee.baseFeePercent, tProvider.fee ?? 0);
-    const baseProfitOffRamp = effectiveBaseProfit(platformFee.baseFeePercent, fProvider.fee ?? 0);
+    // Same auto base profit as public quote (plan §7.2) so validation matches.
+    const volatility = 0.01;
+    const baseProfitOnRamp = calculateBaseProfit({ inventoryRatio: 0.5, tradesPerHour: 0, volatility });
+    const baseProfitOffRamp = baseProfitOnRamp;
     const PRICE_TOLERANCE = 0.02;
 
     if (input.action === "buy" && !(fFiat && !tFiat)) {

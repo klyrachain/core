@@ -124,6 +124,9 @@ export async function orderWebhookRoutes(app: FastifyInstance): Promise<void> {
     }
 
     try {
+      // Fee = platform gain = (platform price − provider price) × quantity. We need provider quote at order time.
+      // Set from body.providerPrice or from stored quote (basePrice) when quoteId is sent. Clients should send quoteId
+      // so providerPrice is stored and computeTransactionFee() at completion returns accurate fee.
       let providerPrice: number | null = body.providerPrice ?? null;
       if (providerPrice == null && body.quoteId) {
         const raw = await getStoredQuote(body.quoteId);

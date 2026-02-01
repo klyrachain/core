@@ -6,11 +6,14 @@
 import { randomUUID } from "node:crypto";
 import { getOnrampQuote } from "./onramp-quote.service.js";
 import { getSwapQuote } from "./swap-quote.service.js";
-import { getCachedChains, getCachedCostBasis, getCachedPlatformFee, getCachedProviders, getCachedTokens, ensureValidationCache } from "./validation-cache.service.js";
-import { quoteOnRamp, quoteOffRamp, effectiveBaseProfit, volatilityToPremium } from "../lib/pricing-engine.js";
+import { getCachedChains, getCachedCostBasis, getCachedTokens, ensureValidationCache } from "./validation-cache.service.js";
+import { quoteOnRamp, quoteOffRamp, calculateBaseProfit, volatilityToPremium } from "../lib/pricing-engine.js";
 import { getFeeForOrder } from "./fee.service.js";
 
 export type QuoteAction = "ONRAMP" | "OFFRAMP" | "SWAP";
+
+/** "from" = amount is the paying side (fiat for onramp, crypto for offramp). "to" = amount is the receiving side. */
+export type InputSide = "from" | "to";
 
 export type QuoteRequestDto = {
   action: QuoteAction;
@@ -18,6 +21,8 @@ export type QuoteRequestDto = {
   inputCurrency: string;
   outputCurrency: string;
   chain?: string;
+  /** Which side the amount refers to. Default "from". "to" = e.g. "I want X crypto" (onramp) or "I want X fiat" (offramp). */
+  inputSide?: InputSide;
 };
 
 export type QuoteResponseDto = {
@@ -158,13 +163,35 @@ async function getRawRate(params: {
 }
 
 /**
+ * Canonical from/to for action: ONRAMP from=fiat to=crypto, OFFRAMP from=crypto to=fiat, SWAP from=input to=output.
+ */
+function getCanonicalCurrencies(
+  action: QuoteAction,
+  inputCurrency: string,
+  outputCurrency: string,
+  inputSide: InputSide
+): { fromCurrency: string; toCurrency: string } {
+  if (action === "SWAP") {
+    return { fromCurrency: inputCurrency, toCurrency: outputCurrency };
+  }
+  // ONRAMP: from = fiat, to = crypto. OFFRAMP: from = crypto, to = fiat.
+  if (inputSide === "from") {
+    return { fromCurrency: inputCurrency, toCurrency: outputCurrency };
+  }
+  // inputSide "to": user sent amount in output (what they want). So from = outputCurrency, to = inputCurrency in request terms.
+  return { fromCurrency: outputCurrency, toCurrency: inputCurrency };
+}
+
+/**
  * Build public quote: raw rate → system state → pricing engine → response.
+ * Supports inputSide "from" (default) or "to": amount can be the paying side or the receiving side (legacy-style).
  */
 export async function buildPublicQuote(
   request: QuoteRequestDto,
   options?: { includeDebug?: boolean }
 ): Promise<PublicQuoteResult> {
-  const { action, inputAmount, inputCurrency, outputCurrency, chain } = request;
+  const { action, inputAmount, inputCurrency, outputCurrency, chain, inputSide: inputSideRaw } = request;
+  const inputSide: InputSide = inputSideRaw === "to" ? "to" : "from";
   const inputAmountNum = parseFloat(inputAmount);
   if (!Number.isFinite(inputAmountNum) || inputAmountNum <= 0) {
     return { success: false, error: "inputAmount must be a positive number", code: "INVALID_INPUT_AMOUNT", status: 400 };
@@ -176,24 +203,26 @@ export async function buildPublicQuote(
     }
   }
 
-  const raw = await getRawRate({ action, inputCurrency, outputCurrency, chain });
+  const { fromCurrency, toCurrency } = getCanonicalCurrencies(action, inputCurrency, outputCurrency, inputSide);
+  const raw = await getRawRate({ action, inputCurrency: fromCurrency, outputCurrency: toCurrency, chain });
   if (!raw.ok) return { success: false, error: raw.error, code: "RATE_UNAVAILABLE", status: raw.status ?? 502 };
 
   const basePrice = raw.basePrice;
 
   await ensureValidationCache();
-  const platformFee = await getCachedPlatformFee();
-  const baseFeePercent = platformFee?.baseFeePercent ?? 1;
-  const providers = await getCachedProviders();
-  const providerFee = providers?.find((p) => p.code === "KLYRA" || p.code === "PAYSTACK")?.fee ?? 0.005;
-  const baseProfit = effectiveBaseProfit(baseFeePercent, providerFee);
   const volatility = DEFAULT_VOLATILITY;
+  // Auto base profit (plan §7.2): inventory + velocity + volatility → [1%, 4.5%]. Use defaults until we have real inventory ratio / tradesPerHour.
+  const baseProfit = calculateBaseProfit({
+    inventoryRatio: 0.5,
+    tradesPerHour: 0,
+    volatility,
+  });
 
   let exchangeRate: number;
   let debug: QuoteResponseDto["debug"] | undefined;
 
   if (action === "ONRAMP") {
-    const costBasis = await getCachedCostBasis(chain!, outputCurrency);
+    const costBasis = await getCachedCostBasis(chain!, toCurrency);
     const avgBuyPrice = costBasis ?? basePrice;
     const result = quoteOnRamp({
       providerPrice: basePrice,
@@ -247,34 +276,49 @@ export async function buildPublicQuote(
     }
   }
 
-  let outputAmount: number;
+  // From/to amounts in canonical form (from = paying side, to = receiving side).
+  let fromAmount: number;
+  let toAmount: number;
   if (action === "ONRAMP") {
-    outputAmount = inputAmountNum / exchangeRate;
+    if (inputSide === "from") {
+      fromAmount = inputAmountNum;
+      toAmount = fromAmount / exchangeRate;
+    } else {
+      toAmount = inputAmountNum;
+      fromAmount = toAmount * exchangeRate;
+    }
   } else if (action === "OFFRAMP") {
-    outputAmount = inputAmountNum * exchangeRate;
+    if (inputSide === "from") {
+      fromAmount = inputAmountNum;
+      toAmount = fromAmount * exchangeRate;
+    } else {
+      toAmount = inputAmountNum;
+      fromAmount = toAmount / exchangeRate;
+    }
   } else {
-    outputAmount = inputAmountNum * exchangeRate;
+    fromAmount = inputAmountNum;
+    toAmount = fromAmount * exchangeRate;
   }
 
-  // Fee = (selling price − provider price) × quantity (spread-based, not %)
+  // Fee = (selling price − provider price) × quantity (spread-based for onramp/offramp)
   let platformFeeNum: number;
   if (action === "ONRAMP") {
     const feePerUnit = exchangeRate - basePrice;
-    platformFeeNum = feePerUnit * outputAmount;
+    platformFeeNum = feePerUnit * toAmount;
   } else if (action === "OFFRAMP") {
     const feePerUnit = basePrice - exchangeRate;
-    platformFeeNum = feePerUnit * inputAmountNum;
+    platformFeeNum = feePerUnit * fromAmount;
   } else {
     const feeQuote = getFeeForOrder({
       action: "buy",
-      f_amount: inputAmountNum,
-      t_amount: outputAmount,
+      f_amount: fromAmount,
+      t_amount: toAmount,
       f_price: 1,
       t_price: exchangeRate,
       f_chain: chain ?? "",
       t_chain: chain ?? "",
-      f_token: inputCurrency,
-      t_token: outputCurrency,
+      f_token: fromCurrency,
+      t_token: toCurrency,
     });
     platformFeeNum = feeQuote.feeAmount;
   }
@@ -290,10 +334,10 @@ export async function buildPublicQuote(
     expiresAt,
     exchangeRate: exchangeRate.toFixed(2),
     basePrice: basePrice.toFixed(2),
-    input: { amount: inputAmount.trim(), currency: inputCurrency },
+    input: { amount: fromAmount.toFixed(2), currency: fromCurrency },
     output: {
-      amount: outputAmount.toFixed(2),
-      currency: outputCurrency,
+      amount: toAmount.toFixed(2),
+      currency: toCurrency,
       ...(chain ? { chain } : {}),
     },
     fees: {

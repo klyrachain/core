@@ -1,0 +1,2070 @@
+Quotes test started. Supported: 4 onchain pairs, fiat: MOMO, BANK. Delay 2000ms. Submit orders: true. Stop with Ctrl+C.
+
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=83.60 chain=ETHEREUM output=ETH
+[2026-02-01T22:56:10.199Z] ---------- OFFRAMP ----------
+  quoteId      6d525ad0-803b-4760-b461-fce3c03a5d61
+  expiresAt    2026-02-01T22:56:40.181Z
+  exchangeRate 10.72
+  input        26.46 USDC
+  output       283.78 GHS (BASE)
+  fees         network 0  platform 7.28  total 7.28
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created d9180304-c207-4dfd-97cc-1a21116267db
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=22.38 chain=BASE input=ETH
+[2026-02-01T22:56:17.058Z] ---------- ONRAMP ----------
+  quoteId      9f71cc2f-3743-44b4-84ea-fb450210cd61
+  expiresAt    2026-02-01T22:56:47.045Z
+  exchangeRate 12.30
+  input        24.42 GHS
+  output       1.99 USDC (BASE)
+  fees         network 0  platform 0.60  total 0.60
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 557614bd-9433-43f0-90c5-197e55e15052
+[2026-02-01T22:56:19.305Z] ---------- OFFRAMP ----------
+  quoteId      945c1db4-6fcc-4b34-b424-bb56cbd7f0ce
+  expiresAt    2026-02-01T22:56:49.295Z
+  exchangeRate 10.72
+  input        35.86 USDC
+  output       384.60 GHS (ETHEREUM)
+  fees         network 0  platform 9.86  total 9.86
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created b3358f7f-da87-4f5e-942e-c8ad0a9f1895
+[2026-02-01T22:56:21.575Z] ---------- OFFRAMP ----------
+  quoteId      9b480c3e-cbe8-4094-8b0c-0c91863fa93a
+  expiresAt    2026-02-01T22:56:51.562Z
+  exchangeRate 10.72
+  input        22.39 USDC
+  output       240.13 GHS (BASE)
+  fees         network 0  platform 6.16  total 6.16
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 3fcb4230-4f4a-4f65-b71b-1e0ff5d1c999
+[2026-02-01T22:56:23.848Z] ---------- OFFRAMP ----------
+  quoteId      5812da06-f4e7-42e0-9b08-873284004233
+  expiresAt    2026-02-01T22:56:53.818Z
+  exchangeRate 10.72
+  input        28.73 USDC
+  output       308.13 GHS (BASE)
+  fees         network 0  platform 7.90  total 7.90
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created a41af38a-0272-4b22-ae78-145db79b395c
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=28.32 chain=BASE input=ETH
+[2026-02-01T22:56:30.138Z] ---------- ONRAMP ----------
+  quoteId      c0f714ba-ffb7-406d-ac48-f013cdf2253b
+  expiresAt    2026-02-01T22:57:00.127Z
+  exchangeRate 12.30
+  input        148.05 GHS
+  output       12.04 USDC (BASE)
+  fees         network 0  platform 3.61  total 3.61
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 470257d5-afe7-4b32-8c06-f6b5dca7f7ca
+[2026-02-01T22:56:32.394Z] ---------- OFFRAMP ----------
+  quoteId      d808c57c-d0ca-490d-9c2d-aa54188e3af1
+  expiresAt    2026-02-01T22:57:02.383Z
+  exchangeRate 10.72
+  input        48.34 USDC
+  output       518.45 GHS (ETHEREUM)
+  fees         network 0  platform 13.29  total 13.29
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 031d0011-bea5-4b85-a228-80c87a20038c
+[2026-02-01T22:56:34.650Z] ---------- OFFRAMP ----------
+  quoteId      e5cad080-fa34-4816-a348-92787748d0f2
+  expiresAt    2026-02-01T22:57:04.642Z
+  exchangeRate 10.72
+  input        35.02 USDC
+  output       375.59 GHS (ETHEREUM)
+  fees         network 0  platform 9.63  total 9.63
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 6a8a7b5a-8a1e-4a3b-9ed0-00a1d5844b5b
+[2026-02-01T22:56:36.901Z] ---------- ONRAMP ----------
+  quoteId      a1e0975d-cc16-4530-aad2-d9d517cf2b6d
+  expiresAt    2026-02-01T22:57:06.890Z
+  exchangeRate 12.30
+  input        105.96 GHS
+  output       8.61 USDC (BASE)
+  fees         network 0  platform 2.58  total 2.58
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created f51c0de9-3559-4b62-938f-5465f08d7594
+[2026-02-01T22:56:39.150Z] ---------- OFFRAMP ----------
+  quoteId      6589aa6b-9168-4df5-ad1c-85308079ef81
+  expiresAt    2026-02-01T22:57:09.140Z
+  exchangeRate 10.72
+  input        19.52 USDC
+  output       209.35 GHS (BASE)
+  fees         network 0  platform 5.37  total 5.37
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 146fc00a-b575-45a7-b3d5-1b2aed84b152
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=135.38 chain=ETHEREUM output=ETH
+[2026-02-01T22:56:45.106Z] ---------- OFFRAMP ----------
+  quoteId      5ff37938-56c5-4e3d-91fa-c9a9b4a78ef7
+  expiresAt    2026-02-01T22:57:15.097Z
+  exchangeRate 10.72
+  input        37.95 USDC
+  output       407.01 GHS (ETHEREUM)
+  fees         network 0  platform 10.44  total 10.44
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 2c3db670-9d30-42fc-876a-951f897654b1
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=39.62 chain=ETHEREUM input=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=12.23 chain=BASE input=ETH
+[2026-02-01T22:56:54.981Z] ---------- OFFRAMP ----------
+  quoteId      c8d5b62e-45b3-469a-87cf-017cff5dff38
+  expiresAt    2026-02-01T22:57:24.962Z
+  exchangeRate 10.72
+  input        45.32 USDC
+  output       486.06 GHS (ETHEREUM)
+  fees         network 0  platform 12.46  total 12.46
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created ca2260ac-e2eb-4f0e-aba6-2c0c072c88a6
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=20.16 chain=BASE output=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=6.46 chain=BASE input=ETH
+[summary] Quotes: 12 ok, 8 failed (last 20 rounds)
+
+[2026-02-01T22:57:05.470Z] ---------- OFFRAMP ----------
+  quoteId      cef4e558-5baf-4e24-9f0a-22e8448bf64c
+  expiresAt    2026-02-01T22:57:35.448Z
+  exchangeRate 10.72
+  input        22.36 USDC
+  output       239.81 GHS (BASE)
+  fees         network 0  platform 6.15  total 6.15
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 18fe6a9e-3da9-49aa-b67a-689f1623d934
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=138.37 chain=ETHEREUM output=ETH
+[2026-02-01T22:57:11.829Z] ---------- OFFRAMP ----------
+  quoteId      fe21cfe6-f97d-4705-bcac-23a88e3d44db
+  expiresAt    2026-02-01T22:57:41.783Z
+  exchangeRate 10.72
+  input        16.84 USDC
+  output       180.61 GHS (BASE)
+  fees         network 0  platform 4.63  total 4.63
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 7ebb078b-21f7-446d-bcf4-8107631bbf15
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=45.56 chain=BASE input=ETH
+[2026-02-01T22:57:19.054Z] ---------- OFFRAMP ----------
+  quoteId      e46212b2-d961-43d7-bb2f-b1a258a9476d
+  expiresAt    2026-02-01T22:57:49.032Z
+  exchangeRate 10.72
+  input        14.04 USDC
+  output       150.58 GHS (BASE)
+  fees         network 0  platform 3.86  total 3.86
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 912ff4dd-8e7f-4673-a5df-0c2a1db3e8d4
+[2026-02-01T22:57:21.360Z] ---------- OFFRAMP ----------
+  quoteId      ab35a534-0f4a-4420-a389-15e201014d15
+  expiresAt    2026-02-01T22:57:51.339Z
+  exchangeRate 10.72
+  input        23.84 USDC
+  output       255.68 GHS (BASE)
+  fees         network 0  platform 6.56  total 6.56
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created be4f6394-ec5c-4422-8c01-885709873087
+[2026-02-01T22:57:27.991Z] ---------- ONRAMP ----------
+  quoteId      50b02db5-c909-4484-aafd-d24023506332
+  expiresAt    2026-02-01T22:57:57.972Z
+  exchangeRate 12.30
+  input        22.29 GHS
+  output       1.81 USDC (ETHEREUM)
+  fees         network 0  platform 0.54  total 0.54
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 0bd4e5ed-e4dc-4c97-8252-264225412779
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=14.16 chain=ETHEREUM input=ETH
+[2026-02-01T22:57:33.781Z] ---------- ONRAMP ----------
+  quoteId      3911d97b-8a5e-48ff-a73d-dc2a0800b460
+  expiresAt    2026-02-01T22:58:03.772Z
+  exchangeRate 12.30
+  input        49.81 GHS
+  output       4.05 USDC (BASE)
+  fees         network 0  platform 1.21  total 1.21
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 60db9fa0-30e3-4283-a45e-6439a166f08e
+[2026-02-01T22:57:36.056Z] ---------- ONRAMP ----------
+  quoteId      1a00f789-9c64-4338-a8d7-0da3f34abd93
+  expiresAt    2026-02-01T22:58:06.045Z
+  exchangeRate 12.30
+  input        105.53 GHS
+  output       8.58 USDC (ETHEREUM)
+  fees         network 0  platform 2.57  total 2.57
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 6e74afef-7dc3-4606-b025-20c0b3eebde0
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=145.48 chain=BASE output=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=63.70 chain=BASE output=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=125.35 chain=BASE output=ETH
+[2026-02-01T22:57:49.677Z] ---------- ONRAMP ----------
+  quoteId      6306327c-5b18-4425-8d35-eacc2c8df667
+  expiresAt    2026-02-01T22:58:19.666Z
+  exchangeRate 12.30
+  input        149.20 GHS
+  output       12.13 USDC (ETHEREUM)
+  fees         network 0  platform 3.64  total 3.64
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created a3e5e3e4-ebac-4f4a-87b8-30f3f2f49fde
+[2026-02-01T22:57:51.959Z] ---------- OFFRAMP ----------
+  quoteId      561119d4-a9a8-4246-8f22-a1605da0a115
+  expiresAt    2026-02-01T22:58:21.948Z
+  exchangeRate 10.72
+  input        24.66 USDC
+  output       264.48 GHS (BASE)
+  fees         network 0  platform 6.78  total 6.78
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created a9798ea6-6ab7-4d5c-a118-cfacfd328ff6
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=27.91 chain=ETHEREUM output=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=8.55 chain=BASE input=ETH
+[2026-02-01T22:58:02.042Z] ---------- OFFRAMP ----------
+  quoteId      e3c5f4c8-bd62-4354-bf69-c6efc573d54e
+  expiresAt    2026-02-01T22:58:32.027Z
+  exchangeRate 10.72
+  input        24.12 USDC
+  output       258.69 GHS (BASE)
+  fees         network 0  platform 6.63  total 6.63
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 785cf3a2-ff38-4935-b249-dc418f04cdce
+[2026-02-01T22:58:04.290Z] ---------- OFFRAMP ----------
+  quoteId      04d6add0-220f-4784-91ac-db5a936e301d
+  expiresAt    2026-02-01T22:58:34.276Z
+  exchangeRate 10.72
+  input        45.80 USDC
+  output       491.20 GHS (ETHEREUM)
+  fees         network 0  platform 12.60  total 12.60
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 184c901b-7b63-4002-a7de-4090c4aa207f
+[2026-02-01T22:58:06.547Z] ---------- OFFRAMP ----------
+  quoteId      8c38b2ee-7288-424a-a11c-0bc0339ab78e
+  expiresAt    2026-02-01T22:58:36.531Z
+  exchangeRate 10.72
+  input        11.07 USDC
+  output       118.73 GHS (BASE)
+  fees         network 0  platform 3.04  total 3.04
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 52d2e84e-a410-4ff4-a53a-e20e0282d2e1
+[summary] Quotes: 12 ok, 8 failed (last 20 rounds)
+
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=27.03 chain=BASE input=ETH
+[2026-02-01T22:58:13.918Z] ---------- OFFRAMP ----------
+  quoteId      d9b6188b-4f38-4133-9f92-b764d16d0a54
+  expiresAt    2026-02-01T22:58:43.905Z
+  exchangeRate 10.72
+  input        10.25 USDC
+  output       109.93 GHS (BASE)
+  fees         network 0  platform 2.82  total 2.82
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 240804c3-3bc3-4c98-8edf-5005ada843a2
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=7.98 chain=ETHEREUM input=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=70.52 chain=BASE output=ETH
+[2026-02-01T22:58:24.586Z] ---------- OFFRAMP ----------
+  quoteId      5993f254-97f3-4aa5-a85f-198911a01f6c
+  expiresAt    2026-02-01T22:58:54.575Z
+  exchangeRate 10.72
+  input        28.68 USDC
+  output       307.59 GHS (ETHEREUM)
+  fees         network 0  platform 7.89  total 7.89
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 59840e51-61db-47a7-bbaa-4339d03b31f1
+[2026-02-01T22:58:26.846Z] ---------- OFFRAMP ----------
+  quoteId      2c3c6149-e017-4d12-a142-81658d5536d6
+  expiresAt    2026-02-01T22:58:56.838Z
+  exchangeRate 10.72
+  input        47.41 USDC
+  output       508.47 GHS (BASE)
+  fees         network 0  platform 13.04  total 13.04
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created cdcf7289-4789-4cd2-abb0-015d920027a9
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=86.99 chain=BASE output=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=114.45 chain=BASE output=ETH
+[2026-02-01T22:58:39.069Z] ---------- ONRAMP ----------
+  quoteId      4c4c7f1a-9d84-454a-8ba4-22bb7b2dd110
+  expiresAt    2026-02-01T22:59:09.055Z
+  exchangeRate 12.30
+  input        92.12 GHS
+  output       7.49 USDC (BASE)
+  fees         network 0  platform 2.25  total 2.25
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created cbb4aa27-d2dc-4778-9abc-9871a36f1ddb
+[2026-02-01T22:58:41.369Z] ---------- OFFRAMP ----------
+  quoteId      405080f7-f2f8-4162-8000-6249e0d7ed8f
+  expiresAt    2026-02-01T22:59:11.359Z
+  exchangeRate 10.72
+  input        29.94 USDC
+  output       321.11 GHS (BASE)
+  fees         network 0  platform 8.23  total 8.23
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created dd743c52-50d2-416b-a753-bc2e216e4fbd
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=25.11 chain=ETHEREUM input=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=95.36 chain=BASE output=ETH
+[2026-02-01T22:58:51.435Z] ---------- OFFRAMP ----------
+  quoteId      d5f4d31a-4fb8-4018-b74c-0caf3a5fa49a
+  expiresAt    2026-02-01T22:59:21.422Z
+  exchangeRate 10.72
+  input        25.16 USDC
+  output       269.84 GHS (BASE)
+  fees         network 0  platform 6.92  total 6.92
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created b5d8fb74-7e1c-4736-9abd-0d2e5928aac4
+[2026-02-01T22:58:53.702Z] ---------- OFFRAMP ----------
+  quoteId      ecdca9b8-4bd1-4558-a9bc-fd5f113325f2
+  expiresAt    2026-02-01T22:59:23.691Z
+  exchangeRate 10.72
+  input        40.02 USDC
+  output       429.21 GHS (ETHEREUM)
+  fees         network 0  platform 11.01  total 11.01
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 9a077637-b056-4244-9a9b-ed4002d3eea9
+[2026-02-01T22:58:56.084Z] ---------- OFFRAMP ----------
+  quoteId      d72be74e-31d0-47fc-a6e3-02215d380e67
+  expiresAt    2026-02-01T22:59:26.066Z
+  exchangeRate 10.72
+  input        27.72 USDC
+  output       297.30 GHS (ETHEREUM)
+  fees         network 0  platform 7.62  total 7.62
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 2b5026c0-ffe0-4f0f-8c93-5404f73966f4
+[2026-02-01T22:58:58.341Z] ---------- OFFRAMP ----------
+  quoteId      6f1fd401-9a1b-484a-9d7c-f6bbe55312ff
+  expiresAt    2026-02-01T22:59:28.325Z
+  exchangeRate 10.72
+  input        9.91 USDC
+  output       106.28 GHS (ETHEREUM)
+  fees         network 0  platform 2.73  total 2.73
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 519d5bd0-d338-4d24-ac73-9cd0719dee33
+[2026-02-01T22:59:01.079Z] ---------- ONRAMP ----------
+  quoteId      7e517507-1cd8-464f-85bf-3d7e4bcfd165
+  expiresAt    2026-02-01T22:59:31.068Z
+  exchangeRate 12.30
+  input        25.99 GHS
+  output       2.11 USDC (ETHEREUM)
+  fees         network 0  platform 0.63  total 0.63
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 95414379-a664-4d07-a1f3-74b989ecf4a8
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=36.61 chain=ETHEREUM output=ETH
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=68.68 chain=ETHEREUM output=ETH
+[2026-02-01T22:59:13.921Z] ---------- ONRAMP ----------
+  quoteId      d3621e04-ed63-49c8-8a53-cbbd5f08e48f
+  expiresAt    2026-02-01T22:59:43.909Z
+  exchangeRate 12.30
+  input        25.11 GHS
+  output       2.04 USDC (BASE)
+  fees         network 0  platform 0.61  total 0.61
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created d806401b-8e4b-43d1-ba52-08b1a1ee3918
+[summary] Quotes: 11 ok, 9 failed (last 20 rounds)
+
+[2026-02-01T22:59:16.216Z] ---------- OFFRAMP ----------
+  quoteId      61da8250-ac3c-4baf-84da-8b8814185c47
+  expiresAt    2026-02-01T22:59:46.196Z
+  exchangeRate 10.72
+  input        49.57 USDC
+  output       531.64 GHS (BASE)
+  fees         network 0  platform 13.63  total 13.63
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 7fe3bb49-b4d4-49f6-ac48-1113ca801103
+[2026-02-01T22:59:18.529Z] ---------- ONRAMP ----------
+  quoteId      930ea435-31d3-4c98-a2ec-c0d4a1a3cfcb
+  expiresAt    2026-02-01T22:59:48.520Z
+  exchangeRate 12.30
+  input        84.42 GHS
+  output       6.86 USDC (ETHEREUM)
+  fees         network 0  platform 2.06  total 2.06
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 06af869b-90e7-43de-937f-a9e4b97454b8
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=17.71 chain=BASE input=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=29.55 chain=BASE input=ETH
+[2026-02-01T22:59:28.157Z] ---------- ONRAMP ----------
+  quoteId      db423881-a140-440f-a195-12b53ef9562d
+  expiresAt    2026-02-01T22:59:58.145Z
+  exchangeRate 12.30
+  input        86.30 GHS
+  output       7.02 USDC (ETHEREUM)
+  fees         network 0  platform 2.10  total 2.10
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created a8536e7c-3886-435d-b1c1-b3ac5fc6c5f3
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=23.77 chain=ETHEREUM output=ETH
+[2026-02-01T22:59:34.307Z] ---------- ONRAMP ----------
+  quoteId      cf8f3169-07f3-4697-bb34-9daf63b16f54
+  expiresAt    2026-02-01T23:00:04.298Z
+  exchangeRate 12.30
+  input        55.64 GHS
+  output       4.52 USDC (BASE)
+  fees         network 0  platform 1.36  total 1.36
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 77f16cb9-e1ff-4b64-b304-f1363ae8edd8
+[2026-02-01T22:59:36.563Z] ---------- OFFRAMP ----------
+  quoteId      360d2f88-898a-4bc9-9659-a9c032b0bf29
+  expiresAt    2026-02-01T23:00:06.549Z
+  exchangeRate 10.72
+  input        41.90 USDC
+  output       449.38 GHS (ETHEREUM)
+  fees         network 0  platform 11.52  total 11.52
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created f1187d91-3904-42bc-9fbd-ab7eed602101
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=10.72 chain=BASE input=ETH
+[2026-02-01T22:59:42.901Z] ---------- OFFRAMP ----------
+  quoteId      337d8c4c-f435-484e-ba36-6cee96df1374
+  expiresAt    2026-02-01T23:00:12.892Z
+  exchangeRate 10.72
+  input        6.16 USDC
+  output       66.07 GHS (BASE)
+  fees         network 0  platform 1.69  total 1.69
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created e74ed413-00f7-4619-89d8-29c994936bc2
+[2026-02-01T22:59:45.514Z] ---------- OFFRAMP ----------
+  quoteId      918f28b8-6baa-44a0-9c42-20454b5c2d08
+  expiresAt    2026-02-01T23:00:15.499Z
+  exchangeRate 10.72
+  input        37.16 USDC
+  output       398.54 GHS (BASE)
+  fees         network 0  platform 10.22  total 10.22
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created cfbf9fbc-b7a0-487b-89a9-17449e5fb99f
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=40.86 chain=ETHEREUM input=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=28.00 chain=BASE input=ETH
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=93.31 chain=ETHEREUM output=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=45.87 chain=BASE input=ETH
+[2026-02-01T23:00:03.671Z] ---------- ONRAMP ----------
+  quoteId      bd413eb6-26c0-464e-92c4-653cbe6caa03
+  expiresAt    2026-02-01T23:00:33.658Z
+  exchangeRate 12.30
+  input        50.60 GHS
+  output       4.11 USDC (ETHEREUM)
+  fees         network 0  platform 1.23  total 1.23
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 4f6234a4-0709-40a7-b4fc-356ea08ea775
+[2026-02-01T23:00:05.955Z] ---------- ONRAMP ----------
+  quoteId      831a1519-293e-4b9c-98f3-84b9757be675
+  expiresAt    2026-02-01T23:00:35.946Z
+  exchangeRate 12.30
+  input        132.41 GHS
+  output       10.77 USDC (BASE)
+  fees         network 0  platform 3.23  total 3.23
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 44463758-541a-461b-9016-a5ed07a7a929
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=16.62 chain=BASE input=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=36.17 chain=BASE input=ETH
+[2026-02-01T23:00:16.310Z] ---------- ONRAMP ----------
+  quoteId      33c912c3-54f8-4794-af39-c10098ee818a
+  expiresAt    2026-02-01T23:00:46.299Z
+  exchangeRate 12.30
+  input        131.60 GHS
+  output       10.70 USDC (ETHEREUM)
+  fees         network 0  platform 3.21  total 3.21
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 5b67eb36-9134-4210-8d8d-7a6581f746f6
+[summary] Quotes: 10 ok, 10 failed (last 20 rounds)
+
+[2026-02-01T23:00:18.725Z] ---------- OFFRAMP ----------
+  quoteId      a5642b3b-20dc-4c04-8e37-615ec7e14853
+  expiresAt    2026-02-01T23:00:48.715Z
+  exchangeRate 10.72
+  input        41.03 USDC
+  output       440.05 GHS (BASE)
+  fees         network 0  platform 11.28  total 11.28
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created fda64408-e16d-4ed6-97e1-a150f9a313c3
+[2026-02-01T23:00:21.003Z] ---------- ONRAMP ----------
+  quoteId      8aaae363-7f08-4d2c-a2c5-8bbd216380a5
+  expiresAt    2026-02-01T23:00:50.992Z
+  exchangeRate 12.30
+  input        38.88 GHS
+  output       3.16 USDC (BASE)
+  fees         network 0  platform 0.95  total 0.95
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 945c3006-787e-414d-97ff-d034a77c9845
+[2026-02-01T23:00:23.285Z] ---------- OFFRAMP ----------
+  quoteId      2f6e75dd-19e6-436f-be95-ba3ea7b53c7a
+  expiresAt    2026-02-01T23:00:53.269Z
+  exchangeRate 10.72
+  input        45.66 USDC
+  output       489.70 GHS (ETHEREUM)
+  fees         network 0  platform 12.56  total 12.56
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 7f2ab162-5e0c-4078-aeb2-21af7fffb92b
+[2026-02-01T23:00:25.529Z] ---------- OFFRAMP ----------
+  quoteId      4a0dcae5-14b7-4ced-83ec-6f3e58e280de
+  expiresAt    2026-02-01T23:00:55.518Z
+  exchangeRate 10.72
+  input        42.71 USDC
+  output       458.06 GHS (ETHEREUM)
+  fees         network 0  platform 11.75  total 11.75
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 9ac674d8-92b3-4f13-9025-2c1b48e881f8
+[2026-02-01T23:00:27.772Z] ---------- OFFRAMP ----------
+  quoteId      50cd12c8-7569-4e17-81e7-b78a1d260fb4
+  expiresAt    2026-02-01T23:00:57.761Z
+  exchangeRate 10.72
+  input        16.28 USDC
+  output       174.60 GHS (ETHEREUM)
+  fees         network 0  platform 4.48  total 4.48
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 7ba3ee11-f8ee-4005-b49e-2aaf1c9882b5
+[2026-02-01T23:00:30.311Z] ---------- ONRAMP ----------
+  quoteId      d97519ae-770f-4c04-8e59-c9c2be203ad9
+  expiresAt    2026-02-01T23:01:00.302Z
+  exchangeRate 12.30
+  input        20.87 GHS
+  output       1.70 USDC (ETHEREUM)
+  fees         network 0  platform 0.51  total 0.51
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created cfaaf19f-a474-4959-9d01-ee933a385949
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=130.74 chain=BASE output=ETH
+[2026-02-01T23:00:38.367Z] ---------- ONRAMP ----------
+  quoteId      ca6e86cc-0350-4405-91c1-12dfe670ac28
+  expiresAt    2026-02-01T23:01:08.357Z
+  exchangeRate 12.30
+  input        54.09 GHS
+  output       4.40 USDC (BASE)
+  fees         network 0  platform 1.32  total 1.32
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 59120ec2-402e-474c-bd82-99e93fbee907
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=38.89 chain=BASE output=ETH
+[2026-02-01T23:00:45.257Z] ---------- OFFRAMP ----------
+  quoteId      eec4a38b-d255-4c24-ad0b-88014c36fad9
+  expiresAt    2026-02-01T23:01:15.248Z
+  exchangeRate 10.72
+  input        30.78 USDC
+  output       330.12 GHS (BASE)
+  fees         network 0  platform 8.46  total 8.46
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created e0362fb7-e3c1-4373-a6e6-28a24f8be909
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=107.75 chain=ETHEREUM output=ETH
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=54.76 chain=ETHEREUM output=ETH
+[2026-02-01T23:00:54.691Z] ---------- ONRAMP ----------
+  quoteId      4c8cc249-6ae1-40f7-9a5c-6187a3bc133d
+  expiresAt    2026-02-01T23:01:24.682Z
+  exchangeRate 12.30
+  input        127.07 GHS
+  output       10.33 USDC (BASE)
+  fees         network 0  platform 3.10  total 3.10
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 189b9d54-f1c9-450b-9b0f-83858c2a0cd1
+[2026-02-01T23:00:56.988Z] ---------- ONRAMP ----------
+  quoteId      60cfa1ef-3bed-4da5-86eb-7bc06523b317
+  expiresAt    2026-02-01T23:01:26.978Z
+  exchangeRate 12.30
+  input        99.64 GHS
+  output       8.10 USDC (BASE)
+  fees         network 0  platform 2.43  total 2.43
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created bea3241c-b662-443e-b8bd-5d2223f7e394
+[2026-02-01T23:00:59.234Z] ---------- OFFRAMP ----------
+  quoteId      e680ef69-45bf-462d-ac18-94e6fcddae5e
+  expiresAt    2026-02-01T23:01:29.224Z
+  exchangeRate 10.72
+  input        48.95 USDC
+  output       524.99 GHS (ETHEREUM)
+  fees         network 0  platform 13.46  total 13.46
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 2a74c45a-714e-4a62-ba3d-1957c6c66dfb
+[2026-02-01T23:01:01.493Z] ---------- ONRAMP ----------
+  quoteId      94c8ab68-105f-4394-9d7d-bc322a682837
+  expiresAt    2026-02-01T23:01:31.481Z
+  exchangeRate 12.30
+  input        48.50 GHS
+  output       3.94 USDC (BASE)
+  fees         network 0  platform 1.18  total 1.18
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 78bc73b5-35a7-4235-88df-50877870f376
+[2026-02-01T23:01:03.839Z] ---------- ONRAMP ----------
+  quoteId      bd89ea25-93a6-4597-a942-d7ea352d32cc
+  expiresAt    2026-02-01T23:01:33.828Z
+  exchangeRate 12.30
+  input        34.94 GHS
+  output       2.84 USDC (ETHEREUM)
+  fees         network 0  platform 0.85  total 0.85
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 12a98daf-7d9c-4bef-9059-930a950e6d7c
+[2026-02-01T23:01:06.091Z] ---------- ONRAMP ----------
+  quoteId      bb35dd1f-6eb1-4cc7-a679-51ecae9381db
+  expiresAt    2026-02-01T23:01:36.082Z
+  exchangeRate 12.30
+  input        63.98 GHS
+  output       5.20 USDC (ETHEREUM)
+  fees         network 0  platform 1.56  total 1.56
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created f9d58085-4aeb-4f36-a240-375b56774f72
+[2026-02-01T23:01:09.043Z] ---------- OFFRAMP ----------
+  quoteId      580ae94d-b9b7-4ecc-a2cf-5365fa8fa1ad
+  expiresAt    2026-02-01T23:01:39.030Z
+  exchangeRate 10.72
+  input        38.46 USDC
+  output       412.48 GHS (BASE)
+  fees         network 0  platform 10.58  total 10.58
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 63d9570a-355d-4a26-ad1f-5ffbffb541ae
+[2026-02-01T23:01:11.313Z] ---------- ONRAMP ----------
+  quoteId      6992b972-3d3e-4b52-9dbe-5818c5837377
+  expiresAt    2026-02-01T23:01:41.293Z
+  exchangeRate 12.30
+  input        142.54 GHS
+  output       11.59 USDC (ETHEREUM)
+  fees         network 0  platform 3.48  total 3.48
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 4566b3e0-6823-4dd7-9358-8e46ef9e60c1
+[summary] Quotes: 16 ok, 4 failed (last 20 rounds)
+
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=32.29 chain=BASE input=ETH
+[2026-02-01T23:01:17.253Z] ---------- OFFRAMP ----------
+  quoteId      a9e28c1f-db1c-4e7b-abad-444f8cb7d46e
+  expiresAt    2026-02-01T23:01:47.240Z
+  exchangeRate 10.72
+  input        15.42 USDC
+  output       165.38 GHS (ETHEREUM)
+  fees         network 0  platform 4.24  total 4.24
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created abeb6170-3b2d-46a7-8a59-af142ecf928f
+[2026-02-01T23:01:19.813Z] ---------- ONRAMP ----------
+  quoteId      41ba6ac9-7bad-4d22-bb34-f0852a806864
+  expiresAt    2026-02-01T23:01:49.799Z
+  exchangeRate 12.30
+  input        74.41 GHS
+  output       6.05 USDC (ETHEREUM)
+  fees         network 0  platform 1.81  total 1.81
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 872d98a3-7d57-4a51-b575-59e287e8aacf
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=98.22 chain=ETHEREUM output=ETH
+[2026-02-01T23:01:25.554Z] ---------- ONRAMP ----------
+  quoteId      73f2c98a-017c-44ca-9485-0b8e4a326ab9
+  expiresAt    2026-02-01T23:01:55.542Z
+  exchangeRate 12.30
+  input        69.44 GHS
+  output       5.65 USDC (ETHEREUM)
+  fees         network 0  platform 1.69  total 1.69
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 32207cf9-3955-49ab-b9ae-3061ddcbe63b
+[2026-02-01T23:01:28.446Z] ---------- ONRAMP ----------
+  quoteId      1eb9aa1c-cc67-44c4-baf6-c9d2f2d1334f
+  expiresAt    2026-02-01T23:01:58.439Z
+  exchangeRate 12.30
+  input        59.36 GHS
+  output       4.83 USDC (BASE)
+  fees         network 0  platform 1.45  total 1.45
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 36675c63-2ed2-4e58-aa58-48b04f08d120
+[2026-02-01T23:01:30.755Z] ---------- OFFRAMP ----------
+  quoteId      02935064-a070-40a9-8c1d-eb13c8e6cf15
+  expiresAt    2026-02-01T23:02:00.744Z
+  exchangeRate 10.72
+  input        48.10 USDC
+  output       515.87 GHS (BASE)
+  fees         network 0  platform 13.23  total 13.23
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created a810990d-648f-48e1-aa3c-65a1f9116ae0
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=141.64 chain=ETHEREUM output=ETH
+[2026-02-01T23:01:36.555Z] ---------- ONRAMP ----------
+  quoteId      d9a61fdc-330a-43d6-82c0-276b0ea26245
+  expiresAt    2026-02-01T23:02:06.545Z
+  exchangeRate 12.30
+  input        128.17 GHS
+  output       10.42 USDC (ETHEREUM)
+  fees         network 0  platform 3.13  total 3.13
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created ab008204-1d81-4bd2-a5aa-dfed7902b809
+[2026-02-01T23:01:38.987Z] ---------- ONRAMP ----------
+  quoteId      c1409fa5-4aa5-453a-acc5-5394b6fef595
+  expiresAt    2026-02-01T23:02:08.976Z
+  exchangeRate 12.30
+  input        142.64 GHS
+  output       11.60 USDC (ETHEREUM)
+  fees         network 0  platform 3.48  total 3.48
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created fcf7820d-6ef4-41ed-9d5e-6234181ded0b
+[2026-02-01T23:01:41.264Z] ---------- OFFRAMP ----------
+  quoteId      40ed66cb-643a-4ed0-9cec-41e458d2ade0
+  expiresAt    2026-02-01T23:02:11.256Z
+  exchangeRate 10.72
+  input        35.77 USDC
+  output       383.63 GHS (ETHEREUM)
+  fees         network 0  platform 9.84  total 9.84
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created dfd682e2-2929-41c7-99a1-be55972b9636
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=38.84 chain=ETHEREUM input=ETH
+[2026-02-01T23:01:47.224Z] ---------- OFFRAMP ----------
+  quoteId      bbd25457-2ac5-4ebc-9f9e-8e6974b671ca
+  expiresAt    2026-02-01T23:02:17.211Z
+  exchangeRate 10.72
+  input        17.16 USDC
+  output       184.04 GHS (BASE)
+  fees         network 0  platform 4.72  total 4.72
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created f8470a32-af96-4a3f-aa71-c1a82bb6b408
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=23.34 chain=BASE input=ETH
+[2026-02-01T23:01:55.604Z] ---------- ONRAMP ----------
+  quoteId      42df7049-9622-44cc-abd1-a0c6bc2a7259
+  expiresAt    2026-02-01T23:02:25.591Z
+  exchangeRate 12.30
+  input        136.27 GHS
+  output       11.08 USDC (BASE)
+  fees         network 0  platform 3.32  total 3.32
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 7118f13a-2b3b-4bee-aa4f-46101d9f934d
+[2026-02-01T23:01:58.462Z] ---------- OFFRAMP ----------
+  quoteId      38b65212-a69a-4899-aaaf-f7e0b08d3032
+  expiresAt    2026-02-01T23:02:28.451Z
+  exchangeRate 10.72
+  input        44.19 USDC
+  output       473.94 GHS (ETHEREUM)
+  fees         network 0  platform 12.15  total 12.15
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created d70d17a1-4d57-40e0-aa9e-aa7a6a67104d
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=102.72 chain=BASE output=ETH
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=47.96 chain=ETHEREUM input=ETH
+[2026-02-01T23:02:09.647Z] ---------- OFFRAMP ----------
+  quoteId      a1c60623-fd5b-4d22-986f-8d9cfd2aea69
+  expiresAt    2026-02-01T23:02:39.636Z
+  exchangeRate 10.72
+  input        29.23 USDC
+  output       313.49 GHS (BASE)
+  fees         network 0  platform 8.04  total 8.04
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created d7ebc5e3-5e23-41ec-a604-507805848782
+[2026-02-01T23:02:13.113Z] ---------- ONRAMP ----------
+  quoteId      1123991e-defc-4162-ac95-5d87a8f20545
+  expiresAt    2026-02-01T23:02:43.104Z
+  exchangeRate 12.30
+  input        146.84 GHS
+  output       11.94 USDC (ETHEREUM)
+  fees         network 0  platform 3.58  total 3.58
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 1817343b-2cb0-4ec7-8341-91fd4c08eaca
+[summary] Quotes: 13 ok, 7 failed (last 20 rounds)
+
+[2026-02-01T23:02:15.502Z] ---------- ONRAMP ----------
+  quoteId      3e43e2fb-6739-4d88-81c9-4e26e4cf98ba
+  expiresAt    2026-02-01T23:02:45.491Z
+  exchangeRate 12.30
+  input        39.94 GHS
+  output       3.25 USDC (BASE)
+  fees         network 0  platform 0.97  total 0.97
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 2386bd7a-dfc9-4653-a1f8-fd67eb7b5248
+[2026-02-01T23:02:17.756Z] ---------- OFFRAMP ----------
+  quoteId      1c7b29b9-e837-4d54-9b33-33e41a0ae62f
+  expiresAt    2026-02-01T23:02:47.745Z
+  exchangeRate 10.72
+  input        16.65 USDC
+  output       178.57 GHS (ETHEREUM)
+  fees         network 0  platform 4.58  total 4.58
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 777198ff-058d-4b88-9679-ae647378e0ed
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=42.64 chain=BASE input=ETH
+[2026-02-01T23:02:24.876Z] ---------- OFFRAMP ----------
+  quoteId      aad3863f-d376-4a2f-b120-5f5968b69f6b
+  expiresAt    2026-02-01T23:02:54.867Z
+  exchangeRate 10.72
+  input        39.48 USDC
+  output       423.42 GHS (BASE)
+  fees         network 0  platform 10.86  total 10.86
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created dd522876-8a6a-4f20-bf3f-097b8a8183db
+[2026-02-01T23:02:27.196Z] ---------- OFFRAMP ----------
+  quoteId      f47ff56b-037b-4f67-96df-b7a4be296e12
+  expiresAt    2026-02-01T23:02:57.182Z
+  exchangeRate 10.72
+  input        29.12 USDC
+  output       312.31 GHS (ETHEREUM)
+  fees         network 0  platform 8.01  total 8.01
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 2f8ca7a1-3930-4118-bf24-c9337c6aa80b
+[2026-02-01T23:02:29.452Z] ---------- OFFRAMP ----------
+  quoteId      6b48c87e-ff84-4e98-a205-6b00b6957d6a
+  expiresAt    2026-02-01T23:02:59.442Z
+  exchangeRate 10.72
+  input        23.51 USDC
+  output       252.14 GHS (BASE)
+  fees         network 0  platform 6.47  total 6.47
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 7bae3ca6-16cc-4ac8-a92e-54becef30f78
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=111.58 chain=BASE output=ETH
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=7.19 chain=ETHEREUM input=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=20.58 chain=BASE input=ETH
+[2026-02-01T23:02:43.789Z] ---------- ONRAMP ----------
+  quoteId      b6e93082-6555-4020-b4f4-e53306a498e9
+  expiresAt    2026-02-01T23:03:13.781Z
+  exchangeRate 12.30
+  input        77.70 GHS
+  output       6.32 USDC (ETHEREUM)
+  fees         network 0  platform 1.90  total 1.90
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 680521bd-af8c-44a5-8518-cd4825f39296
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=82.11 chain=ETHEREUM output=ETH
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=29.88 chain=ETHEREUM input=ETH
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=21.83 chain=ETHEREUM output=ETH
+[2026-02-01T23:02:57.219Z] ---------- ONRAMP ----------
+  quoteId      4f84576d-4603-4caf-8fb4-578dc5a4e9db
+  expiresAt    2026-02-01T23:03:27.209Z
+  exchangeRate 12.30
+  input        28.02 GHS
+  output       2.28 USDC (BASE)
+  fees         network 0  platform 0.68  total 0.68
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created e4984e1b-8b7d-4295-8968-135c2b1d7d1e
+[2026-02-01T23:02:59.478Z] ---------- ONRAMP ----------
+  quoteId      2891476b-f59e-4786-9e74-ad3d9f900040
+  expiresAt    2026-02-01T23:03:29.468Z
+  exchangeRate 12.30
+  input        56.74 GHS
+  output       4.61 USDC (ETHEREUM)
+  fees         network 0  platform 1.38  total 1.38
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 6fcb8c48-9d72-4aac-8c6e-d0d570c83eba
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=8.87 chain=BASE input=ETH
+[2026-02-01T23:03:06.658Z] ---------- OFFRAMP ----------
+  quoteId      c617f3ac-fe48-45fc-802a-14f77bd59232
+  expiresAt    2026-02-01T23:03:36.648Z
+  exchangeRate 10.72
+  input        31.05 USDC
+  output       333.01 GHS (ETHEREUM)
+  fees         network 0  platform 8.54  total 8.54
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 8ef40f08-a024-483e-be09-103e76e850b9
+[2026-02-01T23:03:09.023Z] ---------- ONRAMP ----------
+  quoteId      4dbd6e86-f90b-4fd3-a9c7-5188209b933e
+  expiresAt    2026-02-01T23:03:39.014Z
+  exchangeRate 12.30
+  input        47.29 GHS
+  output       3.84 USDC (BASE)
+  fees         network 0  platform 1.15  total 1.15
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 631dbf8d-7307-47db-9cd0-3b525f3860f1
+[2026-02-01T23:03:11.276Z] ---------- ONRAMP ----------
+  quoteId      20197b08-e28a-4155-9de8-1fe0685cc439
+  expiresAt    2026-02-01T23:03:41.266Z
+  exchangeRate 12.30
+  input        70.05 GHS
+  output       5.70 USDC (BASE)
+  fees         network 0  platform 1.71  total 1.71
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 2e865cc6-2add-49e3-990d-3a22a5d555d8
+[2026-02-01T23:03:13.514Z] ---------- OFFRAMP ----------
+  quoteId      414989a9-445a-4de6-9d28-b6ec57d0661f
+  expiresAt    2026-02-01T23:03:43.505Z
+  exchangeRate 10.72
+  input        25.76 USDC
+  output       276.28 GHS (ETHEREUM)
+  fees         network 0  platform 7.08  total 7.08
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 64470b34-404a-4844-87d1-ca9bf7fd07d4
+[summary] Quotes: 12 ok, 8 failed (last 20 rounds)
+
+[2026-02-01T23:03:15.774Z] ---------- OFFRAMP ----------
+  quoteId      1361b59b-defe-45f4-9311-a603bf99b22b
+  expiresAt    2026-02-01T23:03:45.757Z
+  exchangeRate 10.72
+  input        28.00 USDC
+  output       300.30 GHS (BASE)
+  fees         network 0  platform 7.70  total 7.70
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created a872d750-7058-442e-9ccb-e2f687ae9ccf
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=64.50 chain=ETHEREUM output=ETH
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=14.53 chain=ETHEREUM input=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=40.85 chain=BASE input=ETH
+[2026-02-01T23:03:30.519Z] ---------- OFFRAMP ----------
+  quoteId      fa9959fa-248b-4254-97d0-fe1aee49407c
+  expiresAt    2026-02-01T23:04:00.506Z
+  exchangeRate 10.72
+  input        8.87 USDC
+  output       95.13 GHS (ETHEREUM)
+  fees         network 0  platform 2.44  total 2.44
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 24e4af3b-becb-4ec0-8597-7766f19eed91
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=70.86 chain=ETHEREUM output=ETH
+[2026-02-01T23:03:36.793Z] ---------- OFFRAMP ----------
+  quoteId      c6421289-23c0-4414-bf77-36b8f7ed33f3
+  expiresAt    2026-02-01T23:04:06.777Z
+  exchangeRate 10.72
+  input        5.60 USDC
+  output       60.06 GHS (ETHEREUM)
+  fees         network 0  platform 1.54  total 1.54
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created d8ce444b-09f4-49c2-9570-59d04c3c49c7
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=122.13 chain=ETHEREUM output=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=81.00 chain=BASE output=ETH
+[2026-02-01T23:03:47.410Z] ---------- OFFRAMP ----------
+  quoteId      4a046a4a-171f-4ece-8e0e-c74b96d55f91
+  expiresAt    2026-02-01T23:04:17.399Z
+  exchangeRate 10.72
+  input        48.06 USDC
+  output       515.44 GHS (ETHEREUM)
+  fees         network 0  platform 13.22  total 13.22
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 200ed07f-deea-4d90-8569-b99cd6474d81
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=37.81 chain=ETHEREUM input=ETH
+[2026-02-01T23:03:57.443Z] ---------- OFFRAMP ----------
+  quoteId      85c45501-2ed0-4c21-b655-7679c7336896
+  expiresAt    2026-02-01T23:04:27.433Z
+  exchangeRate 10.72
+  input        45.35 USDC
+  output       486.38 GHS (ETHEREUM)
+  fees         network 0  platform 12.47  total 12.47
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 3906a3bd-6d12-4ccc-b01a-00c053f57a17
+[2026-02-01T23:03:59.903Z] ---------- ONRAMP ----------
+  quoteId      1d83b9f0-9237-4a46-91ae-ecfc5ecb866a
+  expiresAt    2026-02-01T23:04:29.892Z
+  exchangeRate 12.30
+  input        110.28 GHS
+  output       8.97 USDC (ETHEREUM)
+  fees         network 0  platform 2.69  total 2.69
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 7df513c9-a145-415e-ae01-8f41a233ace1
+[2026-02-01T23:04:02.313Z] ---------- OFFRAMP ----------
+  quoteId      51ce9197-61bb-43ce-89d5-9629633e2b25
+  expiresAt    2026-02-01T23:04:32.305Z
+  exchangeRate 10.72
+  input        21.77 USDC
+  output       233.48 GHS (ETHEREUM)
+  fees         network 0  platform 5.99  total 5.99
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created f80bdb1d-674e-4266-9188-753b9235c0b7
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=40.68 chain=ETHEREUM input=ETH
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=143.44 chain=ETHEREUM output=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=12.86 chain=BASE input=ETH
+[2026-02-01T23:04:18.202Z] ---------- OFFRAMP ----------
+  quoteId      27883a1d-fc20-48d1-b114-ba760bb3d9b3
+  expiresAt    2026-02-01T23:04:48.185Z
+  exchangeRate 10.72
+  input        24.93 USDC
+  output       267.37 GHS (ETHEREUM)
+  fees         network 0  platform 6.86  total 6.86
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 2be73fcf-ab3a-454c-bcf8-a1601b2436ca
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=14.82 chain=ETHEREUM input=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=48.98 chain=BASE input=ETH
+[summary] Quotes: 8 ok, 12 failed (last 20 rounds)
+
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=39.28 chain=ETHEREUM input=ETH
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=81.21 chain=ETHEREUM output=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=27.66 chain=BASE output=ETH
+[2026-02-01T23:04:49.401Z] ---------- ONRAMP ----------
+  quoteId      2cbb2247-c0f4-4fb3-9993-6d63d698cc5e
+  expiresAt    2026-02-01T23:05:19.386Z
+  exchangeRate 12.30
+  input        97.76 GHS
+  output       7.95 USDC (ETHEREUM)
+  fees         network 0  platform 2.38  total 2.38
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 651795a4-48fb-441a-abb5-15b7491b556b
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=34.61 chain=ETHEREUM input=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=62.80 chain=BASE output=ETH
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=84.67 chain=ETHEREUM output=ETH
+[2026-02-01T23:05:05.313Z] ---------- OFFRAMP ----------
+  quoteId      b799a1ba-5394-4f1f-8cf1-bf1911c1b593
+  expiresAt    2026-02-01T23:05:35.303Z
+  exchangeRate 10.72
+  input        33.05 USDC
+  output       354.46 GHS (ETHEREUM)
+  fees         network 0  platform 9.09  total 9.09
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 0174d820-e191-49fc-8803-c5adf3427223
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=24.12 chain=BASE output=ETH
+[2026-02-01T23:05:12.445Z] ---------- ONRAMP ----------
+  quoteId      65a1d410-816e-4fbd-b5aa-50d26f8cca66
+  expiresAt    2026-02-01T23:05:42.430Z
+  exchangeRate 12.30
+  input        54.34 GHS
+  output       4.42 USDC (BASE)
+  fees         network 0  platform 1.33  total 1.33
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        error Insufficient KLYRA balance: USDC on BASE has 0, required 4.42
+[2026-02-01T23:05:14.812Z] ---------- ONRAMP ----------
+  quoteId      c95a23ee-0ed2-4dc0-95f5-9c4af38c8d14
+  expiresAt    2026-02-01T23:05:44.801Z
+  exchangeRate 12.30
+  input        116.11 GHS
+  output       9.44 USDC (BASE)
+  fees         network 0  platform 2.83  total 2.83
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        error Insufficient KLYRA balance: USDC on BASE has 0, required 9.44
+[2026-02-01T23:05:17.269Z] ---------- OFFRAMP ----------
+  quoteId      6edb2ef8-b5bc-4093-b5d9-fc33eb05c6a5
+  expiresAt    2026-02-01T23:05:47.255Z
+  exchangeRate 10.72
+  input        45.83 USDC
+  output       491.53 GHS (ETHEREUM)
+  fees         network 0  platform 12.60  total 12.60
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 86f441c2-57e7-4c72-a6d1-b80cb02e59f4
+[2026-02-01T23:05:19.800Z] ---------- ONRAMP ----------
+  quoteId      4ceb461f-6cdb-4c87-a27f-eb2d941daa54
+  expiresAt    2026-02-01T23:05:49.786Z
+  exchangeRate 12.30
+  input        129.07 GHS
+  output       10.49 USDC (ETHEREUM)
+  fees         network 0  platform 3.15  total 3.15
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 6c6a4fa7-a088-402a-96be-d21632c66d98
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=107.19 chain=BASE output=ETH
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=20.49 chain=ETHEREUM input=ETH
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=34.87 chain=ETHEREUM input=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=39.68 chain=BASE input=ETH
+[2026-02-01T23:05:38.819Z] ---------- ONRAMP ----------
+  quoteId      ab4ac325-5f23-4130-8e09-75762309a8ef
+  expiresAt    2026-02-01T23:06:08.810Z
+  exchangeRate 12.30
+  input        147.67 GHS
+  output       12.01 USDC (BASE)
+  fees         network 0  platform 3.60  total 3.60
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        error Insufficient KLYRA balance: USDC on BASE has 0, required 12.01
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=28.65 chain=ETHEREUM input=ETH
+[2026-02-01T23:05:44.742Z] ---------- ONRAMP ----------
+  quoteId      54109480-04c8-4488-be8f-7d9a95fae7df
+  expiresAt    2026-02-01T23:06:14.722Z
+  exchangeRate 12.30
+  input        54.58 GHS
+  output       4.44 USDC (BASE)
+  fees         network 0  platform 1.33  total 1.33
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        error Insufficient KLYRA balance: USDC on BASE has 0, required 4.44
+[summary] Quotes: 8 ok, 12 failed (last 20 rounds)
+
+[2026-02-01T23:05:47.193Z] ---------- ONRAMP ----------
+  quoteId      4cf0ca4e-8659-44d7-8536-072b8c5744e9
+  expiresAt    2026-02-01T23:06:17.178Z
+  exchangeRate 12.30
+  input        148.62 GHS
+  output       12.08 USDC (ETHEREUM)
+  fees         network 0  platform 3.62  total 3.62
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created e9677c4e-db75-42a5-8513-8e71c4cb6401
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=81.71 chain=ETHEREUM output=ETH
+[2026-02-01T23:05:53.120Z] ---------- OFFRAMP ----------
+  quoteId      9e832bd7-9a73-47bb-b2a4-4089784eb539
+  expiresAt    2026-02-01T23:06:23.104Z
+  exchangeRate 10.72
+  input        17.00 USDC
+  output       182.32 GHS (ETHEREUM)
+  fees         network 0  platform 4.67  total 4.67
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created fc5e2294-bf35-4f6e-b2da-4a287d90afaa
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=15.01 chain=BASE input=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=11.31 chain=BASE input=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=59.94 chain=ETHEREUM output=USDC
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=46.33 chain=ETHEREUM output=USDC
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=66.49 chain=ETHEREUM output=USDC
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=28.74 chain=BASE input=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=123.18 chain=BASE output=USDC
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=88.50 chain=BASE output=ETH
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=42.25 chain=ETHEREUM input=ETH
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=40.55 chain=BASE input=ETH
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=34.27 chain=BASE input=USDC
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=20.00 chain=BASE input=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=118.96 chain=BASE output=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=60.87 chain=BASE output=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=54.19 chain=ETHEREUM output=ETH
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=40.69 chain=ETHEREUM input=ETH
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=27.43 chain=ETHEREUM input=USDC
+[summary] Quotes: 2 ok, 18 failed (last 20 rounds)
+
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=13.66 chain=BASE input=USDC
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=79.21 chain=BASE output=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=114.52 chain=ETHEREUM output=USDC
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=39.84 chain=ETHEREUM input=ETH
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=26.21 chain=ETHEREUM input=USDC
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=12.50 chain=ETHEREUM input=USDC
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=42.91 chain=ETHEREUM input=USDC
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=50.30 chain=ETHEREUM output=USDC
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=18.49 chain=ETHEREUM input=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=139.69 chain=ETHEREUM output=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=139.28 chain=BASE output=USDC
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=6.69 chain=BASE input=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=75.67 chain=BASE output=USDC
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=34.37 chain=ETHEREUM input=ETH
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=49.93 chain=ETHEREUM input=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=48.39 chain=ETHEREUM output=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=86.28 chain=BASE output=ETH
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=31.89 chain=BASE input=USDC
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=20.59 chain=ETHEREUM input=USDC
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=96.54 chain=ETHEREUM output=USDC
+[summary] Quotes: 0 ok, 20 failed (last 20 rounds)
+
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=43.08 chain=ETHEREUM input=USDC
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=82.56 chain=BASE output=USDC
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=43.64 chain=BASE input=USDC
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=25.02 chain=BASE input=ETH
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=41.55 chain=BASE input=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=134.70 chain=ETHEREUM output=USDC
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=33.82 chain=ETHEREUM output=ETH
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=34.75 chain=ETHEREUM input=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=60.39 chain=ETHEREUM output=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=115.99 chain=BASE output=ETH
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=32.13 chain=BASE input=USDC
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=54.98 chain=ETHEREUM output=ETH
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=36.87 chain=BASE input=USDC
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=129.26 chain=ETHEREUM output=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=43.43 chain=BASE output=ETH
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=20.78 chain=ETHEREUM input=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=52.47 chain=ETHEREUM output=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=52.46 chain=BASE output=USDC
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=90.09 chain=ETHEREUM output=USDC
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=149.26 chain=BASE output=USDC
+[summary] Quotes: 0 ok, 20 failed (last 20 rounds)
+
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=86.17 chain=BASE output=USDC
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=32.49 chain=ETHEREUM input=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=50.38 chain=ETHEREUM output=ETH
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=15.12 chain=BASE input=ETH
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=36.25 chain=ETHEREUM input=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=45.55 chain=ETHEREUM output=ETH
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=8.78 chain=ETHEREUM input=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=70.36 chain=BASE output=ETH
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=7.00 chain=ETHEREUM input=USDC
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=22.81 chain=ETHEREUM input=ETH
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=17.59 chain=ETHEREUM input=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=124.50 chain=BASE output=ETH
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=7.47 chain=ETHEREUM input=USDC
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=102.74 chain=BASE output=USDC
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=60.99 chain=ETHEREUM output=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=104.14 chain=ETHEREUM output=ETH
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=45.45 chain=ETHEREUM input=USDC
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=26.29 chain=BASE output=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=86.32 chain=BASE output=USDC
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=81.19 chain=ETHEREUM output=ETH
+[summary] Quotes: 0 ok, 20 failed (last 20 rounds)
+
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=82.18 chain=ETHEREUM output=ETH
+[ONRAMP] quote failed: 0 fetch failed () — inputAmount=64.67 chain=ETHEREUM output=USDC
+[OFFRAMP] quote failed: 0 fetch failed () — inputAmount=17.69 chain=ETHEREUM input=USDC
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=122.50 chain=BASE output=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=45.55 chain=BASE input=ETH
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=78.22 chain=ETHEREUM output=ETH
+[2026-02-01T23:09:32.696Z] ---------- ONRAMP ----------
+  quoteId      a329bcc3-f8d2-48d1-9e3f-0b9d94369b95
+  expiresAt    2026-02-01T23:10:02.673Z
+  exchangeRate 12.30
+  input        22.38 GHS
+  output       1.82 USDC (BASE)
+  fees         network 0  platform 0.55  total 0.55
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        error Insufficient KLYRA balance: USDC on BASE has 0, required 1.82
+[2026-02-01T23:09:34.976Z] ---------- ONRAMP ----------
+  quoteId      f8bcda3b-1376-4030-a16e-cd7ce14d5365
+  expiresAt    2026-02-01T23:10:04.960Z
+  exchangeRate 12.30
+  input        126.19 GHS
+  output       10.26 USDC (BASE)
+  fees         network 0  platform 3.08  total 3.08
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        error Insufficient KLYRA balance: USDC on BASE has 0, required 10.26
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=68.89 chain=BASE output=ETH
+[2026-02-01T23:09:49.152Z] ---------- ONRAMP ----------
+  quoteId      a6021643-9bf5-4ab4-a911-41e7de721af9
+  expiresAt    2026-02-01T23:10:19.140Z
+  exchangeRate 12.30
+  input        89.03 GHS
+  output       7.24 USDC (ETHEREUM)
+  fees         network 0  platform 2.17  total 2.17
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        error Insufficient KLYRA balance: USDC on ETHEREUM has 0, required 7.24
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=30.42 chain=ETHEREUM output=ETH
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=18.64 chain=ETHEREUM input=ETH
+[2026-02-01T23:09:58.685Z] ---------- OFFRAMP ----------
+  quoteId      98c11ac9-26e8-4200-8cd2-a909b2aaca24
+  expiresAt    2026-02-01T23:10:28.668Z
+  exchangeRate 10.72
+  input        5.11 USDC
+  output       54.80 GHS (BASE)
+  fees         network 0  platform 1.41  total 1.41
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 9599246f-7a92-4419-b7d9-402be4af4bf0
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=9.57 chain=BASE input=ETH
+[2026-02-01T23:10:05.960Z] ---------- OFFRAMP ----------
+  quoteId      d657f048-c9da-41f0-bb6f-8e7d7c9ced73
+  expiresAt    2026-02-01T23:10:35.946Z
+  exchangeRate 10.72
+  input        45.63 USDC
+  output       489.38 GHS (BASE)
+  fees         network 0  platform 12.55  total 12.55
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 66934431-0a2c-455d-8daa-e55118cfc731
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=30.20 chain=ETHEREUM input=ETH
+[2026-02-01T23:10:11.921Z] ---------- OFFRAMP ----------
+  quoteId      e7f4ae39-ecb5-4770-aa75-1b06a1612f10
+  expiresAt    2026-02-01T23:10:41.909Z
+  exchangeRate 10.72
+  input        33.94 USDC
+  output       364.01 GHS (BASE)
+  fees         network 0  platform 9.33  total 9.33
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created d62fb9a5-bd3e-469b-af6a-78b414e385e9
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=70.35 chain=ETHEREUM output=ETH
+[2026-02-01T23:10:18.060Z] ---------- OFFRAMP ----------
+  quoteId      5f94cc69-6d7d-4708-a867-34ad6753a0dc
+  expiresAt    2026-02-01T23:10:48.045Z
+  exchangeRate 10.72
+  input        20.51 USDC
+  output       219.97 GHS (ETHEREUM)
+  fees         network 0  platform 5.64  total 5.64
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 7b6ccb00-5fb2-47ad-900d-710841f3c94a
+[2026-02-01T23:10:20.727Z] ---------- ONRAMP ----------
+  quoteId      e6200b52-5df8-4413-a61d-d2af242e5a99
+  expiresAt    2026-02-01T23:10:50.715Z
+  exchangeRate 12.30
+  input        123.76 GHS
+  output       10.06 USDC (ETHEREUM)
+  fees         network 0  platform 3.02  total 3.02
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 71a39131-213b-4db2-817d-77830c7248c4
+[summary] Quotes: 8 ok, 12 failed (last 20 rounds)
+
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=82.09 chain=ETHEREUM output=ETH
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=125.78 chain=ETHEREUM output=ETH
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=61.31 chain=ETHEREUM output=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=29.32 chain=BASE output=ETH
+[2026-02-01T23:10:38.717Z] ---------- ONRAMP ----------
+  quoteId      14890878-b7c7-4188-8b32-ed26015ae26b
+  expiresAt    2026-02-01T23:11:08.706Z
+  exchangeRate 12.30
+  input        105.52 GHS
+  output       8.58 USDC (ETHEREUM)
+  fees         network 0  platform 2.57  total 2.57
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 0c866a04-987d-4366-b7d8-751a7c9e8a72
+[2026-02-01T23:10:41.114Z] ---------- OFFRAMP ----------
+  quoteId      8daf0cc8-d2ca-4403-8f79-a0cfce8b1fae
+  expiresAt    2026-02-01T23:11:11.102Z
+  exchangeRate 10.72
+  input        16.70 USDC
+  output       179.11 GHS (BASE)
+  fees         network 0  platform 4.59  total 4.59
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created eedc2bf3-a104-404b-9ce8-44e49606f30a
+[2026-02-01T23:10:43.372Z] ---------- ONRAMP ----------
+  quoteId      98d5037a-7326-45c3-8753-c774d5abaa1d
+  expiresAt    2026-02-01T23:11:13.362Z
+  exchangeRate 12.30
+  input        103.29 GHS
+  output       8.40 USDC (BASE)
+  fees         network 0  platform 2.52  total 2.52
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created c313ce95-dc80-4ef5-aeac-55a6a9082a3b
+[2026-02-01T23:10:46.107Z] ---------- ONRAMP ----------
+  quoteId      4632c25c-3e65-4fb6-9177-1082e4960d6e
+  expiresAt    2026-02-01T23:11:16.099Z
+  exchangeRate 12.30
+  input        147.91 GHS
+  output       12.03 USDC (BASE)
+  fees         network 0  platform 3.61  total 3.61
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 963b84db-d8ad-43c9-9201-bd04a981541a
+[2026-02-01T23:10:48.430Z] ---------- ONRAMP ----------
+  quoteId      6289c3a2-b1b6-494d-bd7e-5fd67f2db92d
+  expiresAt    2026-02-01T23:11:18.416Z
+  exchangeRate 12.30
+  input        137.21 GHS
+  output       11.16 USDC (ETHEREUM)
+  fees         network 0  platform 3.35  total 3.35
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 31c43e14-b05c-4400-828a-41f6a2b458e0
+[2026-02-01T23:10:51.226Z] ---------- OFFRAMP ----------
+  quoteId      9b74b552-7864-421e-a077-3a684c8e5170
+  expiresAt    2026-02-01T23:11:21.215Z
+  exchangeRate 10.72
+  input        30.63 USDC
+  output       328.51 GHS (ETHEREUM)
+  fees         network 0  platform 8.42  total 8.42
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created de51565f-d1d6-49e5-a33a-746f380caa3b
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=133.45 chain=ETHEREUM output=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=21.71 chain=BASE input=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=47.31 chain=BASE output=ETH
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=100.70 chain=ETHEREUM output=ETH
+[2026-02-01T23:11:09.087Z] ---------- ONRAMP ----------
+  quoteId      ba477316-f7c8-4241-8bf3-a028739eee47
+  expiresAt    2026-02-01T23:11:39.074Z
+  exchangeRate 15.37
+  input        62.86 GHS
+  output       4.09 USDC (BASE)
+  fees         network 0  platform 1.53  total 1.53
+  debug        basePrice 15.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 63f154d8-4f54-4e8c-8774-63ee3afd4d2e
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=35.35 chain=BASE input=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=15.82 chain=BASE input=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=22.12 chain=BASE input=ETH
+[2026-02-01T23:11:22.744Z] ---------- ONRAMP ----------
+  quoteId      5a4890c9-ca0e-42ab-b25f-1648f00a82d8
+  expiresAt    2026-02-01T23:11:52.732Z
+  exchangeRate 15.37
+  input        93.65 GHS
+  output       6.09 USDC (BASE)
+  fees         network 0  platform 2.28  total 2.28
+  debug        basePrice 15.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 7e93b8bf-e79c-4084-a721-fe833551a112
+[2026-02-01T23:11:25.005Z] ---------- ONRAMP ----------
+  quoteId      e1b0378c-0034-42b2-a71f-5eff7d6c296e
+  expiresAt    2026-02-01T23:11:54.993Z
+  exchangeRate 15.37
+  input        135.03 GHS
+  output       8.78 USDC (BASE)
+  fees         network 0  platform 3.29  total 3.29
+  debug        basePrice 15.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 680a8472-8172-4a85-94bd-f299c2f0971f
+[summary] Quotes: 9 ok, 11 failed (last 20 rounds)
+
+[2026-02-01T23:11:27.489Z] ---------- ONRAMP ----------
+  quoteId      ff73bd13-9e62-470c-9cb7-b88019b44cef
+  expiresAt    2026-02-01T23:11:57.477Z
+  exchangeRate 13.32
+  input        68.10 GHS
+  output       5.11 USDC (ETHEREUM)
+  fees         network 0  platform 1.66  total 1.66
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 4c276e72-7567-443a-8dbe-58fbd57c8bb3
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=45.13 chain=ETHEREUM input=ETH
+[2026-02-01T23:11:36.541Z] ---------- OFFRAMP ----------
+  quoteId      7043a722-293a-4711-a953-56e55a9ab11d
+  expiresAt    2026-02-01T23:12:06.533Z
+  exchangeRate 10.72
+  input        13.90 USDC
+  output       149.08 GHS (BASE)
+  fees         network 0  platform 3.82  total 3.82
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created ef784f46-d794-4600-b541-5693406c3ef7
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=68.15 chain=BASE output=ETH
+[2026-02-01T23:11:48.835Z] ---------- ONRAMP ----------
+  quoteId      61f8527c-d311-4a63-b983-b190cb409097
+  expiresAt    2026-02-01T23:12:18.823Z
+  exchangeRate 15.37
+  input        118.93 GHS
+  output       7.74 USDC (BASE)
+  fees         network 0  platform 2.90  total 2.90
+  debug        basePrice 15.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 44aec0c6-5459-42ab-a80b-ef606c757a34
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=31.56 chain=BASE input=ETH
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=10.26 chain=ETHEREUM input=ETH
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=49.62 chain=ETHEREUM input=ETH
+[2026-02-01T23:12:03.283Z] ---------- ONRAMP ----------
+  quoteId      e295cf85-f2d6-46d6-b4ac-32f556228b32
+  expiresAt    2026-02-01T23:12:33.268Z
+  exchangeRate 15.37
+  input        85.99 GHS
+  output       5.59 USDC (BASE)
+  fees         network 0  platform 2.10  total 2.10
+  debug        basePrice 15.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 33cd32c6-5273-4fcd-902a-cc1480c9a3da
+[2026-02-01T23:12:05.547Z] ---------- ONRAMP ----------
+  quoteId      aafeafdb-9288-4a02-8f63-3f4a015b1df3
+  expiresAt    2026-02-01T23:12:35.537Z
+  exchangeRate 13.32
+  input        53.07 GHS
+  output       3.98 USDC (ETHEREUM)
+  fees         network 0  platform 1.29  total 1.29
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 54d989d5-74cf-40b8-af35-c12d471f5116
+[2026-02-01T23:12:08.092Z] ---------- ONRAMP ----------
+  quoteId      123c5c84-3458-4b1b-b796-4860a38ffb82
+  expiresAt    2026-02-01T23:12:38.082Z
+  exchangeRate 13.32
+  input        58.95 GHS
+  output       4.42 USDC (ETHEREUM)
+  fees         network 0  platform 1.44  total 1.44
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created d4fb9d2c-20d4-44a9-8744-a8c3865bf7c5
+[2026-02-01T23:12:10.403Z] ---------- ONRAMP ----------
+  quoteId      d8d630d4-9ad2-41f9-a9f6-ca995990427a
+  expiresAt    2026-02-01T23:12:40.392Z
+  exchangeRate 13.32
+  input        32.61 GHS
+  output       2.45 USDC (ETHEREUM)
+  fees         network 0  platform 0.80  total 0.80
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 2bdf418e-639e-4b9f-aa42-c14a15731e2a
+[2026-02-01T23:12:12.808Z] ---------- OFFRAMP ----------
+  quoteId      e4485d49-e6fb-45ab-9c78-7fd2389f30ae
+  expiresAt    2026-02-01T23:12:42.797Z
+  exchangeRate 10.72
+  input        25.78 USDC
+  output       276.49 GHS (ETHEREUM)
+  fees         network 0  platform 7.09  total 7.09
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 596aff28-5512-4a0c-ba8a-f2c0d74068a5
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=32.17 chain=ETHEREUM input=ETH
+[2026-02-01T23:12:18.496Z] ---------- OFFRAMP ----------
+  quoteId      d499ae0d-ac5d-4691-b2a3-4fb77381dfaa
+  expiresAt    2026-02-01T23:12:48.485Z
+  exchangeRate 10.72
+  input        12.69 USDC
+  output       136.10 GHS (ETHEREUM)
+  fees         network 0  platform 3.49  total 3.49
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 734565fd-afdf-4af6-83e7-21c984c13ac9
+[2026-02-01T23:12:20.764Z] ---------- OFFRAMP ----------
+  quoteId      f9c8da88-720b-4f12-bac0-1a1e426ec11c
+  expiresAt    2026-02-01T23:12:50.755Z
+  exchangeRate 10.72
+  input        44.36 USDC
+  output       475.76 GHS (BASE)
+  fees         network 0  platform 12.20  total 12.20
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 2575b108-0a41-432b-853e-05fd794e7b52
+[2026-02-01T23:12:23.495Z] ---------- ONRAMP ----------
+  quoteId      9e4e6b01-6445-4e78-a074-81e93301ed44
+  expiresAt    2026-02-01T23:12:53.486Z
+  exchangeRate 13.32
+  input        130.64 GHS
+  output       9.80 USDC (ETHEREUM)
+  fees         network 0  platform 3.19  total 3.19
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 89c98896-b21d-456e-bff4-c3d768d9c782
+[2026-02-01T23:12:25.766Z] ---------- ONRAMP ----------
+  quoteId      4024c245-933d-4eca-9069-555e272f657e
+  expiresAt    2026-02-01T23:12:55.755Z
+  exchangeRate 15.37
+  input        107.95 GHS
+  output       7.02 USDC (BASE)
+  fees         network 0  platform 2.63  total 2.63
+  debug        basePrice 15.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created cda5e80e-c32d-415e-9ac2-db7530147ae1
+[2026-02-01T23:12:28.019Z] ---------- ONRAMP ----------
+  quoteId      192ef39b-dad7-4d22-9ff3-6baf337b2167
+  expiresAt    2026-02-01T23:12:58.007Z
+  exchangeRate 13.32
+  input        113.96 GHS
+  output       8.55 USDC (ETHEREUM)
+  fees         network 0  platform 2.78  total 2.78
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created f51aaa69-c3f3-4b1b-a373-c5c37a20faa2
+[2026-02-01T23:12:30.286Z] ---------- ONRAMP ----------
+  quoteId      876dff9c-b1c8-448c-86a5-f3b91ee52426
+  expiresAt    2026-02-01T23:13:00.275Z
+  exchangeRate 13.32
+  input        44.67 GHS
+  output       3.35 USDC (ETHEREUM)
+  fees         network 0  platform 1.09  total 1.09
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created f069a84d-ea64-45ee-9d0e-4bb5011e77a5
+[summary] Quotes: 14 ok, 6 failed (last 20 rounds)
+
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=25.11 chain=BASE output=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=102.64 chain=BASE output=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=40.86 chain=BASE input=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=27.46 chain=BASE input=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=107.71 chain=BASE output=ETH
+[2026-02-01T23:12:55.578Z] ---------- OFFRAMP ----------
+  quoteId      734df45b-8732-4cfc-9859-d5fa88c628c7
+  expiresAt    2026-02-01T23:13:25.569Z
+  exchangeRate 10.72
+  input        33.68 USDC
+  output       361.22 GHS (BASE)
+  fees         network 0  platform 9.26  total 9.26
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 32dfa765-aca6-4ab1-9c9b-7066934a994e
+[2026-02-01T23:12:58.535Z] ---------- OFFRAMP ----------
+  quoteId      562e6617-68dc-4bf9-8241-b24631e9a598
+  expiresAt    2026-02-01T23:13:28.526Z
+  exchangeRate 10.72
+  input        21.61 USDC
+  output       231.77 GHS (ETHEREUM)
+  fees         network 0  platform 5.94  total 5.94
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 44b4dce4-542f-484e-a08b-cb84a96dfaa2
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=13.79 chain=BASE input=ETH
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=24.95 chain=ETHEREUM input=ETH
+[2026-02-01T23:13:12.036Z] ---------- ONRAMP ----------
+  quoteId      380c7124-48bf-4759-a347-980f3d5e5024
+  expiresAt    2026-02-01T23:13:42.028Z
+  exchangeRate 13.32
+  input        137.78 GHS
+  output       10.34 USDC (ETHEREUM)
+  fees         network 0  platform 3.36  total 3.36
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created fd72a403-4086-4e1f-9ffe-38c0a0fbd4e3
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=86.11 chain=BASE output=ETH
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=36.74 chain=ETHEREUM output=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=106.37 chain=BASE output=ETH
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=11.07 chain=ETHEREUM input=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=91.04 chain=BASE output=ETH
+[2026-02-01T23:13:43.453Z] ---------- ONRAMP ----------
+  quoteId      332e7e33-16aa-465c-8c62-012dee87b5c0
+  expiresAt    2026-02-01T23:14:13.444Z
+  exchangeRate 13.32
+  input        22.20 GHS
+  output       1.67 USDC (ETHEREUM)
+  fees         network 0  platform 0.54  total 0.54
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created f053061b-3eb0-4d42-aacf-35136d716a84
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=36.71 chain=BASE input=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=33.22 chain=BASE input=ETH
+[2026-02-01T23:13:53.745Z] ---------- OFFRAMP ----------
+  quoteId      cf4537dc-f026-4f3f-a936-f0c1eb273b43
+  expiresAt    2026-02-01T23:14:23.735Z
+  exchangeRate 10.72
+  input        17.54 USDC
+  output       188.12 GHS (BASE)
+  fees         network 0  platform 4.82  total 4.82
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created fc53cff7-b077-4a82-ab8f-d7cf4691fa48
+[2026-02-01T23:13:57.773Z] ---------- ONRAMP ----------
+  quoteId      f6eb2fc1-bd9a-461c-861a-c27b6fbc9fc2
+  expiresAt    2026-02-01T23:14:27.764Z
+  exchangeRate 15.37
+  input        126.88 GHS
+  output       8.25 USDC (BASE)
+  fees         network 0  platform 3.09  total 3.09
+  debug        basePrice 15.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created b75c6d1f-525f-45af-887e-ba860c0810c2
+[summary] Quotes: 6 ok, 14 failed (last 20 rounds)
+
+[2026-02-01T23:14:06.740Z] ---------- OFFRAMP ----------
+  quoteId      a7ddfc71-a35a-4475-917b-0536ebcaca89
+  expiresAt    2026-02-01T23:14:36.730Z
+  exchangeRate 10.72
+  input        12.04 USDC
+  output       129.13 GHS (BASE)
+  fees         network 0  platform 3.31  total 3.31
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 62fd1fc6-87ae-4ed2-9462-c5b4d246c102
+[2026-02-01T23:14:09.691Z] ---------- OFFRAMP ----------
+  quoteId      f53c3859-34ee-4b08-a791-2b834c918354
+  expiresAt    2026-02-01T23:14:39.679Z
+  exchangeRate 10.72
+  input        46.27 USDC
+  output       496.25 GHS (ETHEREUM)
+  fees         network 0  platform 12.72  total 12.72
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created c2f33073-d2d9-4f91-9bff-b1848921e3ff
+[2026-02-01T23:14:12.082Z] ---------- OFFRAMP ----------
+  quoteId      01ec9f8c-1b6e-4800-84f2-ba883b70d1dd
+  expiresAt    2026-02-01T23:14:42.073Z
+  exchangeRate 10.72
+  input        27.74 USDC
+  output       297.51 GHS (ETHEREUM)
+  fees         network 0  platform 7.63  total 7.63
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 3b78754d-0a91-47c2-ac18-71bbadd0a4d1
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=44.60 chain=ETHEREUM input=ETH
+[2026-02-01T23:14:18.855Z] ---------- OFFRAMP ----------
+  quoteId      5b095f0e-def1-4cf1-9f4c-af94afc7a68f
+  expiresAt    2026-02-01T23:14:48.843Z
+  exchangeRate 10.72
+  input        45.12 USDC
+  output       483.91 GHS (BASE)
+  fees         network 0  platform 12.41  total 12.41
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 1ed154b7-47c9-4af1-8a5b-644c876aa940
+[2026-02-01T23:14:21.494Z] ---------- ONRAMP ----------
+  quoteId      d72ba54f-a56f-4469-9ff6-154d520cf8df
+  expiresAt    2026-02-01T23:14:51.483Z
+  exchangeRate 13.32
+  input        67.26 GHS
+  output       5.05 USDC (ETHEREUM)
+  fees         network 0  platform 1.64  total 1.64
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 707edf21-d9d8-4fd2-9b58-5a9022d97bc9
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=35.02 chain=ETHEREUM input=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=46.14 chain=BASE input=ETH
+[2026-02-01T23:14:32.357Z] ---------- ONRAMP ----------
+  quoteId      e8e76890-6138-4fe1-9940-ec850dfcdc57
+  expiresAt    2026-02-01T23:15:02.348Z
+  exchangeRate 15.37
+  input        82.83 GHS
+  output       5.39 USDC (BASE)
+  fees         network 0  platform 2.02  total 2.02
+  debug        basePrice 15.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 541c0187-fcd7-4170-b744-eaab5207612e
+[2026-02-01T23:14:39.828Z] ---------- OFFRAMP ----------
+  quoteId      26318295-0bdd-4734-994c-2aa8e86a2596
+  expiresAt    2026-02-01T23:15:09.815Z
+  exchangeRate 10.72
+  input        43.37 USDC
+  output       465.14 GHS (BASE)
+  fees         network 0  platform 11.93  total 11.93
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 4c825216-68d9-4726-9dcb-c32ea7cbed70
+[2026-02-01T23:14:43.301Z] ---------- ONRAMP ----------
+  quoteId      4ba314b6-cea1-4f32-b654-44617f1fb784
+  expiresAt    2026-02-01T23:15:13.292Z
+  exchangeRate 13.32
+  input        96.57 GHS
+  output       7.25 USDC (ETHEREUM)
+  fees         network 0  platform 2.36  total 2.36
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 19ef91ea-4171-4ac9-859c-5f9f4a9d84c0
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=16.32 chain=BASE input=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=19.24 chain=BASE input=ETH
+[2026-02-01T23:14:54.751Z] ---------- OFFRAMP ----------
+  quoteId      eb71795a-231f-4480-b462-7eb6dba9058b
+  expiresAt    2026-02-01T23:15:24.741Z
+  exchangeRate 10.72
+  input        47.62 USDC
+  output       510.72 GHS (BASE)
+  fees         network 0  platform 13.10  total 13.10
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 1c6da946-14a3-4e9c-99b8-84e92940b619
+[2026-02-01T23:14:57.053Z] ---------- ONRAMP ----------
+  quoteId      83b1b8ae-24ee-4c7e-bab6-5ecd381dd562
+  expiresAt    2026-02-01T23:15:27.044Z
+  exchangeRate 15.37
+  input        33.68 GHS
+  output       2.19 USDC (BASE)
+  fees         network 0  platform 0.82  total 0.82
+  debug        basePrice 15.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 4d65a4b5-990d-4432-8984-fbdd2c19b92b
+[2026-02-01T23:14:59.383Z] ---------- ONRAMP ----------
+  quoteId      782ae966-6957-4494-a1a3-5791f0569f4f
+  expiresAt    2026-02-01T23:15:29.374Z
+  exchangeRate 13.32
+  input        115.64 GHS
+  output       8.68 USDC (ETHEREUM)
+  fees         network 0  platform 2.82  total 2.82
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created ac1afe0e-3c80-44c0-bfc1-e22be2e064a9
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=83.21 chain=ETHEREUM output=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=23.39 chain=BASE input=ETH
+[2026-02-01T23:15:10.240Z] ---------- ONRAMP ----------
+  quoteId      1f433e67-f0e7-4a22-a679-0c7f78293a0d
+  expiresAt    2026-02-01T23:15:40.226Z
+  exchangeRate 13.32
+  input        52.43 GHS
+  output       3.93 USDC (ETHEREUM)
+  fees         network 0  platform 1.28  total 1.28
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created b14b286d-3718-45d5-acf1-c5b65466ecd1
+[2026-02-01T23:15:12.739Z] ---------- ONRAMP ----------
+  quoteId      849cacb2-f6ec-4534-beb8-1328a053e524
+  expiresAt    2026-02-01T23:15:42.730Z
+  exchangeRate 13.32
+  input        40.71 GHS
+  output       3.06 USDC (ETHEREUM)
+  fees         network 0  platform 0.99  total 0.99
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 2062ef7d-4205-4f7a-bdeb-d704eebf59cd
+[summary] Quotes: 13 ok, 7 failed (last 20 rounds)
+
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=65.12 chain=ETHEREUM output=ETH
+[2026-02-01T23:15:19.063Z] ---------- ONRAMP ----------
+  quoteId      9c2ae003-3a73-49f2-a5ba-c5876e694e5a
+  expiresAt    2026-02-01T23:15:49.054Z
+  exchangeRate 15.37
+  input        124.69 GHS
+  output       8.11 USDC (BASE)
+  fees         network 0  platform 3.04  total 3.04
+  debug        basePrice 15.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 4dd567bf-b336-4439-8572-8808fd88cab6
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=66.05 chain=BASE output=ETH
+[2026-02-01T23:15:25.612Z] ---------- OFFRAMP ----------
+  quoteId      c6e0b3ac-4dac-40f1-8d46-ce678d767911
+  expiresAt    2026-02-01T23:15:55.602Z
+  exchangeRate 10.72
+  input        49.14 USDC
+  output       527.03 GHS (ETHEREUM)
+  fees         network 0  platform 13.51  total 13.51
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 4c9b028d-d863-4653-bc89-779e02d71af5
+[2026-02-01T23:15:27.998Z] ---------- ONRAMP ----------
+  quoteId      be7aa724-e870-4ea2-ae9c-55a15cc80b21
+  expiresAt    2026-02-01T23:15:57.989Z
+  exchangeRate 13.32
+  input        136.76 GHS
+  output       10.26 USDC (ETHEREUM)
+  fees         network 0  platform 3.34  total 3.34
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 56c33eff-9b8e-4b3c-bea4-5d2e642c3b3f
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=109.28 chain=ETHEREUM output=ETH
+[2026-02-01T23:15:33.868Z] ---------- OFFRAMP ----------
+  quoteId      5067e7b7-05ff-4c94-8f22-f4fd4be37e59
+  expiresAt    2026-02-01T23:16:03.856Z
+  exchangeRate 10.72
+  input        20.39 USDC
+  output       218.68 GHS (BASE)
+  fees         network 0  platform 5.61  total 5.61
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 9877de5c-28ff-4c85-bf4b-6650ba5add36
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=14.99 chain=ETHEREUM input=ETH
+[2026-02-01T23:15:39.731Z] ---------- ONRAMP ----------
+  quoteId      49ceca45-92ba-4b49-86a4-a839e4a18015
+  expiresAt    2026-02-01T23:16:09.719Z
+  exchangeRate 15.37
+  input        48.11 GHS
+  output       3.13 USDC (BASE)
+  fees         network 0  platform 1.17  total 1.17
+  debug        basePrice 15.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created b9208781-5d74-4301-b41c-b72a291f2542
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=128.42 chain=ETHEREUM output=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=34.52 chain=BASE input=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=39.21 chain=BASE output=ETH
+[2026-02-01T23:15:54.070Z] ---------- OFFRAMP ----------
+  quoteId      e5c5281e-0c0e-49eb-bfd2-ebb1f292fed0
+  expiresAt    2026-02-01T23:16:24.063Z
+  exchangeRate 10.72
+  input        23.84 USDC
+  output       255.68 GHS (BASE)
+  fees         network 0  platform 6.56  total 6.56
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 10a0abcb-298a-4d9d-9da6-1c16fec249ab
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=29.57 chain=ETHEREUM output=ETH
+[2026-02-01T23:16:00.395Z] ---------- OFFRAMP ----------
+  quoteId      d59a725f-f6e7-4c57-a7a0-fd38c93b59f5
+  expiresAt    2026-02-01T23:16:30.383Z
+  exchangeRate 10.72
+  input        25.16 USDC
+  output       269.84 GHS (BASE)
+  fees         network 0  platform 6.92  total 6.92
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created deda6840-de55-491a-98b1-cb1edaf3850a
+[2026-02-01T23:16:02.673Z] ---------- OFFRAMP ----------
+  quoteId      0fb75a8c-c5a0-4b89-be49-d81fd4927e8c
+  expiresAt    2026-02-01T23:16:32.663Z
+  exchangeRate 10.72
+  input        6.83 USDC
+  output       73.25 GHS (BASE)
+  fees         network 0  platform 1.88  total 1.88
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 35f451f6-7de5-4eb5-8f8e-d405fbeac281
+[2026-02-01T23:16:05.391Z] ---------- OFFRAMP ----------
+  quoteId      cd11b738-e2f9-4a26-9565-3c05b5592187
+  expiresAt    2026-02-01T23:16:35.382Z
+  exchangeRate 10.72
+  input        48.11 USDC
+  output       515.98 GHS (ETHEREUM)
+  fees         network 0  platform 13.23  total 13.23
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 2492b286-769d-4d82-9902-adaea36062ff
+[2026-02-01T23:16:07.916Z] ---------- ONRAMP ----------
+  quoteId      e88b1182-e4b4-4d3e-994f-aab369b81bac
+  expiresAt    2026-02-01T23:16:37.909Z
+  exchangeRate 13.32
+  input        95.72 GHS
+  output       7.18 USDC (ETHEREUM)
+  fees         network 0  platform 2.33  total 2.33
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 6c82277b-47d2-4974-a75b-e8054f720886
+[2026-02-01T23:16:10.276Z] ---------- OFFRAMP ----------
+  quoteId      1c0a9661-4310-4fa2-9328-c1763ab2302e
+  expiresAt    2026-02-01T23:16:40.263Z
+  exchangeRate 10.72
+  input        36.58 USDC
+  output       392.32 GHS (BASE)
+  fees         network 0  platform 10.06  total 10.06
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created ed0d9487-c948-4265-95c6-81294d11ede9
+[2026-02-01T23:16:13.289Z] ---------- ONRAMP ----------
+  quoteId      c40cc028-5285-4d2f-91ab-fed720dd0e76
+  expiresAt    2026-02-01T23:16:43.275Z
+  exchangeRate 15.37
+  input        87.58 GHS
+  output       5.70 USDC (BASE)
+  fees         network 0  platform 2.14  total 2.14
+  debug        basePrice 15.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 73ad8078-2c22-4f61-a095-aa739491b533
+[summary] Quotes: 12 ok, 8 failed (last 20 rounds)
+
+[2026-02-01T23:16:16.659Z] ---------- OFFRAMP ----------
+  quoteId      a95f5b23-28c8-44c1-8a45-8b343c7e3d47
+  expiresAt    2026-02-01T23:16:46.645Z
+  exchangeRate 10.72
+  input        46.93 USDC
+  output       503.32 GHS (BASE)
+  fees         network 0  platform 12.91  total 12.91
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 530378d1-30ca-4eb5-a67f-fbb1eacd8710
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=127.67 chain=ETHEREUM output=ETH
+[2026-02-01T23:16:23.347Z] ---------- OFFRAMP ----------
+  quoteId      cfedb809-59b3-4986-ab70-d42379b64355
+  expiresAt    2026-02-01T23:16:53.337Z
+  exchangeRate 10.72
+  input        24.47 USDC
+  output       262.44 GHS (BASE)
+  fees         network 0  platform 6.73  total 6.73
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 8437ed54-49b3-4386-9c06-83202b7fe545
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=71.35 chain=ETHEREUM output=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=24.72 chain=BASE output=ETH
+[2026-02-01T23:16:33.386Z] ---------- ONRAMP ----------
+  quoteId      db74eda8-34fd-45b9-a874-87c2d2c38e26
+  expiresAt    2026-02-01T23:17:03.371Z
+  exchangeRate 15.37
+  input        87.85 GHS
+  output       5.71 USDC (BASE)
+  fees         network 0  platform 2.14  total 2.14
+  debug        basePrice 15.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 4b788090-6eeb-4e90-8a21-51d438b70a02
+[2026-02-01T23:16:35.640Z] ---------- OFFRAMP ----------
+  quoteId      9b091784-ae1e-4727-a47e-3c4bfdd09add
+  expiresAt    2026-02-01T23:17:05.632Z
+  exchangeRate 10.72
+  input        45.73 USDC
+  output       490.45 GHS (BASE)
+  fees         network 0  platform 12.58  total 12.58
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created e055b338-13e5-4f24-a518-2b25d9f33f23
+[2026-02-01T23:16:37.913Z] ---------- ONRAMP ----------
+  quoteId      13618ef9-128e-41fa-b0af-118bade888e2
+  expiresAt    2026-02-01T23:17:07.903Z
+  exchangeRate 13.32
+  input        71.79 GHS
+  output       5.39 USDC (ETHEREUM)
+  fees         network 0  platform 1.75  total 1.75
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created e510bbf3-1d02-4465-98ae-0886bef9ba11
+[2026-02-01T23:16:40.654Z] ---------- OFFRAMP ----------
+  quoteId      f576cbf6-f693-46fa-b323-dcf7322f3d59
+  expiresAt    2026-02-01T23:17:10.642Z
+  exchangeRate 10.72
+  input        8.50 USDC
+  output       91.16 GHS (BASE)
+  fees         network 0  platform 2.34  total 2.34
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created b1d596cf-78d2-4198-8c02-6543e3d398c9
+[2026-02-01T23:16:43.904Z] ---------- ONRAMP ----------
+  quoteId      01cba2ed-04c0-4b21-9bca-54fe65f960d6
+  expiresAt    2026-02-01T23:17:13.894Z
+  exchangeRate 15.37
+  input        101.48 GHS
+  output       6.60 USDC (BASE)
+  fees         network 0  platform 2.48  total 2.48
+  debug        basePrice 15.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 7df481cf-80a1-4192-920a-151134b7d256
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=36.73 chain=ETHEREUM output=ETH
+[2026-02-01T23:16:51.482Z] ---------- ONRAMP ----------
+  quoteId      15225f3f-f9ad-45ae-b052-52b783d06623
+  expiresAt    2026-02-01T23:17:21.472Z
+  exchangeRate 13.32
+  input        61.95 GHS
+  output       4.65 USDC (ETHEREUM)
+  fees         network 0  platform 1.51  total 1.51
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created fd3561dd-b369-4b6d-858b-cc03b40cc73f
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=12.09 chain=BASE input=ETH
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=26.43 chain=ETHEREUM input=ETH
+[2026-02-01T23:17:04.719Z] ---------- OFFRAMP ----------
+  quoteId      99f12c21-6773-44e7-b06c-147b2bff478a
+  expiresAt    2026-02-01T23:17:34.710Z
+  exchangeRate 10.72
+  input        6.77 USDC
+  output       72.61 GHS (BASE)
+  fees         network 0  platform 1.86  total 1.86
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 5ca76cd6-b873-4085-9080-4f4af4554fbf
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=31.40 chain=ETHEREUM input=ETH
+[2026-02-01T23:17:12.110Z] ---------- ONRAMP ----------
+  quoteId      4c67df65-6d42-48a0-b269-96b5ba4dde86
+  expiresAt    2026-02-01T23:17:42.100Z
+  exchangeRate 13.32
+  input        67.68 GHS
+  output       5.08 USDC (ETHEREUM)
+  fees         network 0  platform 1.65  total 1.65
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 385fb443-da0c-4352-9d0f-90abe7bf072c
+[2026-02-01T23:17:14.353Z] ---------- ONRAMP ----------
+  quoteId      bfb4d3f7-790c-4a7a-aae9-5d1c589417d0
+  expiresAt    2026-02-01T23:17:44.344Z
+  exchangeRate 15.37
+  input        118.96 GHS
+  output       7.74 USDC (BASE)
+  fees         network 0  platform 2.90  total 2.90
+  debug        basePrice 15.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created f6c41008-e108-492e-be6b-a2899a21d488
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=107.73 chain=ETHEREUM output=ETH
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=18.83 chain=ETHEREUM input=ETH
+[summary] Quotes: 11 ok, 9 failed (last 20 rounds)
+
+[2026-02-01T23:17:24.386Z] ---------- ONRAMP ----------
+  quoteId      55038baf-00cc-4354-869a-ea10302b1103
+  expiresAt    2026-02-01T23:17:54.378Z
+  exchangeRate 13.32
+  input        142.02 GHS
+  output       10.66 USDC (ETHEREUM)
+  fees         network 0  platform 3.46  total 3.46
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 93a643fa-c05c-49a4-bcf3-80d6a4d1d425
+[2026-02-01T23:17:26.656Z] ---------- ONRAMP ----------
+  quoteId      7844ed7a-5d44-463f-9b07-cb237eadc74a
+  expiresAt    2026-02-01T23:17:56.644Z
+  exchangeRate 15.37
+  input        103.35 GHS
+  output       6.72 USDC (BASE)
+  fees         network 0  platform 2.52  total 2.52
+  debug        basePrice 15.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 08587a75-6c3a-4633-9d7a-8b5ae1884393
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=135.76 chain=ETHEREUM output=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=92.86 chain=BASE output=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=142.54 chain=BASE output=ETH
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=45.43 chain=ETHEREUM output=ETH
+[2026-02-01T23:17:45.529Z] ---------- ONRAMP ----------
+  quoteId      8a5621f4-c71a-43a4-ae9f-e9f8c81b46ed
+  expiresAt    2026-02-01T23:18:15.519Z
+  exchangeRate 15.37
+  input        54.62 GHS
+  output       3.55 USDC (BASE)
+  fees         network 0  platform 1.33  total 1.33
+  debug        basePrice 15.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 62425355-958e-4887-a97a-de0f49816edd
+[2026-02-01T23:17:47.797Z] ---------- ONRAMP ----------
+  quoteId      34f687e6-346f-485f-98f1-d3601c5e9827
+  expiresAt    2026-02-01T23:18:17.780Z
+  exchangeRate 15.37
+  input        87.85 GHS
+  output       5.71 USDC (BASE)
+  fees         network 0  platform 2.14  total 2.14
+  debug        basePrice 15.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created b5a65348-a8d4-41ff-962e-3de57754e774
+[2026-02-01T23:17:50.215Z] ---------- ONRAMP ----------
+  quoteId      f86fc37e-bea0-4cfc-b79a-a5c20a1c231e
+  expiresAt    2026-02-01T23:18:20.205Z
+  exchangeRate 15.37
+  input        131.31 GHS
+  output       8.54 USDC (BASE)
+  fees         network 0  platform 3.20  total 3.20
+  debug        basePrice 15.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created e4d470dc-9402-43e5-88e4-fa44e856a7e3
+[2026-02-01T23:17:55.645Z] ---------- OFFRAMP ----------
+  quoteId      d33fe23f-7bfa-48c8-95e6-c8c5eab95410
+  expiresAt    2026-02-01T23:18:25.636Z
+  exchangeRate 10.72
+  input        18.39 USDC
+  output       197.23 GHS (ETHEREUM)
+  fees         network 0  platform 5.06  total 5.06
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created bb346740-3d5b-467b-9d06-123606453b2b
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=57.09 chain=ETHEREUM output=ETH
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=96.35 chain=ETHEREUM output=ETH
+[2026-02-01T23:18:06.621Z] ---------- ONRAMP ----------
+  quoteId      3156d5df-630d-4d63-a512-c784c09ee172
+  expiresAt    2026-02-01T23:18:36.612Z
+  exchangeRate 15.37
+  input        130.68 GHS
+  output       8.50 USDC (BASE)
+  fees         network 0  platform 3.19  total 3.19
+  debug        basePrice 15.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created d3d8e4ef-fde0-4fd2-9524-61c1315b719e
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=85.93 chain=BASE output=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=16.99 chain=BASE input=ETH
+[2026-02-01T23:18:15.966Z] ---------- OFFRAMP ----------
+  quoteId      05322f72-2c7c-4fd9-9b3e-00dd1f5198e1
+  expiresAt    2026-02-01T23:18:45.955Z
+  exchangeRate 10.72
+  input        41.95 USDC
+  output       449.91 GHS (ETHEREUM)
+  fees         network 0  platform 11.54  total 11.54
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 1eb887e9-d714-4f77-a1da-30e545da12b2
+[2026-02-01T23:18:18.685Z] ---------- OFFRAMP ----------
+  quoteId      a3de9cf4-7a13-46fa-a9e8-ceb8d4a8da2f
+  expiresAt    2026-02-01T23:18:48.674Z
+  exchangeRate 10.72
+  input        42.55 USDC
+  output       456.35 GHS (BASE)
+  fees         network 0  platform 11.70  total 11.70
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created d4dcf607-e131-4b2a-b732-09f59b7b4937
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=133.56 chain=ETHEREUM output=ETH
+[2026-02-01T23:18:24.424Z] ---------- ONRAMP ----------
+  quoteId      c6ed31cf-484a-4e0d-a54a-01459697024c
+  expiresAt    2026-02-01T23:18:54.412Z
+  exchangeRate 13.32
+  input        127.66 GHS
+  output       9.58 USDC (ETHEREUM)
+  fees         network 0  platform 3.11  total 3.11
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created c22ce7bb-2112-40da-bdf3-c5897b1dd9e4
+[2026-02-01T23:18:26.668Z] ---------- OFFRAMP ----------
+  quoteId      f89dca39-925b-4554-b946-fa57678d5130
+  expiresAt    2026-02-01T23:18:56.660Z
+  exchangeRate 10.72
+  input        30.23 USDC
+  output       324.22 GHS (ETHEREUM)
+  fees         network 0  platform 8.31  total 8.31
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 615bfe0f-3f78-45a1-bd4b-e0bd998ef735
+[summary] Quotes: 11 ok, 9 failed (last 20 rounds)
+
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=21.22 chain=ETHEREUM input=ETH
+[2026-02-01T23:18:32.974Z] ---------- OFFRAMP ----------
+  quoteId      1385233d-f3ae-4195-9bcc-07ef5fe2a654
+  expiresAt    2026-02-01T23:19:02.964Z
+  exchangeRate 10.72
+  input        36.81 USDC
+  output       394.79 GHS (BASE)
+  fees         network 0  platform 10.12  total 10.12
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 30a73a8e-55bd-4c2f-ac4c-d3fa239507c9
+[2026-02-01T23:18:35.380Z] ---------- OFFRAMP ----------
+  quoteId      0084b643-1d9b-4de3-b3f2-f8c1b18d6849
+  expiresAt    2026-02-01T23:19:05.369Z
+  exchangeRate 10.72
+  input        41.00 USDC
+  output       439.72 GHS (ETHEREUM)
+  fees         network 0  platform 11.28  total 11.28
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created da94c81a-14b6-4747-8940-7881cd0deb08
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=28.06 chain=BASE input=ETH
+[2026-02-01T23:18:44.028Z] ---------- OFFRAMP ----------
+  quoteId      7ba28c86-c182-4c0a-9120-f2dbbc9b69a4
+  expiresAt    2026-02-01T23:19:14.017Z
+  exchangeRate 10.72
+  input        16.42 USDC
+  output       176.10 GHS (ETHEREUM)
+  fees         network 0  platform 4.52  total 4.52
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 658dde1b-f05d-4c1f-9808-3617517b9157
+[2026-02-01T23:18:46.554Z] ---------- ONRAMP ----------
+  quoteId      a71beb9d-b801-467e-8919-60bb7a22fb48
+  expiresAt    2026-02-01T23:19:16.540Z
+  exchangeRate 15.37
+  input        127.69 GHS
+  output       8.31 USDC (BASE)
+  fees         network 0  platform 3.11  total 3.11
+  debug        basePrice 15.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created a59accc9-4648-49a4-9f9b-21b003cdc2bc
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=45.34 chain=BASE input=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=29.80 chain=BASE output=ETH
+[2026-02-01T23:18:57.374Z] ---------- ONRAMP ----------
+  quoteId      55d9b3f8-9a60-4a6d-a42b-1fcd6b617fe5
+  expiresAt    2026-02-01T23:19:27.362Z
+  exchangeRate 13.32
+  input        56.50 GHS
+  output       4.24 USDC (ETHEREUM)
+  fees         network 0  platform 1.38  total 1.38
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 795a21e4-133e-46ca-8a1f-ac1bc9841718
+[2026-02-01T23:18:59.941Z] ---------- OFFRAMP ----------
+  quoteId      7ba6b37f-4aa8-41f8-9cf5-2adb81c95f0c
+  expiresAt    2026-02-01T23:19:29.930Z
+  exchangeRate 10.72
+  input        27.20 USDC
+  output       291.72 GHS (BASE)
+  fees         network 0  platform 7.48  total 7.48
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 33565414-3d0f-427a-b026-736f87c50168
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=31.80 chain=BASE output=ETH
+[2026-02-01T23:19:06.292Z] ---------- OFFRAMP ----------
+  quoteId      c7dbfa64-be6d-46ca-a850-939e02d1f9c9
+  expiresAt    2026-02-01T23:19:36.265Z
+  exchangeRate 10.72
+  input        24.38 USDC
+  output       261.48 GHS (BASE)
+  fees         network 0  platform 6.70  total 6.70
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 21721d0a-2449-4935-9cc7-fcd699f4ca37
+[2026-02-01T23:19:08.551Z] ---------- OFFRAMP ----------
+  quoteId      e688b881-7151-40cc-8435-749fa7e9146d
+  expiresAt    2026-02-01T23:19:38.541Z
+  exchangeRate 10.72
+  input        25.40 USDC
+  output       272.41 GHS (ETHEREUM)
+  fees         network 0  platform 6.99  total 6.99
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created d6ef95d8-9848-420f-8c93-cc38abaf5257
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=132.21 chain=ETHEREUM output=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=107.59 chain=BASE output=ETH
+[2026-02-01T23:19:20.296Z] ---------- ONRAMP ----------
+  quoteId      20610e59-2da5-4e3c-9ee1-b063774c97b7
+  expiresAt    2026-02-01T23:19:50.286Z
+  exchangeRate 15.37
+  input        106.53 GHS
+  output       6.93 USDC (BASE)
+  fees         network 0  platform 2.60  total 2.60
+  debug        basePrice 15.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 3a933733-9239-44ed-939c-c42f4acb50e6
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=17.87 chain=BASE input=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=142.46 chain=BASE output=ETH
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=21.26 chain=ETHEREUM input=ETH
+[2026-02-01T23:19:35.494Z] ---------- ONRAMP ----------
+  quoteId      96a2fef0-0f26-4748-bff3-6a785ac31f5c
+  expiresAt    2026-02-01T23:20:05.477Z
+  exchangeRate 13.32
+  input        21.75 GHS
+  output       1.63 USDC (ETHEREUM)
+  fees         network 0  platform 0.53  total 0.53
+  debug        basePrice 13.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created b0408070-43f0-40a8-98d9-bba8199d9857
+[summary] Quotes: 10 ok, 10 failed (last 20 rounds)
+
