@@ -1,6 +1,7 @@
 /**
  * Order validation: lightweight, fast. Uses Redis cache only (no DB in hot path).
  * Validates: providers, identifiers, chains, tokens, KLYRA balance, swap route.
+ * Uses swap and onramp quote endpoints to validate amount/currency conversion.
  * On success: caller submits to pool. On failure: store in FailedOrderValidation + optional Redis list.
  */
 
@@ -21,6 +22,42 @@ import {
   VALIDATION_FAILED_LIST_TTL_SECONDS,
 } from "../lib/redis.js";
 import { getRedis } from "../lib/redis.js";
+import { getSwapQuote } from "./swap-quote.service.js";
+import { getOnrampQuote } from "./onramp-quote.service.js";
+
+/** Chain IDs used for fiat/offchain (onramp, offramp). */
+const FIAT_CHAIN_IDS = new Set([0, 2]);
+/** Default country for fiat chains when order does not provide country (e.g. MOMO/BANK → Ghana). */
+const FIAT_CHAIN_TO_COUNTRY: Record<string, string> = {
+  MOMO: "GH",
+  BANK: "GH",
+};
+
+function isFiatChain(chainCode: string, chainId: number): boolean {
+  return FIAT_CHAIN_IDS.has(chainId) || FIAT_CHAIN_TO_COUNTRY[chainCode] != null;
+}
+
+function getCountryForOrder(input: OrderValidationInput, fiatChainCode: string): string {
+  if (input.country?.trim()) return input.country.trim().toUpperCase().slice(0, 2);
+  return FIAT_CHAIN_TO_COUNTRY[fiatChainCode] ?? "GH";
+}
+
+/** Convert human amount to wei string for swap quote. */
+function humanToWei(amount: number, decimals: number): string {
+  const d = Math.min(decimals, 18);
+  const scaled = amount * 10 ** d;
+  return String(Math.round(scaled));
+}
+
+/** Convert wei string to human amount for comparison. */
+function weiToHuman(wei: string, decimals: number): number {
+  const d = Math.min(decimals, 18);
+  const big = BigInt(wei);
+  const div = BigInt(10 ** d);
+  const whole = Number(big / div);
+  const rem = Number(big % div);
+  return whole + rem / 10 ** d;
+}
 
 export type OrderValidationInput = {
   action: "buy" | "sell" | "request" | "claim";
@@ -41,6 +78,10 @@ export type OrderValidationInput = {
   f_provider: string;
   t_provider: string;
   requestId?: string | null;
+  /** Optional country code (e.g. GH) for onramp/offramp; derived from fiat chain if missing. */
+  country?: string | null;
+  /** Optional from address for swap quote (required for cross-chain Squid/LiFi). */
+  fromAddress?: string | null;
 };
 
 export type OrderValidationResult =
@@ -256,6 +297,92 @@ export async function validateOrder(input: OrderValidationInput): Promise<OrderV
           error: `Order t_price (${orderTPrice}) is outside allowed range for on-ramp (expected ~${expectedTPrice.toFixed(6)} per token, ±${PRICE_TOLERANCE * 100}%)`,
           code: "PRICE_OUT_OF_TOLERANCE",
         };
+      }
+    }
+  }
+
+  // --- Amount/currency conversion validation via swap and onramp quote endpoints ---
+  const AMOUNT_TOLERANCE = 0.02;
+  const fFiat = isFiatChain(fChainNorm, fChainRecord.chainId);
+  const tFiat = isFiatChain(tChainNorm, tChainRecord.chainId);
+
+  // Swap: both chains onchain — validate t_amount against swap quote
+  if (!fFiat && !tFiat && input.action === "buy") {
+    const fDecimals = fTokenRecord.decimals ?? 18;
+    const tDecimals = tTokenRecord.decimals ?? 18;
+    const amountWei = humanToWei(input.f_amount, fDecimals);
+    const sameChain = fChainRecord.chainId === tChainRecord.chainId;
+    const swapResult = await getSwapQuote({
+      provider: sameChain ? "0x" : "squid",
+      from_chain: fChainRecord.chainId,
+      to_chain: tChainRecord.chainId,
+      from_token: fTokenRecord.tokenAddress,
+      to_token: tTokenRecord.tokenAddress,
+      amount: amountWei,
+      from_address: input.fromAddress?.trim() || (sameChain ? undefined : "0x0000000000000000000000000000000000000000"),
+    });
+    if (swapResult.ok) {
+      const expectedTAmountHuman = weiToHuman(swapResult.quote.to_amount, tDecimals);
+      const ratio = expectedTAmountHuman > 0 ? input.t_amount / expectedTAmountHuman : 0;
+      if (ratio < 1 - AMOUNT_TOLERANCE || ratio > 1 + AMOUNT_TOLERANCE) {
+        return {
+          valid: false,
+          error: `Order t_amount (${input.t_amount}) is outside allowed range for swap (expected ~${expectedTAmountHuman.toFixed(6)} from quote, ±${AMOUNT_TOLERANCE * 100}%)`,
+          code: "AMOUNT_OUT_OF_TOLERANCE",
+        };
+      }
+    }
+    // If quote unavailable (e.g. 503), we do not fail validation here; price tolerance already applied
+  }
+
+  // Onramp (buy): fiat → crypto — validate t_amount against onramp quote
+  if (fFiat && !tFiat && input.action === "buy") {
+    const country = getCountryForOrder(input, fChainNorm);
+    const onrampResult = await getOnrampQuote({
+      country,
+      chain_id: tChainRecord.chainId,
+      token: input.t_token,
+      amount: input.f_amount,
+      amount_in: "fiat",
+      purchase_method: "buy",
+    });
+    if (onrampResult.ok) {
+      const expectedCrypto = parseFloat(onrampResult.data.total_crypto);
+      if (Number.isFinite(expectedCrypto) && expectedCrypto > 0) {
+        const ratio = input.t_amount / expectedCrypto;
+        if (ratio < 1 - AMOUNT_TOLERANCE || ratio > 1 + AMOUNT_TOLERANCE) {
+          return {
+            valid: false,
+            error: `Order t_amount (${input.t_amount}) is outside allowed range for onramp (expected ~${expectedCrypto.toFixed(6)} from quote, ±${AMOUNT_TOLERANCE * 100}%)`,
+            code: "AMOUNT_OUT_OF_TOLERANCE",
+          };
+        }
+      }
+    }
+  }
+
+  // Offramp (sell): crypto → fiat — validate t_amount against onramp quote
+  if (!fFiat && tFiat && input.action === "sell") {
+    const country = getCountryForOrder(input, tChainNorm);
+    const onrampResult = await getOnrampQuote({
+      country,
+      chain_id: fChainRecord.chainId,
+      token: input.f_token,
+      amount: input.f_amount,
+      amount_in: "crypto",
+      purchase_method: "sell",
+    });
+    if (onrampResult.ok) {
+      const expectedFiat = onrampResult.data.total_fiat;
+      if (Number.isFinite(expectedFiat) && expectedFiat > 0) {
+        const ratio = input.t_amount / expectedFiat;
+        if (ratio < 1 - AMOUNT_TOLERANCE || ratio > 1 + AMOUNT_TOLERANCE) {
+          return {
+            valid: false,
+            error: `Order t_amount (${input.t_amount}) is outside allowed range for offramp (expected ~${expectedFiat.toFixed(6)} from quote, ±${AMOUNT_TOLERANCE * 100}%)`,
+            code: "AMOUNT_OUT_OF_TOLERANCE",
+          };
+        }
       }
     }
   }

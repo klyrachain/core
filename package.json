@@ -18,6 +18,7 @@
     "test:watch": "vitest",
     "test:ci": "pnpm db:generate && vitest run",
     "test:live": "tsx scripts/test-live.ts",
+    "test:live:onramp-offramp": "tsx scripts/test-live-onramp-offramp.ts",
     "key:generate": "tsx scripts/generate-backend-key.ts"
   },
   "dependencies": {

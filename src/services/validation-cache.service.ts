@@ -36,6 +36,7 @@ export type CachedToken = {
   chainId: number;
   symbol: string;
   tokenAddress: string;
+  decimals: number;
 };
 
 export type CachedPlatformFee = {
@@ -68,7 +69,7 @@ export async function loadValidationCache(): Promise<void> {
     }),
     prisma.chain.findMany({ select: { chainId: true, name: true } }),
     prisma.supportedToken.findMany({
-      select: { chainId: true, symbol: true, tokenAddress: true },
+      select: { chainId: true, symbol: true, tokenAddress: true, decimals: true },
     }),
   ]);
 
@@ -104,6 +105,7 @@ export async function loadValidationCache(): Promise<void> {
     chainId: t.chainId,
     symbol: t.symbol,
     tokenAddress: t.tokenAddress,
+    decimals: t.decimals ?? 18,
   }));
 
   // Base platform fee (%) from Settings → financials.baseFeePercent; load into cache for validation.

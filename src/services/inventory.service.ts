@@ -212,6 +212,36 @@ export async function getCachedBalance(chain: string, token: string): Promise<Ba
 }
 
 /**
+ * Sync all inventory assets to Redis (one balance per chain+symbol; multiple addresses summed).
+ * Call before tests or when cache may be stale so Redis has current balances for validation.
+ */
+export async function syncAllInventoryBalancesToRedis(): Promise<{ synced: number }> {
+  const assets = await prisma.inventoryAsset.findMany({
+    select: { chain: true, symbol: true, currentBalance: true },
+  });
+  const byChainSymbol = new Map<string, { total: Decimal; chain: string; symbol: string }>();
+  for (const a of assets) {
+    const key = `${a.chain}:${a.symbol}`;
+    const existing = byChainSymbol.get(key);
+    const balance = toDecimal(a.currentBalance);
+    if (existing) {
+      existing.total = existing.total.plus(balance);
+    } else {
+      byChainSymbol.set(key, { total: balance, chain: a.chain, symbol: a.symbol });
+    }
+  }
+  for (const { chain, symbol, total } of byChainSymbol.values()) {
+    const entry: BalanceEntry = {
+      amount: total.toString(),
+      status: "synced",
+      updatedAt: new Date().toISOString(),
+    };
+    await setBalance(chain, symbol, entry);
+  }
+  return { synced: byChainSymbol.size };
+}
+
+/**
  * Sync Redis balance from DB for a given chain/token/address (stub for TTL refresh).
  * When address is omitted, syncs the first matching asset (backward compat).
  */

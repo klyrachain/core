@@ -1,8 +1,20 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { getBalance, listBalanceKeys } from "../../lib/redis.js";
+import { syncAllInventoryBalancesToRedis } from "../../services/inventory.service.js";
 import { successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
 
 export async function cacheApiRoutes(app: FastifyInstance): Promise<void> {
+  /** Sync all inventory assets to Redis (so balance cache has current DB state). Use before live tests. */
+  app.post("/api/cache/sync-balances", async (req, reply) => {
+    try {
+      const { synced } = await syncAllInventoryBalancesToRedis();
+      return successEnvelope(reply, { synced }, 200);
+    } catch (err) {
+      req.log.error({ err }, "POST /api/cache/sync-balances");
+      return errorEnvelope(reply, "Something went wrong.", 500);
+    }
+  });
+
   app.get("/api/cache/balances", async (req: FastifyRequest<{ Querystring: { limit?: string } }>, reply) => {
     try {
       const limit = Math.min(100, Math.max(1, parseInt(req.query.limit ?? "50", 10) || 50));
