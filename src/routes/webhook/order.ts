@@ -3,6 +3,7 @@ import { z } from "zod";
 import { PaymentProvider, IdentityType, TransactionType } from "../../../prisma/generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { addPollJob } from "../../lib/queue.js";
+import { getStoredQuote } from "../../lib/redis.js";
 import { getFeeForOrder } from "../../services/fee.service.js";
 import { sendToAdminDashboard } from "../../services/admin-dashboard.service.js";
 import { validateOrder, storeFailedValidation, type OrderValidationInput } from "../../services/order-validation.service.js";
@@ -28,6 +29,7 @@ const OrderWebhookSchema = z.object({
   providerSessionId: z.string().min(1).optional().nullable(),
   requestId: z.string().uuid().optional().nullable(),
   quoteId: z.string().uuid().optional().nullable(),
+  providerPrice: z.coerce.number().nonnegative().optional().nullable(), // provider quote at order time (e.g. onramp basePrice) for P&L
 });
 
 type OrderWebhookBody = z.infer<typeof OrderWebhookSchema>;
@@ -122,6 +124,23 @@ export async function orderWebhookRoutes(app: FastifyInstance): Promise<void> {
     }
 
     try {
+      let providerPrice: number | null = body.providerPrice ?? null;
+      if (providerPrice == null && body.quoteId) {
+        const raw = await getStoredQuote(body.quoteId);
+        if (raw) {
+          try {
+            const quote = JSON.parse(raw) as { basePrice?: string; debug?: { basePrice?: string } };
+            const fromQuote = quote.basePrice ?? quote.debug?.basePrice;
+            if (fromQuote != null) {
+              const parsed = parseFloat(fromQuote);
+              if (Number.isFinite(parsed)) providerPrice = parsed;
+            }
+          } catch {
+            // ignore parse / missing basePrice
+          }
+        }
+      }
+
       const transaction = await prisma.transaction.create({
         data: {
           type,
@@ -144,6 +163,7 @@ export async function orderWebhookRoutes(app: FastifyInstance): Promise<void> {
           t_provider: body.t_provider,
           providerSessionId: body.providerSessionId ?? null,
           requestId: body.requestId ?? null,
+          providerPrice,
         },
       });
 

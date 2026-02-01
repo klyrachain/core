@@ -80,7 +80,7 @@ describe("POST /webhook/paystack", () => {
     expect(res.statusCode).toBe(200);
     expect(mockTxUpdate).toHaveBeenCalledWith({
       where: { id: "tx-1" },
-      data: { status: "COMPLETED" },
+      data: { status: "COMPLETED", fee: 0 },
     });
   });
 

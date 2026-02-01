@@ -24,6 +24,8 @@ export type QuoteResponseDto = {
   quoteId: string;
   expiresAt: string;
   exchangeRate: string;
+  /** Provider quote (e.g. Fonbnk base price) — used for P&L and fee; always stored so order webhook can set Transaction.providerPrice from quote */
+  basePrice?: string;
   input: { amount: string; currency: string };
   output: { amount: string; currency: string; chain?: string };
   fees: {
@@ -36,6 +38,16 @@ export type QuoteResponseDto = {
     profitMarginPct: string;
     volatilityPremium: string;
     inventoryRisk: string;
+    /** Cost basis (avg buy price) from inventory — profit = sellingPrice - costBasis */
+    costBasis?: string;
+    /** Provider quote (basePrice) — fee = sellingPrice - providerPrice */
+    providerPrice?: string;
+    /** Price we sell to user (exchangeRate) */
+    sellingPrice?: string;
+    /** Per-unit fee: sellingPrice - providerPrice */
+    feePerUnit?: string;
+    /** Per-unit profit: sellingPrice - costBasis */
+    profitPerUnit?: string;
   };
 };
 
@@ -192,11 +204,19 @@ export async function buildPublicQuote(
     });
     exchangeRate = result.pricePerToken;
     if (options?.includeDebug) {
+      const sellingPrice = exchangeRate;
+      const feePerUnit = sellingPrice - basePrice;
+      const profitPerUnit = sellingPrice - avgBuyPrice;
       debug = {
         basePrice: basePrice.toFixed(2),
         profitMarginPct: `${((result.totalPremium ?? 0) * 100).toFixed(2)}%`,
         volatilityPremium: volatilityToPremium(volatility).toFixed(4),
         inventoryRisk: (result.atFloor ? "floor" : "0").toString(),
+        costBasis: avgBuyPrice.toFixed(2),
+        providerPrice: basePrice.toFixed(2),
+        sellingPrice: sellingPrice.toFixed(2),
+        feePerUnit: feePerUnit.toFixed(4),
+        profitPerUnit: profitPerUnit.toFixed(4),
       };
     }
   } else if (action === "OFFRAMP") {
@@ -236,27 +256,40 @@ export async function buildPublicQuote(
     outputAmount = inputAmountNum * exchangeRate;
   }
 
-  const feeQuote = getFeeForOrder({
-    action: action === "ONRAMP" ? "buy" : action === "OFFRAMP" ? "sell" : "buy",
-    f_amount: action === "ONRAMP" ? inputAmountNum : inputAmountNum,
-    t_amount: action === "ONRAMP" ? outputAmount : outputAmount,
-    f_price: action === "ONRAMP" ? 1 : exchangeRate,
-    t_price: action === "ONRAMP" ? exchangeRate : 1,
-    f_chain: action === "ONRAMP" ? (chain ?? "") : chain ?? "",
-    t_chain: action === "ONRAMP" ? (chain ?? "") : "",
-    f_token: action === "ONRAMP" ? inputCurrency : inputCurrency,
-    t_token: action === "ONRAMP" ? outputCurrency : outputCurrency,
-  });
+  // Fee = (selling price − provider price) × quantity (spread-based, not %)
+  let platformFeeNum: number;
+  if (action === "ONRAMP") {
+    const feePerUnit = exchangeRate - basePrice;
+    platformFeeNum = feePerUnit * outputAmount;
+  } else if (action === "OFFRAMP") {
+    const feePerUnit = basePrice - exchangeRate;
+    platformFeeNum = feePerUnit * inputAmountNum;
+  } else {
+    const feeQuote = getFeeForOrder({
+      action: "buy",
+      f_amount: inputAmountNum,
+      t_amount: outputAmount,
+      f_price: 1,
+      t_price: exchangeRate,
+      f_chain: chain ?? "",
+      t_chain: chain ?? "",
+      f_token: inputCurrency,
+      t_token: outputCurrency,
+    });
+    platformFeeNum = feeQuote.feeAmount;
+  }
 
   const networkFeeStub = "0";
-  const platformFeeDisplay = feeQuote.feeAmount.toFixed(2);
-  const totalFeeNum = feeQuote.feeAmount + parseFloat(networkFeeStub);
+  const platformFeeRounded = Math.round(platformFeeNum * 1e8) / 1e8;
+  const platformFeeDisplay = platformFeeRounded.toFixed(2);
+  const totalFeeNum = platformFeeRounded + parseFloat(networkFeeStub);
   const expiresAt = new Date(Date.now() + QUOTE_VALIDITY_SECONDS * 1000).toISOString();
 
   const data: QuoteResponseDto = {
     quoteId: randomUUID(),
     expiresAt,
     exchangeRate: exchangeRate.toFixed(2),
+    basePrice: basePrice.toFixed(2),
     input: { amount: inputAmount.trim(), currency: inputCurrency },
     output: {
       amount: outputAmount.toFixed(2),

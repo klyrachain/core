@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { Decimal } from "@prisma/client/runtime/client";
 import { processPollJob } from "../../src/workers/poll.worker.js";
 import type { Job } from "bullmq";
 import type { PollJobData } from "../../src/lib/queue.js";
@@ -6,6 +7,7 @@ import type { PollJobData } from "../../src/lib/queue.js";
 const mockFindUnique = vi.fn();
 const mockFindFirst = vi.fn();
 const mockUpdate = vi.fn();
+const mockTransactionPnLCreateMany = vi.fn();
 
 vi.mock("../../src/lib/prisma.js", () => ({
   prisma: {
@@ -15,6 +17,9 @@ vi.mock("../../src/lib/prisma.js", () => ({
     },
     inventoryAsset: {
       findFirst: (...args: unknown[]) => mockFindFirst(...args),
+    },
+    transactionPnL: {
+      createMany: (...args: unknown[]) => mockTransactionPnLCreateMany(...args),
     },
   },
 }));
@@ -43,9 +48,11 @@ describe("poll.worker processPollJob", () => {
     mockFindUnique.mockReset();
     mockFindFirst.mockReset();
     mockUpdate.mockReset();
+    mockTransactionPnLCreateMany.mockReset();
     mockDeductInventory.mockReset();
     mockAddInventory.mockReset();
     mockTriggerTransactionStatusChange.mockReset();
+    mockTransactionPnLCreateMany.mockResolvedValue({ count: 1 });
   });
 
   it("should throw when transaction is not found", async () => {
@@ -67,7 +74,7 @@ describe("poll.worker processPollJob", () => {
     expect(mockTriggerTransactionStatusChange).not.toHaveBeenCalled();
   });
 
-  it("should complete BUY: deduct t_token and add f_token when assets exist", async () => {
+  it("should complete BUY: deduct t_token, create TransactionPnL, add f_token, set fee from spread", async () => {
     const tx = {
       id: "tx-1",
       type: "BUY",
@@ -80,13 +87,19 @@ describe("poll.worker processPollJob", () => {
       t_token: "ETH",
       t_amount: 0.5,
       t_price: 3000,
+      providerPrice: 2990,
     };
     mockFindUnique.mockResolvedValue(tx);
-    const tAsset = { id: "asset-eth", chain: "ETHEREUM", tokenAddress: "0xeth", symbol: "ETH" };
-    const fAsset = { id: "asset-usdc", chain: "ETHEREUM", tokenAddress: "0xusdc", symbol: "USDC" };
+    const tAsset = { id: "asset-eth", chain: "ETHEREUM", chainId: 1, tokenAddress: "0xeth", symbol: "ETH", address: "0xwallet" };
+    const fAsset = { id: "asset-usdc", chain: "ETHEREUM", chainId: 1, tokenAddress: "0xusdc", symbol: "USDC", address: "0xwallet" };
     mockFindFirst.mockResolvedValueOnce(tAsset).mockResolvedValueOnce(fAsset);
     mockUpdate.mockResolvedValue({});
-    mockDeductInventory.mockResolvedValue(undefined);
+    mockDeductInventory.mockResolvedValue({
+      averageCostPerToken: new Decimal(2980),
+      allocatedLots: [
+        { lotId: "lot-1", quantity: new Decimal(0.5), costPerToken: new Decimal(2980) },
+      ],
+    });
     mockAddInventory.mockResolvedValue(undefined);
     mockTriggerTransactionStatusChange.mockResolvedValue(undefined);
 
@@ -102,6 +115,19 @@ describe("poll.worker processPollJob", () => {
         providerQuotePrice: 3000,
       })
     );
+    expect(mockTransactionPnLCreateMany).toHaveBeenCalledTimes(1);
+    expect(mockTransactionPnLCreateMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          transactionId: "tx-1",
+          lotId: "lot-1",
+          sellingPrice: expect.anything(),
+          providerPrice: expect.anything(),
+          feeAmount: expect.anything(),
+          profitLoss: expect.anything(),
+        }),
+      ]),
+    });
     expect(mockAddInventory).toHaveBeenCalledTimes(1);
     expect(mockAddInventory).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -112,9 +138,10 @@ describe("poll.worker processPollJob", () => {
         providerQuotePrice: 1,
       })
     );
+    // Fee = (sellingPrice - providerPrice) * t_amount = (3000 - 2990) * 0.5 = 5
     expect(mockUpdate).toHaveBeenCalledWith({
       where: { id: "tx-1" },
-      data: { status: "COMPLETED" },
+      data: { status: "COMPLETED", fee: 5 },
     });
     expect(mockTriggerTransactionStatusChange).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -125,7 +152,7 @@ describe("poll.worker processPollJob", () => {
     );
   });
 
-  it("should complete SELL: add f_token and deduct t_token when assets exist", async () => {
+  it("should complete SELL: add f_token and deduct t_token, set fee from spread", async () => {
     const tx = {
       id: "tx-2",
       type: "SELL",
@@ -137,11 +164,11 @@ describe("poll.worker processPollJob", () => {
       f_price: 3000,
       t_token: "USDC",
       t_amount: 1500,
-      t_price: 1,
+      t_price: 3000,
     };
     mockFindUnique.mockResolvedValue(tx);
-    const fAsset = { id: "asset-eth", chain: "ETHEREUM", tokenAddress: "0xeth", symbol: "ETH" };
-    const tAsset = { id: "asset-usdc", chain: "ETHEREUM", tokenAddress: "0xusdc", symbol: "USDC" };
+    const fAsset = { id: "asset-eth", chain: "ETHEREUM", chainId: 1, tokenAddress: "0xeth", symbol: "ETH", address: "0xwallet" };
+    const tAsset = { id: "asset-usdc", chain: "ETHEREUM", chainId: 1, tokenAddress: "0xusdc", symbol: "USDC", address: "0xwallet" };
     mockFindFirst.mockResolvedValueOnce(fAsset).mockResolvedValueOnce(tAsset);
     mockUpdate.mockResolvedValue({});
     mockAddInventory.mockResolvedValue(undefined);
@@ -166,9 +193,10 @@ describe("poll.worker processPollJob", () => {
         type: "SALE",
       })
     );
+    // Fee = (f_price - t_price) * f_amount / t_price = (3000 - 3000) * 0.5 / 3000 = 0
     expect(mockUpdate).toHaveBeenCalledWith({
       where: { id: "tx-2" },
-      data: { status: "COMPLETED" },
+      data: { status: "COMPLETED", fee: 0 },
     });
     expect(mockTriggerTransactionStatusChange).toHaveBeenCalledWith(
       expect.objectContaining({ transactionId: "tx-2", status: "COMPLETED", type: "SELL" })
@@ -225,9 +253,11 @@ describe("poll.worker processPollJob", () => {
 
     expect(mockDeductInventory).not.toHaveBeenCalled();
     expect(mockAddInventory).not.toHaveBeenCalled();
+    expect(mockTransactionPnLCreateMany).not.toHaveBeenCalled();
+    // Fee = (t_price - providerPrice) * t_amount = (1 - 1) * 1 = 0
     expect(mockUpdate).toHaveBeenCalledWith({
       where: { id: "tx-4" },
-      data: { status: "COMPLETED" },
+      data: { status: "COMPLETED", fee: 0 },
     });
   });
 });

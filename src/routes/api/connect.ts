@@ -23,6 +23,51 @@ function toNum(v: { toString(): string } | number | null | undefined): number {
   return parseFloat(String(v)) || 0;
 }
 
+/** Accumulated fees by currency (fee is stored in f_token per transaction). */
+export type FeesByCurrency = Record<string, string>;
+
+type FeeRow = { fee: { toString(): string } | null; f_token: string; type: string; f_price: { toString(): string }; t_price: { toString(): string } };
+
+/** Aggregate completed transactions: sum fee by f_token; optional total converted using f_price (sell) / t_price (buy). */
+export async function getAccumulatedFees(options: {
+  since?: Date;
+  businessId?: string | null;
+  /** When true, only transactions with a business (partner) are included. */
+  partnerOnly?: boolean;
+}): Promise<{ byCurrency: FeesByCurrency; totalConverted: number }> {
+  const where: Prisma.TransactionWhereInput = {
+    status: COMPLETED_STATUS,
+    fee: { not: null },
+  };
+  if (options.since) where.createdAt = { gte: options.since };
+  if (options.businessId != null && options.businessId !== "") where.businessId = options.businessId;
+  if (options.partnerOnly) where.businessId = { not: null };
+
+  const rows = await prisma.transaction.findMany({
+    where,
+    select: { fee: true, f_token: true, type: true, f_price: true, t_price: true },
+  });
+
+  const byCurrency: Record<string, number> = {};
+  let totalConverted = 0;
+  for (const r of rows as FeeRow[]) {
+    const fee = toNum(r.fee);
+    if (fee <= 0) continue;
+    const token = r.f_token || "UNKNOWN";
+    byCurrency[token] = (byCurrency[token] ?? 0) + fee;
+    const rate =
+      r.type === "SELL" || r.type === "REQUEST" || r.type === "CLAIM"
+        ? toNum(r.f_price)
+        : toNum(r.t_price);
+    if (Number.isFinite(rate) && rate > 0) totalConverted += fee * rate;
+  }
+  const byCurrencyStr: FeesByCurrency = {};
+  for (const [k, v] of Object.entries(byCurrency)) {
+    byCurrencyStr[k] = String(Math.round(v * 1e8) / 1e8);
+  }
+  return { byCurrency: byCurrencyStr, totalConverted };
+}
+
 /** Require platform key (no businessId). Returns 403 if merchant key. */
 function requirePlatformKey(req: FastifyRequest, reply: import("fastify").FastifyReply): boolean {
   if (req.apiKey?.businessId) {
@@ -132,6 +177,8 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
           createdAt: b!.createdAt.toISOString(),
         }));
 
+      const { byCurrency: feesByCurrency } = await getAccumulatedFees({ partnerOnly: true });
+
       return successEnvelope(reply, {
         totalPlatformVolume,
         netRevenueFees,
@@ -139,12 +186,46 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
         volumeByPartner,
         takeRate,
         recentOnboarding,
+        feesByCurrency,
       });
     } catch (err) {
       req.log.error({ err }, "GET /api/connect/overview");
       return errorEnvelope(reply, "Something went wrong.", 500);
     }
   });
+
+  // --- GET /api/connect/fees/report ---
+  app.get(
+    "/api/connect/fees/report",
+    async (
+      req: FastifyRequest<{ Querystring: { days?: string; businessId?: string } }>,
+      reply
+    ) => {
+      try {
+        if (!req.apiKey) return errorEnvelope(reply, "Not authenticated.", 401);
+        if (!requirePlatformKey(req, reply)) return;
+
+        const days = Math.min(Math.max(parseInt(req.query.days ?? "0", 10) || 0, 0), 365);
+        const since = days > 0 ? new Date(Date.now() - days * 24 * 60 * 60 * 1000) : undefined;
+        const businessId = req.query.businessId ?? undefined;
+
+        const { byCurrency, totalConverted } = await getAccumulatedFees({
+          since,
+          businessId: businessId ? businessId : undefined,
+        });
+
+        return successEnvelope(reply, {
+          byCurrency,
+          totalConverted: Math.round(totalConverted * 1e8) / 1e8,
+          days: days || null,
+          businessId: businessId || null,
+        });
+      } catch (err) {
+        req.log.error({ err }, "GET /api/connect/fees/report");
+        return errorEnvelope(reply, "Something went wrong.", 500);
+      }
+    }
+  );
 
   // --- GET /api/connect/merchants ---
   app.get(

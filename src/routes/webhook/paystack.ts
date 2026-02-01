@@ -11,6 +11,7 @@ import {
 import { upsertPaystackPaymentRecord } from "../../services/paystack-payment-record.service.js";
 import { sendToAdminDashboard } from "../../services/admin-dashboard.service.js";
 import { triggerTransactionStatusChange } from "../../services/pusher.service.js";
+import { computeTransactionFee } from "../../services/fee.service.js";
 
 type PaystackWebhookEvent = {
   event: string;
@@ -64,10 +65,15 @@ export async function paystackWebhookRoutes(app: FastifyInstance): Promise<void>
               where: { id: ourTransactionId },
             });
             if (tx && tx.providerSessionId === reference) {
-              const newStatus = event === "charge.success" ? "COMPLETED" : "FAILED";
+              const newStatus = event === "charge.success" ? ("COMPLETED" as const) : ("FAILED" as const);
+              const updateData: { status: "COMPLETED" | "FAILED"; fee?: number } = { status: newStatus };
+              if (newStatus === "COMPLETED") {
+                const feeAmount = computeTransactionFee(tx);
+                if (Number.isFinite(feeAmount)) updateData.fee = feeAmount;
+              }
               await prisma.transaction.update({
                 where: { id: ourTransactionId },
-                data: { status: newStatus },
+                data: updateData,
               });
               try {
                 const verifyData = await verifyTransaction(reference);

@@ -1,10 +1,11 @@
 import { Job } from "bullmq";
+import { Decimal } from "@prisma/client/runtime/client";
 import { prisma } from "../lib/prisma.js";
 import { type PollJobData } from "../lib/queue.js";
 import { deductInventory, addInventory } from "../services/inventory.service.js";
 import { refreshCostBasisForChainToken } from "../services/validation-cache.service.js";
 import { triggerTransactionStatusChange } from "../services/pusher.service.js";
-import { getFeeForOrder } from "../services/fee.service.js";
+import { computeTransactionFee, getFeeForOrder } from "../services/fee.service.js";
 import { sendToAdminDashboard } from "../services/admin-dashboard.service.js";
 import type { TransactionStatus } from "../../prisma/generated/prisma/client.js";
 
@@ -33,7 +34,7 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
         where: { symbol: tx.t_token, chain: tChain },
       });
       if (tAsset) {
-        await deductInventory({
+        const deductResult = await deductInventory({
           chain: tAsset.chain,
           chainId: tAsset.chainId,
           tokenAddress: tAsset.tokenAddress,
@@ -44,6 +45,28 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
           providerQuotePrice: tx.t_price,
           sourceTransactionId: transactionId,
         });
+        const sellingPrice = new Decimal(tx.t_price);
+        const providerPrice = tx.providerPrice != null ? new Decimal(tx.providerPrice) : sellingPrice;
+        if (deductResult.allocatedLots.length > 0) {
+          await prisma.transactionPnL.createMany({
+            data: deductResult.allocatedLots.map((lot) => {
+              const qty = lot.quantity;
+              const cost = lot.costPerToken;
+              const feeAmount = qty.mul(sellingPrice.minus(providerPrice));
+              const profitLoss = qty.mul(sellingPrice.minus(cost));
+              return {
+                transactionId,
+                lotId: lot.lotId,
+                quantity: qty,
+                costPerToken: cost,
+                providerPrice,
+                sellingPrice,
+                feeAmount,
+                profitLoss,
+              };
+            }),
+          });
+        }
         await refreshCostBasisForChainToken(tChain, tx.t_token).catch(() => {});
       }
       const fAsset = await prisma.inventoryAsset.findFirst({
@@ -103,9 +126,13 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
       }
     }
 
+    const feeAmount = computeTransactionFee(tx);
+
+    const updateData: { status: "COMPLETED"; fee?: number } = { status: "COMPLETED" };
+    if (Number.isFinite(feeAmount)) updateData.fee = feeAmount;
     await prisma.transaction.update({
       where: { id: transactionId },
-      data: { status: "COMPLETED" },
+      data: updateData,
     });
 
     const feeQuote = getFeeForOrder({
@@ -131,10 +158,10 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
         t_price: Number(tx.t_price),
         f_token: tx.f_token,
         t_token: tx.t_token,
-        feeAmount: feeQuote.feeAmount,
+        feeAmount: feeAmount,
         feePercent: feeQuote.feePercent,
         totalCost: feeQuote.totalCost,
-        profit: feeQuote.profit,
+        profit: feeAmount,
       },
     }).catch(() => {});
 

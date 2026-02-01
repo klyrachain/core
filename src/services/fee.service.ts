@@ -117,3 +117,60 @@ export function getFeeForOrder(input: FeeQuoteInput): FeeQuoteResult {
 export function getProfitForOrder(input: FeeQuoteInput): number {
   return getFeeForOrder(input).profit;
 }
+
+/** Transaction-like shape for fee computation (spread-based). */
+export type TransactionForFee = {
+  type: "BUY" | "SELL" | "REQUEST" | "CLAIM";
+  f_amount: number | { toString(): string };
+  t_amount: number | { toString(): string };
+  f_price: number | { toString(): string };
+  t_price: number | { toString(): string };
+  providerPrice?: number | { toString(): string } | null;
+};
+
+function toNum(v: number | { toString(): string } | null | undefined): number {
+  if (v == null) return 0;
+  return typeof v === "number" ? v : parseFloat(String(v)) || 0;
+}
+
+/**
+ * Compute transaction fee for completion (spread-based).
+ * BUY: fee = (sellingPrice - providerPrice) * t_amount (in f_token). sellingPrice = t_price.
+ * SELL: fee in f_token = (f_price - t_price) * f_amount / t_price when t_price != 0 (spread in fiat converted to f_token).
+ * REQUEST/CLAIM: fallback to getFeeForOrder (percentage).
+ */
+export function computeTransactionFee(tx: TransactionForFee): number {
+  const fAmount = toNum(tx.f_amount);
+  const tAmount = toNum(tx.t_amount);
+  const fPrice = toNum(tx.f_price);
+  const tPrice = toNum(tx.t_price);
+  const providerPrice = tx.providerPrice != null ? toNum(tx.providerPrice) : undefined;
+
+  switch (tx.type) {
+    case "BUY": {
+      const sellingPrice = tPrice;
+      const provider = providerPrice ?? sellingPrice;
+      const fee = (sellingPrice - provider) * tAmount;
+      return Math.round(fee * 1e8) / 1e8;
+    }
+    case "SELL": {
+      if (tPrice === 0) return 0;
+      const spreadFiat = (fPrice - tPrice) * fAmount;
+      const feeInFToken = spreadFiat / tPrice;
+      return Math.round(feeInFToken * 1e8) / 1e8;
+    }
+    case "REQUEST":
+    case "CLAIM":
+      return getFeeForOrder({
+        action: tx.type.toLowerCase() as OrderAction,
+        f_amount: fAmount,
+        t_amount: tAmount,
+        f_price: fPrice,
+        t_price: tPrice,
+        f_token: "",
+        t_token: "",
+      }).feeAmount;
+    default:
+      return 0;
+  }
+}

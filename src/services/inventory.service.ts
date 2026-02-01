@@ -46,8 +46,15 @@ export type InventoryAdditionInput = {
   sourceTransactionId?: string;
 };
 
+export type AllocatedLot = {
+  lotId: string;
+  quantity: Decimal;
+  costPerToken: Decimal;
+};
+
 export type DeductInventoryResult = {
   averageCostPerToken: Decimal | null; // volume-weighted cost of allocated lots; null if no lots used
+  allocatedLots: AllocatedLot[]; // FIFO allocation for P&L (fee = selling - provider, profit = selling - cost)
 };
 
 /**
@@ -91,6 +98,7 @@ export async function deductInventory(input: InventoryDeductionInput): Promise<D
   let totalCost = new Decimal(0);
   let allocated = new Decimal(0);
   const lotUpdates: { id: string; newQuantity: Decimal }[] = [];
+  const allocatedLots: AllocatedLot[] = [];
 
   for (const lot of asset.lots) {
     if (allocated.gte(amount)) break;
@@ -98,6 +106,13 @@ export async function deductInventory(input: InventoryDeductionInput): Promise<D
     if (lotQty.lte(0)) continue;
     const need = amount.minus(allocated);
     const take = Decimal.min(lotQty, need);
+    if (take.gt(0)) {
+      allocatedLots.push({
+        lotId: lot.id,
+        quantity: take,
+        costPerToken: new Decimal(lot.costPerToken),
+      });
+    }
     const cost = take.mul(lot.costPerToken);
     totalCost = totalCost.plus(cost);
     allocated = allocated.plus(take);
@@ -139,7 +154,7 @@ export async function deductInventory(input: InventoryDeductionInput): Promise<D
   };
   await setBalance(input.chain, input.symbol, entry);
 
-  return { averageCostPerToken };
+  return { averageCostPerToken, allocatedLots };
 }
 
 /**

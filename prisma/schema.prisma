@@ -175,6 +175,8 @@ model Transaction {
 
   platformFee Decimal? @default(0) @db.Decimal(18, 8) // Platform cut
   merchantFee Decimal? @default(0) @db.Decimal(18, 8) // Merchant markup (if any)
+  fee        Decimal? @db.Decimal(18, 8) // Fee charged for this transaction (set when status = COMPLETED)
+  providerPrice Decimal? @db.Decimal(18, 8) // Provider quote at order time (e.g. onramp: provider buy price)
 
   request   Request?
   requestId String?  @unique
@@ -182,9 +184,32 @@ model Transaction {
   payoutRequests PayoutRequest[]
   paystackPaymentRecords PaystackPaymentRecord[]
   cryptoTransactions CryptoTransaction[]
+  transactionPnLs TransactionPnL[]
 
   @@index([status, type])
   @@index([businessId])
+}
+
+// Profit & loss per lot used in a sale (FIFO). fee = selling - provider; profit = selling - cost.
+model TransactionPnL {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  lotId         String?
+  lot           InventoryLot? @relation(fields: [lotId], references: [id], onDelete: SetNull)
+
+  quantity      Decimal @db.Decimal(28, 8) // tokens sold from this lot
+  costPerToken  Decimal @db.Decimal(18, 8) // initial buy price (cost basis)
+  providerPrice Decimal @db.Decimal(18, 8) // provider quote at time of sale
+  sellingPrice  Decimal @db.Decimal(18, 8) // price we sold to user (e.g. t_price)
+
+  feeAmount   Decimal @db.Decimal(18, 8) // (sellingPrice - providerPrice) * quantity
+  profitLoss  Decimal @db.Decimal(18, 8) // (sellingPrice - costPerToken) * quantity
+
+  @@index([transactionId])
+  @@index([lotId])
 }
 
 // --------------------------------------
@@ -310,6 +335,8 @@ model InventoryLot {
 
   sourceType          String?  // e.g. PURCHASE, REBALANCE
   sourceTransactionId String? // link to Transaction when from an order
+
+  transactionPnLs TransactionPnL[]
 
   @@index([assetId, acquiredAt])
   @@index([sourceTransactionId])

@@ -1,6 +1,6 @@
 # Connect (B2B) API — Frontend Integration Report
 
-**Purpose:** Reference for the frontend integrating with the **Connect** (Platform/B2B) endpoints on the Core service. Use these for the Connect section: Overview (`/connect`), Merchants (`/connect/merchants`), and Settlements (`/connect/settlements`).
+**Purpose:** Reference for the frontend integrating with the **Connect** (B2B) endpoints on the Core service. Use these for the Connect section: Overview (`/connect`), Merchants (`/connect/merchants`), and Settlements (`/connect/settlements`). Connect overview displays only metrics and fees for **business/partner** transactions; for platform-wide fees use **Platform API** — see `md/platform-api.integration.md`.
 
 **Base:** Same base URL as Core (e.g. `NEXT_PUBLIC_CORE_URL` or `VITE_CORE_URL`). Default dev port: `4000`.
 
@@ -20,6 +20,7 @@
 | Method | Path | Purpose | Platform | Merchant |
 |--------|------|---------|----------|----------|
 | `GET` | `/api/connect/overview` | B2B dashboard metrics | ✅ | ❌ 403 |
+| `GET` | `/api/connect/fees/report` | Accumulated fees by currency (completed txns; optional `days`, `businessId`) | ✅ | ❌ 403 |
 | `GET` | `/api/connect/merchants` | List merchants (partners) | ✅ | ❌ 403 |
 | `GET` | `/api/connect/merchants/:id` | Merchant detail + API keys, webhook, volume | ✅ | ✅ own only |
 | `GET` | `/api/connect/settlements` | List payouts (batches) | ✅ all | ✅ own only |
@@ -32,7 +33,7 @@
 **Route:** `GET /api/connect/overview`  
 **Access:** Platform key only (403 if merchant key).
 
-Returns high-level B2B metrics for the Connect dashboard.
+Returns high-level B2B metrics for the Connect dashboard. **Scope:** partner (business) transactions only. Fees and volume are limited to transactions that have a `businessId` (partner). The platform still decides what % of fees businesses can earn.
 
 ### 3.1 Response shape
 
@@ -44,6 +45,7 @@ Returns high-level B2B metrics for the Connect dashboard.
 | `volumeByPartner` | `array` | Top 5 partners by volume + optional "Others" entry. |
 | `takeRate` | `number` | `netRevenueFees / totalPlatformVolume` (0 if no volume). |
 | `recentOnboarding` | `array` | Latest businesses that have at least one API key (for "Recent Onboarding" list). |
+| `feesByCurrency` | `object` | Accumulated fee totals by token/currency **from partner transactions only** (transactions with a business). Keys = token symbol (e.g. `GHS`, `USDC`); values = sum of `Transaction.fee` for that `f_token`. Use for the Connect dashboard fee container (one card or row per currency). For **all** platform fees use `GET /api/platform/overview` — see `md/platform-api.integration.md`. |
 
 ### 3.2 volumeByPartner item
 
@@ -67,6 +69,27 @@ Returns high-level B2B metrics for the Connect dashboard.
 - **Row 1:** Use `totalPlatformVolume`, `netRevenueFees`, `activeMerchants` for the three metric cards.
 - **Row 2:** Use `volumeByPartner` for the stacked bar (Top 5 vs Others); use `takeRate` for the take-rate gauge (e.g. `(takeRate * 100).toFixed(1) + '%'`).
 - **Row 3:** Use `recentOnboarding` for the "Recent Onboarding" list.
+- **Dashboard fee container:** Use `feesByCurrency` to show accumulated fees **per currency/token**. Structure: `{ "GHS": "123.45", "USDC": "67.89", ... }`. Render one block (card or row) per key; label = token symbol, value = string amount. Fees come from `Transaction.fee` (set when status = COMPLETED); each transaction’s fee is in its `f_token`, and the backend sums by `f_token`. For a time range or per-partner breakdown, use `GET /api/connect/fees/report` (see below).
+
+### 3.5 Fees report: `GET /api/connect/fees/report`
+
+**Purpose:** Accumulated fees by currency with optional time window and optional partner filter. Use for dashboard fee container when you need a dedicated fees view or filters.
+
+**Query:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `days` | `string` | Optional. Last N days (0 = all time). Clamped 0–365. |
+| `businessId` | `string` | Optional. Filter to transactions for this business UUID. |
+
+**Response (in `data`):**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `byCurrency` | `object` | Same as overview `feesByCurrency`: `{ "GHS": "123.45", "USDC": "67.89", ... }`. |
+| `totalConverted` | `number` | Sum of (fee × rate) per transaction: SELL/REQUEST/CLAIM use `f_price`, BUY uses `t_price`. Single aggregate in quote units (for comparison across tokens). |
+| `days` | `number` \| `null` | Query `days` used (or `null` if all time). |
+| `businessId` | `string` \| `null` | Query `businessId` used (or `null` if platform-wide). |
 
 ---
 
