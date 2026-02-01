@@ -196,4 +196,67 @@ export async function validationApiRoutes(app: FastifyInstance): Promise<void> {
       }
     }
   );
+
+  /** GET /api/validation/failed/report — aggregated report for frontend dashboard (counts by code, last 24h/7d, daily buckets). */
+  app.get(
+    "/api/validation/failed/report",
+    async (
+      req: FastifyRequest<{ Querystring: { days?: string } }>,
+      reply
+    ) => {
+      try {
+        if (!requirePlatformKey(req, reply)) return;
+        const days = Math.min(Math.max(parseInt(req.query.days ?? "7", 10) || 7, 1), 90);
+        const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+        const now = new Date();
+
+        const [total, byCodeRows, last24h, last7d, dailyBuckets] = await Promise.all([
+          prisma.failedOrderValidation.count(),
+          prisma.failedOrderValidation.groupBy({
+            by: ["code"],
+            where: { createdAt: { gte: since } },
+            _count: { code: true },
+          }),
+          prisma.failedOrderValidation.count({
+            where: { createdAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) } },
+          }),
+          prisma.failedOrderValidation.count({
+            where: { createdAt: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) } },
+          }),
+          prisma.$queryRaw<
+            Array<{ date: string; count: bigint }>
+          >`
+            SELECT date_trunc('day', "createdAt")::date::text AS date, count(*)::bigint AS count
+            FROM "FailedOrderValidation"
+            WHERE "createdAt" >= ${since}
+            GROUP BY date_trunc('day', "createdAt")::date
+            ORDER BY date ASC
+          `.catch(() => []),
+        ]);
+
+        const byCode: Record<string, number> = {};
+        for (const row of byCodeRows) {
+          byCode[row.code ?? "UNKNOWN"] = row._count.code;
+        }
+
+        const report = {
+          total,
+          last24h,
+          last7d,
+          byCode,
+          daily: (dailyBuckets ?? []).map((r) => ({
+            date: r.date,
+            count: Number(r.count),
+          })),
+          since: since.toISOString(),
+          generatedAt: now.toISOString(),
+        };
+
+        return successEnvelope(reply, report);
+      } catch (err) {
+        req.log.error({ err }, "GET /api/validation/failed/report");
+        return errorEnvelope(reply, "Something went wrong.", 500);
+      }
+    }
+  );
 }
