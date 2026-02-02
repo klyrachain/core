@@ -167,6 +167,52 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  /** GET /api/lots — list inventory lots with pagination; filter by assetId or chain. */
+  app.get(
+    "/api/lots",
+    async (
+      req: FastifyRequest<{
+        Querystring: { page?: string; limit?: string; assetId?: string; chain?: string; onlyAvailable?: string };
+      }>,
+      reply
+    ) => {
+      try {
+        const { page, limit, skip } = parsePagination(req.query);
+        const assetId = (req.query.assetId as string)?.trim();
+        const chain = (req.query.chain as string)?.trim();
+        const onlyAvailable = req.query.onlyAvailable === "true" || req.query.onlyAvailable === "1";
+        const where: { assetId?: string; asset?: { chain?: string }; quantity?: { gt: number } } = {};
+        if (assetId) where.assetId = assetId;
+        if (chain) where.asset = { chain };
+        if (onlyAvailable) where.quantity = { gt: 0 };
+        const [items, total] = await Promise.all([
+          prisma.inventoryLot.findMany({
+            where,
+            skip,
+            take: limit,
+            orderBy: [{ assetId: "asc" }, { acquiredAt: "asc" }],
+            include: { asset: { select: { id: true, chain: true, chainId: true, symbol: true, tokenAddress: true, address: true } } },
+          }),
+          prisma.inventoryLot.count({ where }),
+        ]);
+        const data = items.map((l) => ({
+          id: l.id,
+          assetId: l.assetId,
+          quantity: l.quantity.toString(),
+          costPerToken: l.costPerToken.toString(),
+          acquiredAt: l.acquiredAt.toISOString(),
+          sourceType: l.sourceType,
+          sourceTransactionId: l.sourceTransactionId,
+          asset: l.asset,
+        }));
+        return successEnvelopeWithMeta(reply, data, { page, limit, total });
+      } catch (err) {
+        req.log.error({ err }, "GET /api/lots");
+        return errorEnvelope(reply, "Something went wrong.", 500);
+      }
+    }
+  );
+
   // --- GET /api/inventory/:id/lots (FIFO order; for order-book style fulfillment) ---
   app.get(
     "/api/inventory/:id/lots",

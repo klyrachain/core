@@ -14,6 +14,7 @@ import {
   getPlatformSettingOrDefault,
   patchPlatformSetting,
   maskSecret,
+  getSwapFeeConfigMasked,
 } from "../../services/platform-settings.service.js";
 
 const DEFAULT_GENERAL = {
@@ -103,6 +104,66 @@ export async function settingsApiRoutes(app: FastifyInstance): Promise<void> {
       return successEnvelope(reply, data);
     } catch (err) {
       req.log.error({ err }, "PATCH /api/settings/general");
+      return errorEnvelope(reply, "Something went wrong.", 500);
+    }
+  });
+
+  // --- GET /api/settings/swap-fee (admin only; recipient never exposed, masked only) ---
+  app.get("/api/settings/swap-fee", async (req: FastifyRequest, reply) => {
+    try {
+      if (!requirePlatformKey(req, reply)) return;
+      const data = await getSwapFeeConfigMasked();
+      return successEnvelope(reply, data);
+    } catch (err) {
+      req.log.error({ err }, "GET /api/settings/swap-fee");
+      return errorEnvelope(reply, "Something went wrong.", 500);
+    }
+  });
+
+  // --- PATCH /api/settings/swap-fee (admin only; fee config set only here, never from client request body on quote endpoints) ---
+  app.patch("/api/settings/swap-fee", async (req: FastifyRequest<{ Body: Record<string, unknown> }>, reply) => {
+    try {
+      if (!requirePlatformKey(req, reply)) return;
+      const body = req.body ?? {};
+      const current = await getPlatformSettingOrDefault("swapFee", {
+        squidFeeRecipient: null,
+        squidFeeBps: null,
+        lifiIntegrator: "klyra",
+        lifiFeePercent: null,
+      });
+      const patch: Record<string, unknown> = { ...current };
+      if (body.squidFeeRecipient !== undefined) {
+        const v = typeof body.squidFeeRecipient === "string" ? body.squidFeeRecipient.trim() : "";
+        if (v === "" || v === null) {
+          patch.squidFeeRecipient = null;
+        } else if (/^0x[a-fA-F0-9]{40}$/.test(v)) {
+          patch.squidFeeRecipient = v;
+        } else {
+          return errorEnvelope(reply, "squidFeeRecipient must be a valid 0x + 40 hex address or empty.", 400);
+        }
+      }
+      if (body.squidFeeBps !== undefined) {
+        const n = Number(body.squidFeeBps);
+        if (Number.isNaN(n) || n < 0 || n > 10000) {
+          return errorEnvelope(reply, "squidFeeBps must be between 0 and 10000 (basis points).", 400);
+        }
+        patch.squidFeeBps = n;
+      }
+      if (body.lifiIntegrator !== undefined) {
+        patch.lifiIntegrator = typeof body.lifiIntegrator === "string" && body.lifiIntegrator.trim() ? body.lifiIntegrator.trim() : "klyra";
+      }
+      if (body.lifiFeePercent !== undefined) {
+        const n = Number(body.lifiFeePercent);
+        if (Number.isNaN(n) || n < 0 || n >= 1) {
+          return errorEnvelope(reply, "lifiFeePercent must be between 0 and 1 (e.g. 0.005 = 0.5%).", 400);
+        }
+        patch.lifiFeePercent = n;
+      }
+      await patchPlatformSetting("swapFee", { squidFeeRecipient: null, squidFeeBps: null, lifiIntegrator: "klyra", lifiFeePercent: null }, patch);
+      const data = await getSwapFeeConfigMasked();
+      return successEnvelope(reply, data);
+    } catch (err) {
+      req.log.error({ err }, "PATCH /api/settings/swap-fee");
       return errorEnvelope(reply, "Something went wrong.", 500);
     }
   });

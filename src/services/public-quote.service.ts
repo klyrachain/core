@@ -8,7 +8,6 @@ import { getOnrampQuote } from "./onramp-quote.service.js";
 import { getBestQuotes } from "./swap-quote.service.js";
 import { getCachedChains, getCachedCostBasis, getCachedTokens, ensureValidationCache } from "./validation-cache.service.js";
 import { quoteOnRamp, quoteOffRamp, calculateBaseProfit, volatilityToPremium } from "../lib/pricing-engine.js";
-import { getFeeForOrder } from "./fee.service.js";
 
 export type QuoteAction = "ONRAMP" | "OFFRAMP" | "SWAP";
 
@@ -331,12 +330,18 @@ export async function buildPublicQuote(
       };
     }
   } else {
-    exchangeRate = basePrice;
+    // SWAP: apply pricing engine — user gets slightly less output per unit input (platform margin).
+    const swapMargin = calculateBaseProfit({
+      inventoryRatio: 0.5,
+      tradesPerHour: 0,
+      volatility: DEFAULT_VOLATILITY,
+    });
+    exchangeRate = basePrice * (1 - swapMargin);
     if (options?.includeDebug) {
       debug = {
         basePrice: basePrice.toFixed(6),
-        profitMarginPct: "0%",
-        volatilityPremium: "0",
+        profitMarginPct: `${(swapMargin * 100).toFixed(2)}%`,
+        volatilityPremium: volatilityToPremium(DEFAULT_VOLATILITY).toFixed(4),
         inventoryRisk: "0",
       };
     }
@@ -375,18 +380,9 @@ export async function buildPublicQuote(
     const feePerUnit = basePrice - exchangeRate;
     platformFeeNum = feePerUnit * fromAmount;
   } else {
-    const feeQuote = getFeeForOrder({
-      action: "buy",
-      f_amount: fromAmount,
-      t_amount: toAmount,
-      f_price: 1,
-      t_price: exchangeRate,
-      f_chain: chain ?? "",
-      t_chain: chain ?? "",
-      f_token: fromCurrency,
-      t_token: toCurrency,
-    });
-    platformFeeNum = feeQuote.feeAmount;
+    // SWAP: platform fee = (provider rate − our rate) × fromAmount = spread on output we keep.
+    const providerOutput = fromAmount * basePrice;
+    platformFeeNum = Math.max(0, providerOutput - fromAmount * exchangeRate);
   }
 
   const networkFeeStub = "0";

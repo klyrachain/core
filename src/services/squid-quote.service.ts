@@ -5,6 +5,7 @@
  */
 
 import { getEnv } from "../config/env.js";
+import { getSwapFeeConfigForProvider } from "./platform-settings.service.js";
 import { toSquidNativeToken } from "../lib/native-token.js";
 import type { SwapQuoteRequest, SwapQuoteResponse, SwapQuoteTransaction } from "../lib/swap-quote.types.js";
 
@@ -58,7 +59,7 @@ export async function getSquidQuote(
   const fromToken = toSquidNativeToken(params.from_token);
   const toToken = toSquidNativeToken(params.to_token);
 
-  const body = {
+  const body: Record<string, unknown> = {
     fromAddress,
     fromChain: String(params.from_chain),
     fromToken,
@@ -70,6 +71,16 @@ export async function getSquidQuote(
     enableBoost: false,
     quoteOnly: false, // get transaction so we can return calldata if present
   };
+
+  const config = await getSwapFeeConfigForProvider();
+  const feeRecipient = config.squidFeeRecipient?.trim() || getEnv().SQUID_FEE_RECIPIENT?.trim();
+  const feeBps = config.squidFeeBps ?? getEnv().SQUID_FEE_BPS;
+  if (feeRecipient && /^0x[a-fA-F0-9]{40}$/.test(feeRecipient) && typeof feeBps === "number" && feeBps >= 0 && feeBps <= 10000) {
+    body.collectFees = {
+      integratorAddress: feeRecipient,
+      fee: feeBps,
+    };
+  }
 
   let res: Response;
   try {

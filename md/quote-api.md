@@ -1,15 +1,83 @@
-# Swap Quote API
+# Quote API
 
-This document describes the **swap quote** endpoints: a single POST endpoint that returns quotes from **0x**, **Squid Router**, or **LiFi** based on the `provider` parameter. No onramp/offramp quotes here; this is for **swap** (this token for that token) only.
+This document covers the **Public Quote API v1** (`POST /api/v1/quotes`) and the **legacy swap quote** endpoints (`POST /api/quote/swap`, `POST /api/quote/best`).
 
 For **onramp quotes** (fiat↔crypto via Fonbnk, with optional swap when the requested token is not in the pool), see [onramp-quote-api.md](./onramp-quote-api.md).
 
-**Base path:** `/api/quote`  
-**Auth:** Quote endpoints are excluded from `x-api-key`; no header required.
+---
+
+## Public Quote API v1
+
+**Endpoint:** `POST /api/v1/quotes`  
+**Base path:** `/api/v1` (e.g. full URL `https://your-api.com/api/v1/quotes`)  
+**Auth:** Public. Optional `x-api-key` (platform key, no `businessId`) returns `debug` in the response.
+
+Unified quote endpoint for **ONRAMP**, **OFFRAMP**, and **SWAP**. Returns a single guaranteed price quote with fee breakdown. For onramp/offramp the platform uses Fonbnk and applies the pricing engine. For SWAP the platform uses 0x, Squid, and LiFi (best quote), applies the pricing engine, and can pass integrator fees to Squid/LiFi so the platform receives fees when swaps are executed.
+
+### Request body (JSON)
+
+| Field            | Type   | Required | Default | Description |
+|------------------|--------|----------|---------|-------------|
+| `action`         | string | Yes      | —       | `"ONRAMP"` \| `"OFFRAMP"` \| `"SWAP"` |
+| `inputAmount`    | string | Yes      | —       | Amount (e.g. `"100"`). Positive number string. |
+| `inputCurrency`  | string | Yes      | —       | Symbol or token address (0x + 40 hex). From side: fiat for onramp (e.g. `GHS`), crypto for offramp/swap. |
+| `outputCurrency` | string | Yes      | —       | Symbol or token address. To side: crypto for onramp/swap, fiat for offramp (e.g. `GHS`). |
+| `chain`          | string | Yes*     | —       | Chain code (e.g. `base`, `MOMO`). Required for ONRAMP, OFFRAMP, and SWAP. |
+| `inputSide`      | string | No       | `"from"`| `"from"` = amount is what you pay; `"to"` = amount is what you want to receive. |
+
+\* Required for all three actions.
+
+### Response (200)
+
+Unified result: **input** (amount + currency), **output** (amount + currency, chain for crypto), **exchangeRate** (final rate after pricing engine), **basePrice** (provider rate before pricing engine), **fees** (network, platform, total), and optional **debug** when `x-api-key` is present.
+
+```json
+{
+  "success": true,
+  "data": {
+    "quoteId": "uuid",
+    "expiresAt": "ISO8601",
+    "exchangeRate": "15.25",
+    "basePrice": "15.00",
+    "prices": {
+      "providerPrice": "15.00",
+      "sellingPrice": "15.25",
+      "avgBuyPrice": "14.80"
+    },
+    "input": { "amount": "100.00", "currency": "GHS" },
+    "output": { "amount": "6.56", "currency": "USDC", "chain": "base" },
+    "fees": {
+      "networkFee": "0",
+      "platformFee": "1.64",
+      "totalFee": "1.64"
+    },
+    "debug": { ... }
+  }
+}
+```
+
+- **exchangeRate** — Final rate (after pricing engine). This is what the user gets.
+- **basePrice** — Provider rate (e.g. Fonbnk for onramp/offramp; best of 0x/Squid/LiFi for SWAP) before pricing engine.
+- **platformFee** — Platform margin (spread) for this quote. For SWAP this is in output token units (receive-side).
+
+### SWAP: integrator fees and pricing engine
+
+- **Pricing engine:** For SWAP, the platform applies the same auto base-profit logic (inventory/velocity/volatility) so the user receives slightly less output per unit input than the raw provider quote. The response `exchangeRate` and `output.amount` are already after this margin; `basePrice` is the provider rate.
+- **Integrator fees (Squid / LiFi):** When requesting swap quotes, the backend can send fee parameters so that when the user executes the swap, the platform receives a fee:
+  - **Squid:** Set `SQUID_FEE_RECIPIENT` (address) and `SQUID_FEE_BPS` (basis points, e.g. 50 = 0.5%). The route request includes `collectFees: { integratorAddress, fee }`. Fee collection must be enabled for your Squid integrator ID (contact Squid).
+  - **LiFi:** Set `LIFI_INTEGRATOR` (string, default `klyra`) and `LIFI_FEE_PERCENT` (decimal, e.g. 0.005 = 0.5%). The routes request includes `options.fee` and `options.integrator`. Configure your fee wallet at [LiFi Portal](https://portal.li.fi/).
+- **Recipient never exposed:** The collect-fee address is **never** returned in any quote or public API response. It is set only via **admin** (`PATCH /api/settings/swap-fee`) and cannot be overridden by client request bodies. See [inventory-lots-tokens-pnl-api.md](./inventory-lots-tokens-pnl-api.md) § Swap-fee admin.
+
+The v1 response is **unified**: the user sees one **input** amount and one **output** amount (and **platformFee**). Any integrator fee passed to Squid/LiFi is reflected in the provider’s quote (lower `to_amount` / higher effective rate); the pricing engine margin is applied on top, and the final **exchangeRate** and **output.amount** are what the user gets.
+
+### Errors
+
+- **400** — Validation failed, unsupported pair, or missing `chain` for ONRAMP/OFFRAMP/SWAP.
+- **502** — Rate/quote unavailable (provider error).
 
 ---
 
-## Swap quote (unified)
+## Swap quote (legacy, unified)
 
 ### POST /api/quote/swap
 
@@ -215,7 +283,11 @@ Returns a fee quote for an order (buy/sell/request/claim). Not related to swap p
 |------------------------|-------------|
 | **ZEROX_API_KEY**      | 0x Swap API key. Required for `provider: "0x"`. If missing, 0x quotes return 503. |
 | **SQUID_INTEGRATOR_ID**| Squid Router integrator ID. Required for `provider: "squid"`. If missing, Squid quotes return 503. |
+| **SQUID_FEE_RECIPIENT**| Squid: address (0x + 40 hex) to receive integrator fees. Optional; fee must be enabled for your integrator ID by Squid. |
+| **SQUID_FEE_BPS**      | Squid: integrator fee in basis points (e.g. 50 = 0.5%). Optional; used when SQUID_FEE_RECIPIENT is set. |
 | **LIFI_API_KEY**       | LiFi API key. Optional; improves rate limits when set. |
+| **LIFI_INTEGRATOR**    | LiFi: integrator string (tied to fee wallet in LiFi Portal). Optional; default `klyra`. |
+| **LIFI_FEE_PERCENT**   | LiFi: integrator fee as decimal (e.g. 0.005 = 0.5%). Optional. |
 
 ---
 
@@ -272,3 +344,10 @@ Use these shapes for **POST /api/quote/onramp** (same endpoint for both; differe
 - Same `chain_id` and `token` as onramp.
 
 Replace `0xYourWalletAddress` with the real wallet, and `GH`/GHS with the country/currency you want for fiat (e.g. `NG` for NGN). If MANA on your Polygon deployment uses a different contract, replace the `token` value with that address.
+
+
+
+/inventory-lot
+/supported-tokens
+/transaction-pnl
+/inventory-assets

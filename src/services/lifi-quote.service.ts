@@ -6,6 +6,7 @@
  */
 
 import { getEnv } from "../config/env.js";
+import { getSwapFeeConfigForProvider } from "./platform-settings.service.js";
 import { toLiFiNativeToken } from "../lib/native-token.js";
 import type { SwapQuoteRequest, SwapQuoteResponse } from "../lib/swap-quote.types.js";
 
@@ -49,6 +50,19 @@ export async function getLiFiQuote(
   const fromToken = toLiFiNativeToken(params.from_token);
   const toToken = toLiFiNativeToken(params.to_token);
 
+  const config = await getSwapFeeConfigForProvider();
+  const env = getEnv();
+  const integrator = config.lifiIntegrator?.trim() || env.LIFI_INTEGRATOR?.trim() || "klyra";
+  const feePercent = config.lifiFeePercent ?? env.LIFI_FEE_PERCENT;
+  const options: Record<string, unknown> = {
+    slippage: params.slippage ?? 0.005,
+    integrator,
+    order: "CHEAPEST",
+    maxPriceImpact: 0.1,
+  };
+  if (typeof feePercent === "number" && feePercent >= 0 && feePercent < 1) {
+    options.fee = feePercent;
+  }
   const body = {
     fromChainId: params.from_chain,
     toChainId: params.to_chain,
@@ -57,12 +71,7 @@ export async function getLiFiQuote(
     fromAmount: params.amount,
     fromAddress,
     toAddress: params.to_address?.trim() || fromAddress,
-    options: {
-      slippage: params.slippage ?? 0.005,
-      integrator: "klyra",
-      order: "CHEAPEST",
-      maxPriceImpact: 0.1,
-    },
+    options,
   };
 
   const headers: Record<string, string> = { "Content-Type": "application/json" };

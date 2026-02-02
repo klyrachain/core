@@ -24,9 +24,17 @@ const envSchema = z.object({
 
   /** Squid Router integrator ID (for POST /api/quote/swap provider squid). Optional; if missing, Squid quotes return 503. */
   SQUID_INTEGRATOR_ID: z.string().min(1).optional(),
+  /** Squid: address to receive integrator fees (0x + 40 hex). Fee must be enabled for your integrator ID by Squid. */
+  SQUID_FEE_RECIPIENT: z.string().min(1).optional(),
+  /** Squid: integrator fee in basis points (e.g. 50 = 0.5%). Sent in collectFees.fee when SQUID_FEE_RECIPIENT is set. */
+  SQUID_FEE_BPS: z.coerce.number().int().min(0).max(10000).optional(),
 
   /** LiFi API key (for POST /api/quote/swap provider lifi). Optional; higher rate limits when set. */
   LIFI_API_KEY: z.string().min(1).optional(),
+  /** LiFi: integrator string for fee collection (tied to fee wallet in LiFi Portal). Default "klyra". */
+  LIFI_INTEGRATOR: z.string().min(1).optional(),
+  /** LiFi: integrator fee as decimal (e.g. 0.005 = 0.5%). Taken from sending asset. */
+  LIFI_FEE_PERCENT: z.coerce.number().min(0).max(1).optional(),
 
   /** Paystack secret key for account verification, banks, transfers. Optional; if missing, Paystack routes return 503. */
   PAYSTACK_SECRET_KEY: z.string().min(1).optional(),

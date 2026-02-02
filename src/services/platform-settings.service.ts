@@ -6,8 +6,66 @@
 import type { Prisma } from "../../prisma/generated/prisma/client.js";
 import { prisma } from "../lib/prisma.js";
 
-const SETTING_KEYS = ["general", "financials", "providers", "risk", "api"] as const;
+const SETTING_KEYS = ["general", "financials", "providers", "risk", "api", "swapFee"] as const;
 export type PlatformSettingKey = (typeof SETTING_KEYS)[number];
+
+/** Default swap-fee config. Fee recipient is never exposed to client; only set via admin. */
+const DEFAULT_SWAP_FEE: SwapFeeConfig = {
+  squidFeeRecipient: null,
+  squidFeeBps: null,
+  lifiIntegrator: "klyra",
+  lifiFeePercent: null,
+};
+
+export type SwapFeeConfig = {
+  squidFeeRecipient: string | null;
+  squidFeeBps: number | null;
+  lifiIntegrator: string | null;
+  lifiFeePercent: number | null;
+};
+
+/** Server-only: get raw swap-fee config for Squid/LiFi (from DB then env). Never expose to client. */
+export async function getSwapFeeConfigForProvider(): Promise<SwapFeeConfig> {
+  const current = await getPlatformSetting("swapFee");
+  const fromDb = current
+    ? {
+        squidFeeRecipient: (current.squidFeeRecipient as string) ?? null,
+        squidFeeBps: typeof current.squidFeeBps === "number" ? current.squidFeeBps : null,
+        lifiIntegrator: (current.lifiIntegrator as string) ?? "klyra",
+        lifiFeePercent: typeof current.lifiFeePercent === "number" ? current.lifiFeePercent : null,
+      }
+    : { ...DEFAULT_SWAP_FEE };
+  return { ...DEFAULT_SWAP_FEE, ...fromDb };
+}
+
+/** Mask address for API response (e.g. "0x1234...abcd"). Never return full recipient to client. */
+export function maskAddress(value: string | null | undefined, prefix = 6, suffix = 4): string {
+  if (value == null || value === "") return "";
+  const s = String(value).trim();
+  if (s.length <= prefix + suffix) return "••••••••";
+  return s.slice(0, prefix) + "..." + s.slice(-suffix);
+}
+
+/** Get swap-fee config for admin GET only: masked recipient, safe to return. */
+export async function getSwapFeeConfigMasked(): Promise<{
+  squidFeeRecipientMasked: string;
+  squidFeeBps: number | null;
+  lifiIntegrator: string | null;
+  lifiFeePercent: number | null;
+  configured: boolean;
+}> {
+  const raw = await getSwapFeeConfigForProvider();
+  const configured =
+    (raw.squidFeeRecipient != null && raw.squidFeeRecipient.length > 0 && raw.squidFeeBps != null) ||
+    (raw.lifiFeePercent != null && raw.lifiFeePercent > 0);
+  return {
+    squidFeeRecipientMasked: maskAddress(raw.squidFeeRecipient),
+    squidFeeBps: raw.squidFeeBps,
+    lifiIntegrator: raw.lifiIntegrator,
+    lifiFeePercent: raw.lifiFeePercent,
+    configured,
+  };
+}
 
 export async function getPlatformSetting<K extends PlatformSettingKey>(
   key: K

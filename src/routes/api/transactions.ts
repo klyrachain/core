@@ -82,4 +82,78 @@ export async function transactionsApiRoutes(app: FastifyInstance): Promise<void>
       return errorEnvelope(reply, "Something went wrong.", 500);
     }
   });
+
+  /** GET /api/transactions/:id/pnl — PnL rows for a transaction (FIFO lot attribution). */
+  app.get("/api/transactions/:id/pnl", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
+    try {
+      const pnls = await prisma.transactionPnL.findMany({
+        where: { transactionId: req.params.id },
+        orderBy: { createdAt: "asc" },
+        include: { lot: { select: { id: true, quantity: true, costPerToken: true, acquiredAt: true, assetId: true } } },
+      });
+      const data = pnls.map((p) => ({
+        id: p.id,
+        transactionId: p.transactionId,
+        lotId: p.lotId,
+        quantity: p.quantity.toString(),
+        costPerToken: p.costPerToken.toString(),
+        providerPrice: p.providerPrice.toString(),
+        sellingPrice: p.sellingPrice.toString(),
+        feeAmount: p.feeAmount.toString(),
+        profitLoss: p.profitLoss.toString(),
+        lot: p.lot,
+      }));
+      return successEnvelope(reply, data);
+    } catch (err) {
+      req.log.error({ err }, "GET /api/transactions/:id/pnl");
+      return errorEnvelope(reply, "Something went wrong.", 500);
+    }
+  });
+
+  /** GET /api/pnl — list PnL rows with pagination; optional filter by transactionId. */
+  app.get(
+    "/api/pnl",
+    async (
+      req: FastifyRequest<{
+        Querystring: { page?: string; limit?: string; transactionId?: string };
+      }>,
+      reply
+    ) => {
+      try {
+        const { page, limit, skip } = parsePagination(req.query);
+        const transactionId = (req.query.transactionId as string)?.trim();
+        const where = transactionId ? { transactionId } : {};
+        const [items, total] = await Promise.all([
+          prisma.transactionPnL.findMany({
+            where,
+            skip,
+            take: limit,
+            orderBy: { createdAt: "desc" },
+            include: {
+              transaction: { select: { id: true, type: true, status: true, f_chain: true, t_chain: true, f_token: true, t_token: true } },
+              lot: { select: { id: true, assetId: true, quantity: true, costPerToken: true } },
+            },
+          }),
+          prisma.transactionPnL.count({ where }),
+        ]);
+        const data = items.map((p) => ({
+          id: p.id,
+          transactionId: p.transactionId,
+          lotId: p.lotId,
+          quantity: p.quantity.toString(),
+          costPerToken: p.costPerToken.toString(),
+          providerPrice: p.providerPrice.toString(),
+          sellingPrice: p.sellingPrice.toString(),
+          feeAmount: p.feeAmount.toString(),
+          profitLoss: p.profitLoss.toString(),
+          transaction: p.transaction,
+          lot: p.lot,
+        }));
+        return successEnvelopeWithMeta(reply, data, { page, limit, total });
+      } catch (err) {
+        req.log.error({ err }, "GET /api/pnl");
+        return errorEnvelope(reply, "Something went wrong.", 500);
+      }
+    }
+  );
 }
