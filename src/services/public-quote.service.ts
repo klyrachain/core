@@ -5,7 +5,7 @@
 
 import { randomUUID } from "node:crypto";
 import { getOnrampQuote } from "./onramp-quote.service.js";
-import { getSwapQuote } from "./swap-quote.service.js";
+import { getBestQuotes } from "./swap-quote.service.js";
 import { getCachedChains, getCachedCostBasis, getCachedTokens, ensureValidationCache } from "./validation-cache.service.js";
 import { quoteOnRamp, quoteOffRamp, calculateBaseProfit, volatilityToPremium } from "../lib/pricing-engine.js";
 import { getFeeForOrder } from "./fee.service.js";
@@ -82,6 +82,41 @@ const CURRENCY_TO_COUNTRY: Record<string, string> = {
 const QUOTE_VALIDITY_SECONDS = 30;
 const DEFAULT_VOLATILITY = 0.01;
 
+/** EIP-55 / 0x + 40 hex: treat as token address. */
+const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
+
+type TokenRecordForSwap = { tokenAddress: string; decimals: number; symbol: string };
+
+/**
+ * Resolve inputCurrency/outputCurrency to a token record for SWAP.
+ * Accepts either a symbol (must exist in supported tokens) or a token address (0x + 40 hex).
+ * If address is not in the table, returns a synthetic record so the swap provider can still be called (decimals default 18).
+ */
+function resolveTokenForSwap(
+  tokensList: { chainId: number; symbol: string; tokenAddress: string; decimals: number }[],
+  chainId: number,
+  symbolOrAddress: string
+): TokenRecordForSwap | null {
+  const trimmed = symbolOrAddress.trim();
+  const isAddress = ADDRESS_REGEX.test(trimmed);
+  const addrLower = isAddress ? trimmed.toLowerCase() : "";
+
+  const bySymbol = tokensList.find(
+    (t) => t.chainId === chainId && t.symbol.toUpperCase() === trimmed.toUpperCase()
+  );
+  if (bySymbol) return { tokenAddress: bySymbol.tokenAddress, decimals: bySymbol.decimals ?? 18, symbol: bySymbol.symbol };
+
+  const byAddress = tokensList.find(
+    (t) => t.chainId === chainId && t.tokenAddress.toLowerCase() === addrLower
+  );
+  if (byAddress) return { tokenAddress: byAddress.tokenAddress, decimals: byAddress.decimals ?? 18, symbol: byAddress.symbol };
+
+  if (isAddress) {
+    return { tokenAddress: trimmed, decimals: 18, symbol: trimmed };
+  }
+  return null;
+}
+
 export type PublicQuoteResult =
   | { success: true; data: QuoteResponseDto }
   | { success: false; error: string; code?: string; status?: number };
@@ -90,15 +125,17 @@ export type PublicQuoteResult =
  * Get raw provider rate (cost price) for the pair.
  * ONRAMP: fiat → crypto, rate = fiat per 1 unit of crypto (e.g. GHS per USDC).
  * OFFRAMP: crypto → fiat, rate = fiat per 1 unit of crypto (provider sell).
- * SWAP: crypto → crypto, rate = output amount per 1 unit input (human).
+ * SWAP: crypto → crypto, rate = output amount per 1 unit input (human). Uses supported tokens to resolve symbols to addresses; passes fromAmountHuman as wei to provider.
  */
 async function getRawRate(params: {
   action: QuoteAction;
   inputCurrency: string;
   outputCurrency: string;
   chain?: string;
+  /** For SWAP only: from-token amount in human form. Converted to wei and sent to swap provider. If omitted, 1 is used (rate quote). */
+  fromAmountHuman?: number;
 }): Promise<{ basePrice: number; ok: true } | { ok: false; error: string; status?: number }> {
-  const { action, inputCurrency, outputCurrency, chain } = params;
+  const { action, inputCurrency, outputCurrency, chain, fromAmountHuman } = params;
   await ensureValidationCache();
   const chains = await getCachedChains();
   const chainRecord = chain ? chains?.find((c) => c.code === chain.trim().toUpperCase()) : null;
@@ -141,20 +178,8 @@ async function getRawRate(params: {
     if (!chainRecord) return { ok: false, error: "chain is required for SWAP", status: 400 };
     const tokensList = await getCachedTokens();
     if (!tokensList) return { ok: false, error: "Token list not available" };
-    const fromTokenRecord = tokensList.find(
-      (t) => t.chainId === chainRecord.chainId && t.symbol.toUpperCase() === inputCurrency.toUpperCase()
-    );
-    const toTokenRecord = tokensList.find(
-      (t) => t.chainId === chainRecord.chainId && t.symbol.toUpperCase() === outputCurrency.toUpperCase()
-    );
-    console.log("everything", {
-      provider: "squid",
-      from_chain: chainRecord.chainId,
-      to_chain: chainRecord.chainId,
-      from_token: fromTokenRecord?.tokenAddress,
-      to_token: toTokenRecord?.tokenAddress,
-      // amount: amountWei,
-    });
+    const fromTokenRecord = resolveTokenForSwap(tokensList, chainRecord.chainId, inputCurrency);
+    const toTokenRecord = resolveTokenForSwap(tokensList, chainRecord.chainId, outputCurrency);
     if (!fromTokenRecord || !toTokenRecord) {
       const missing = [
         !fromTokenRecord ? inputCurrency : null,
@@ -163,23 +188,14 @@ async function getRawRate(params: {
 
       return {
         ok: false,
-        error: `Unsupported token pair for SWAP: ${missing.join(" and ")} not found for chain ${chain?.toLowerCase() ?? "?"}. Add tokens to SupportedToken (Chain + SupportedToken tables) for this chain.`,
+        error: `Unsupported token pair for SWAP: ${missing.join(" and ")} not found for chain ${chain?.toLowerCase() ?? "?"}. Use a symbol from SupportedToken or a token address (0x + 40 hex).`,
         status: 400,
       };
     }
-    const decimals = fromTokenRecord.decimals ?? 18;
-    const amountWei = String(Math.round(Number(1) * 10 ** decimals));
-    console.log("everything", {
-      provider: "squid",
-      from_chain: chainRecord.chainId,
-      to_chain: chainRecord.chainId,
-      from_token: fromTokenRecord.tokenAddress,
-      to_token: toTokenRecord.tokenAddress,
-      from_address: "0x0000000000000000000000000000000000000000",
-      amount: amountWei,
-    });
-    const swapResult = await getSwapQuote({
-      provider: "squid",
+    const decimals = fromTokenRecord.decimals;
+    const fromAmount = fromAmountHuman != null && Number.isFinite(fromAmountHuman) && fromAmountHuman > 0 ? fromAmountHuman : 1;
+    const amountWei = String(Math.round(fromAmount * 10 ** decimals));
+    const bestResult = await getBestQuotes({
       from_chain: chainRecord.chainId,
       to_chain: chainRecord.chainId,
       from_token: fromTokenRecord.tokenAddress,
@@ -187,11 +203,13 @@ async function getRawRate(params: {
       from_address: "0x0000000000000000000000000000000000000001",
       amount: amountWei,
     });
-    if (!swapResult.ok) return { ok: false, error: swapResult.error, status: swapResult.status };
-    const toDecimals = toTokenRecord.decimals ?? 18;
-    const toAmountHuman = Number(swapResult.quote.to_amount) / 10 ** toDecimals;
+    if (!bestResult.ok) return { ok: false, error: bestResult.error, status: 502 };
+    const quote = bestResult.data.best;
+    const toDecimals = toTokenRecord.decimals;
+    const toAmountHuman = Number(quote.to_amount) / 10 ** toDecimals;
     if (!Number.isFinite(toAmountHuman) || toAmountHuman <= 0) return { ok: false, error: "Invalid swap rate" };
-    return { basePrice: toAmountHuman, ok: true };
+    const ratePerOne = toAmountHuman / fromAmount;
+    return { basePrice: ratePerOne, ok: true };
   }
 
   return { ok: false, error: "Unsupported action", status: 400 };
@@ -239,7 +257,18 @@ export async function buildPublicQuote(
   }
 
   const { fromCurrency, toCurrency } = getCanonicalCurrencies(action, inputCurrency, outputCurrency, inputSide);
-  const raw = await getRawRate({ action, inputCurrency: fromCurrency, outputCurrency: toCurrency, chain });
+
+  let raw: { basePrice: number; ok: true } | { ok: false; error: string; status?: number };
+  if (action === "SWAP" && inputSide === "to") {
+    const rawOne = await getRawRate({ action, inputCurrency: fromCurrency, outputCurrency: toCurrency, chain, fromAmountHuman: 1 });
+    if (!rawOne.ok) return { success: false, error: rawOne.error, code: "RATE_UNAVAILABLE", status: rawOne.status ?? 502 };
+    const fromAmountForQuote = inputAmountNum / rawOne.basePrice;
+    raw = await getRawRate({ action, inputCurrency: fromCurrency, outputCurrency: toCurrency, chain, fromAmountHuman: fromAmountForQuote });
+  } else if (action === "SWAP" && inputSide === "from") {
+    raw = await getRawRate({ action, inputCurrency: fromCurrency, outputCurrency: toCurrency, chain, fromAmountHuman: inputAmountNum });
+  } else {
+    raw = await getRawRate({ action, inputCurrency: fromCurrency, outputCurrency: toCurrency, chain });
+  }
   if (!raw.ok) return { success: false, error: raw.error, code: "RATE_UNAVAILABLE", status: raw.status ?? 502 };
 
   const basePrice = raw.basePrice;

@@ -169,14 +169,25 @@ function logQuote(flow: string, data: QuoteResponseData, submitResult?: { ok: bo
   const providerPrice = data.prices?.providerPrice ?? data.basePrice ?? data.debug?.basePrice ?? "—";
   const sellingPrice = data.prices?.sellingPrice ?? data.exchangeRate;
   const avgBuyPrice = data.prices?.avgBuyPrice ?? data.debug?.costBasis ?? "—";
+  const providerNum = typeof providerPrice === "string" ? parseFloat(providerPrice) : NaN;
+  const sellingNum = typeof sellingPrice === "string" ? parseFloat(sellingPrice) : NaN;
+  const spread = Number.isFinite(providerNum) && Number.isFinite(sellingNum) ? (sellingNum - providerNum).toFixed(4) : "—";
+
   const lines = [
     `[${ts}] ---------- ${flow} ----------`,
+    ``,
+    `  --- Provider (Fonbnk) — before pricing engine ---`,
+    `  rate (from Fonbnk)     ${providerPrice}`,
+    ``,
+    `  --- Platform (pricing engine) — final quote ---`,
+    `  rate (final)           ${sellingPrice}`,
+    `  spread (final - provider)  ${spread}`,
+    ``,
     `  quoteId      ${data.quoteId}`,
     `  expiresAt    ${data.expiresAt}`,
-    `  exchangeRate ${data.exchangeRate}`,
     `  input        ${data.input.amount} ${data.input.currency}`,
     `  output       ${data.output.amount} ${data.output.currency}${data.output.chain ? ` (${data.output.chain})` : ""}`,
-    `  prices       provider ${providerPrice}  selling ${sellingPrice}  avgBuy(inventory) ${avgBuyPrice}`,
+    `  avgBuy(inventory)  ${avgBuyPrice}`,
     `  fees         network ${data.fees.networkFee}  platform ${data.fees.platformFee}  total ${data.fees.totalFee}`,
   ];
   if (data.debug) {
