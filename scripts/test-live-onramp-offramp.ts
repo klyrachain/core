@@ -20,10 +20,11 @@ type QuoteResponseData = {
   expiresAt: string;
   exchangeRate: string;
   basePrice?: string;
+  prices?: { providerPrice: string; sellingPrice: string; avgBuyPrice?: string };
   input: { amount: string; currency: string };
   output: { amount: string; currency: string; chain?: string };
   fees: { networkFee: string; platformFee: string; totalFee: string };
-  debug?: { basePrice: string; profitMarginPct: string; volatilityPremium: string; inventoryRisk: string };
+  debug?: { basePrice: string; profitMarginPct: string; volatilityPremium: string; inventoryRisk: string; costBasis?: string };
 };
 
 type SupportedPair = { chainCode: string; chainId: number; symbol: string };
@@ -165,6 +166,9 @@ async function submitOrder(opts: {
 
 function logQuote(flow: string, data: QuoteResponseData, submitResult?: { ok: boolean; orderId?: string; error?: string }): void {
   const ts = new Date().toISOString();
+  const providerPrice = data.prices?.providerPrice ?? data.basePrice ?? data.debug?.basePrice ?? "—";
+  const sellingPrice = data.prices?.sellingPrice ?? data.exchangeRate;
+  const avgBuyPrice = data.prices?.avgBuyPrice ?? data.debug?.costBasis ?? "—";
   const lines = [
     `[${ts}] ---------- ${flow} ----------`,
     `  quoteId      ${data.quoteId}`,
@@ -172,6 +176,7 @@ function logQuote(flow: string, data: QuoteResponseData, submitResult?: { ok: bo
     `  exchangeRate ${data.exchangeRate}`,
     `  input        ${data.input.amount} ${data.input.currency}`,
     `  output       ${data.output.amount} ${data.output.currency}${data.output.chain ? ` (${data.output.chain})` : ""}`,
+    `  prices       provider ${providerPrice}  selling ${sellingPrice}  avgBuy(inventory) ${avgBuyPrice}`,
     `  fees         network ${data.fees.networkFee}  platform ${data.fees.platformFee}  total ${data.fees.totalFee}`,
   ];
   if (data.debug) {
@@ -429,7 +434,7 @@ Env: CORE_URL, CORE_API_KEY (optional).
   let failCount = 0;
   const summaryInterval = 20;
 
-  for (;;) {
+  for (; ;) {
     round++;
     const r = Math.random();
     const scenario = r < 0.25 ? "onramp" : r < 0.5 ? "onramp-reversed" : r < 0.75 ? "offramp" : "offramp-reversed";

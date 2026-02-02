@@ -397,6 +397,7 @@ async function main() {
   const tokenData: Array<{ chainId: number; tokenAddress: string; symbol: string; decimals: number; name: string | null; logoUri: string | null; fonbnkCode: string | null }> = [
     { chainId: CHAIN_ID_BASE, tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", symbol: "USDC", decimals: 6, name: "USD Coin", logoUri: null, fonbnkCode: "BASE_USDC" },
     { chainId: CHAIN_ID_BASE, tokenAddress: NATIVE, symbol: "ETH", decimals: 18, name: "Ether", logoUri: null, fonbnkCode: "BASE_ETH" },
+    { chainId: CHAIN_ID_BASE, tokenAddress: "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb", symbol: "DAI", decimals: 18, name: "Dai Stablecoin", logoUri: null, fonbnkCode: null },
     { chainId: CHAIN_ID_ETHEREUM, tokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", symbol: "USDC", decimals: 6, name: "USD Coin", logoUri: null, fonbnkCode: "ETHEREUM_USDC" },
     { chainId: CHAIN_ID_ETHEREUM, tokenAddress: NATIVE, symbol: "ETH", decimals: 18, name: "Ether", logoUri: null, fonbnkCode: "ETHEREUM_NATIVE" },
     { chainId: CHAIN_ID_MOMO, tokenAddress: FIAT_SENTINEL, symbol: "GHS", decimals: 2, name: "Ghana Cedi", logoUri: null, fonbnkCode: "MOMO_GHS" },

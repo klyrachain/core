@@ -31,6 +31,12 @@ export type QuoteResponseDto = {
   exchangeRate: string;
   /** Provider quote (e.g. Fonbnk base price) — used for P&L and fee; always stored so order webhook can set Transaction.providerPrice from quote */
   basePrice?: string;
+  /** Real prices for custom fee/profit: provider (e.g. Fonbnk), selling (exchangeRate), avgBuy (inventory cost basis, onramp only) */
+  prices?: {
+    providerPrice: string;
+    sellingPrice: string;
+    avgBuyPrice?: string;
+  };
   input: { amount: string; currency: string };
   output: { amount: string; currency: string; chain?: string };
   fees: {
@@ -141,15 +147,44 @@ async function getRawRate(params: {
     const toTokenRecord = tokensList.find(
       (t) => t.chainId === chainRecord.chainId && t.symbol.toUpperCase() === outputCurrency.toUpperCase()
     );
-    if (!fromTokenRecord || !toTokenRecord) return { ok: false, error: "Unsupported token pair for SWAP", status: 400 };
+    console.log("everything", {
+      provider: "squid",
+      from_chain: chainRecord.chainId,
+      to_chain: chainRecord.chainId,
+      from_token: fromTokenRecord?.tokenAddress,
+      to_token: toTokenRecord?.tokenAddress,
+      // amount: amountWei,
+    });
+    if (!fromTokenRecord || !toTokenRecord) {
+      const missing = [
+        !fromTokenRecord ? inputCurrency : null,
+        !toTokenRecord ? outputCurrency : null,
+      ].filter(Boolean);
+
+      return {
+        ok: false,
+        error: `Unsupported token pair for SWAP: ${missing.join(" and ")} not found for chain ${chain?.toLowerCase() ?? "?"}. Add tokens to SupportedToken (Chain + SupportedToken tables) for this chain.`,
+        status: 400,
+      };
+    }
     const decimals = fromTokenRecord.decimals ?? 18;
     const amountWei = String(Math.round(Number(1) * 10 ** decimals));
-    const swapResult = await getSwapQuote({
-      provider: "0x",
+    console.log("everything", {
+      provider: "squid",
       from_chain: chainRecord.chainId,
       to_chain: chainRecord.chainId,
       from_token: fromTokenRecord.tokenAddress,
       to_token: toTokenRecord.tokenAddress,
+      from_address: "0x0000000000000000000000000000000000000000",
+      amount: amountWei,
+    });
+    const swapResult = await getSwapQuote({
+      provider: "squid",
+      from_chain: chainRecord.chainId,
+      to_chain: chainRecord.chainId,
+      from_token: fromTokenRecord.tokenAddress,
+      to_token: toTokenRecord.tokenAddress,
+      from_address: "0x0000000000000000000000000000000000000001",
       amount: amountWei,
     });
     if (!swapResult.ok) return { ok: false, error: swapResult.error, status: swapResult.status };
@@ -220,10 +255,12 @@ export async function buildPublicQuote(
 
   let exchangeRate: number;
   let debug: QuoteResponseDto["debug"] | undefined;
+  let avgBuyPriceForPrices: number | null = null;
 
   if (action === "ONRAMP") {
     const costBasis = await getCachedCostBasis(chain!, toCurrency);
     const avgBuyPrice = costBasis ?? basePrice;
+    avgBuyPriceForPrices = avgBuyPrice;
     const result = quoteOnRamp({
       providerPrice: basePrice,
       avgBuyPrice,
@@ -329,11 +366,18 @@ export async function buildPublicQuote(
   const totalFeeNum = platformFeeRounded + parseFloat(networkFeeStub);
   const expiresAt = new Date(Date.now() + QUOTE_VALIDITY_SECONDS * 1000).toISOString();
 
+  const prices = {
+    providerPrice: basePrice.toFixed(2),
+    sellingPrice: exchangeRate.toFixed(2),
+    ...(avgBuyPriceForPrices != null ? { avgBuyPrice: avgBuyPriceForPrices.toFixed(2) } : {}),
+  };
+
   const data: QuoteResponseDto = {
     quoteId: randomUUID(),
     expiresAt,
     exchangeRate: exchangeRate.toFixed(2),
     basePrice: basePrice.toFixed(2),
+    prices,
     input: { amount: fromAmount.toFixed(2), currency: fromCurrency },
     output: {
       amount: toAmount.toFixed(2),

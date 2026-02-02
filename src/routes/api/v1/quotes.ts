@@ -58,6 +58,22 @@ export async function v1QuotesRoutes(app: FastifyInstance): Promise<void> {
 
         await setStoredQuote(result.data.quoteId, JSON.stringify(result.data), QUOTE_TTL_SECONDS);
 
+        const prices = result.data.prices;
+        req.log.info(
+          {
+            action: body.action,
+            quoteId: result.data.quoteId,
+            exchangeRate: result.data.exchangeRate,
+            providerPrice: prices?.providerPrice ?? result.data.basePrice,
+            sellingPrice: prices?.sellingPrice ?? result.data.exchangeRate,
+            avgBuyPrice: prices?.avgBuyPrice,
+            input: `${result.data.input.amount} ${result.data.input.currency}`,
+            output: `${result.data.output.amount} ${result.data.output.currency}`,
+            platformFee: result.data.fees.platformFee,
+          },
+          "v1/quotes — prices for fee/profit"
+        );
+
         return reply.status(200).send({
           success: true,
           data: result.data,
