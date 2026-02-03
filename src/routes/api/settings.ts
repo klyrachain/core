@@ -416,3 +416,4 @@ export async function settingsApiRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 }
+

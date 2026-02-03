@@ -33,6 +33,7 @@ import { paystackPaymentsApiRoutes } from "./routes/api/paystack-payments.js";
 import { paystackPayoutsApiRoutes } from "./routes/api/paystack-payouts.js";
 import { paystackTransactionsApiRoutes } from "./routes/api/paystack-transactions.js";
 import { paystackTransfersApiRoutes } from "./routes/api/paystack-transfers.js";
+import { offrampApiRoutes } from "./routes/api/offramp.js";
 import { v1QuotesRoutes } from "./routes/api/v1/quotes.js";
 import { adminAuthRoutes } from "./routes/api/admin-auth.js";
 import { paystackWebhookRoutes } from "./routes/webhook/paystack.js";
@@ -63,26 +64,22 @@ app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, 
 app.addHook("preValidation", onRequestLog);
 app.addHook("onResponse", onResponseLog);
 
-// Auth: public paths skip; v1/quotes optional key; all other API paths accept x-api-key OR session, then require at least one
+// Auth: only /api/health, /api/ready, /api/auth, and /webhook/paystack are public. Paystack webhook is protected by x-paystack-signature (HMAC); no API key from Paystack.
 app.addHook("preHandler", async (request, reply) => {
   const path = (request.url ?? "").split("?")[0];
-  if (path === "/health" || path === "/ready" || path.startsWith("/api/quote") || path === "/api/countries" || path.startsWith("/api/rates") || path === "/api/chains" || path === "/api/tokens" || path === "/webhook/paystack") return;
+  if (path === "/api/health" || path === "/api/ready") return;
   if (path.startsWith("/api/auth")) return;
-  if (path === "/api/v1/quotes") {
-    await resolveApiKeyIfPresent(request);
-    return;
-  }
-  // All other API paths: resolve both API key and session, then require at least one
+  if (path === "/webhook/paystack") return; // Paystack does not send x-api-key; we verify x-paystack-signature instead
   await resolveApiKeyIfPresent(request);
   await resolveAdminSessionIfPresent(request);
   requireApiKeyOrSession(request, reply);
 });
 
-app.get("/health", async (_, reply) => {
+app.get("/api/health", async (_, reply) => {
   return reply.status(200).send({ ok: true });
 });
 
-app.get("/ready", async (_, reply) => {
+app.get("/api/ready", async (_, reply) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
     const redis = getRedis();
@@ -124,6 +121,7 @@ await app.register(paystackPaymentsApiRoutes, { prefix: "" });
 await app.register(paystackPayoutsApiRoutes, { prefix: "" });
 await app.register(paystackTransactionsApiRoutes, { prefix: "" });
 await app.register(paystackTransfersApiRoutes, { prefix: "" });
+await app.register(offrampApiRoutes, { prefix: "" });
 await app.register(paystackWebhookRoutes, { prefix: "" });
 
 const pollWorker = createPollWorker(processPollJob);

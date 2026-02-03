@@ -162,4 +162,29 @@ export async function transactionsApiRoutes(app: FastifyInstance): Promise<void>
       }
     }
   );
+
+  /** GET /api/transactions/:id/balance-snapshots — balance before/after per asset for this transaction. */
+  app.get("/api/transactions/:id/balance-snapshots", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
+    try {
+      if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
+      const snapshots = await prisma.transactionBalanceSnapshot.findMany({
+        where: { transactionId: req.params.id },
+        orderBy: { createdAt: "asc" },
+        include: { asset: { select: { id: true, chain: true, chainId: true, symbol: true, tokenAddress: true, address: true } } },
+      });
+      const data = snapshots.map((s) => ({
+        id: s.id,
+        transactionId: s.transactionId,
+        assetId: s.assetId,
+        balanceBefore: s.balanceBefore.toString(),
+        balanceAfter: s.balanceAfter.toString(),
+        createdAt: s.createdAt.toISOString(),
+        asset: s.asset,
+      }));
+      return successEnvelope(reply, data);
+    } catch (err) {
+      req.log.error({ err }, "GET /api/transactions/:id/balance-snapshots");
+      return errorEnvelope(reply, "Something went wrong.", 500);
+    }
+  });
 }

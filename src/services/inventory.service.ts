@@ -1,6 +1,7 @@
 import { Decimal } from "@prisma/client/runtime/client";
 import { prisma } from "../lib/prisma.js";
 import { setBalance, getBalance, type BalanceEntry } from "../lib/redis.js";
+import { recordBalanceSnapshot } from "./transaction-balance-snapshot.service.js";
 
 const CHAIN_NAME_TO_ID: Record<string, number> = {
   ETHEREUM: 1,
@@ -154,6 +155,9 @@ export async function deductInventory(input: InventoryDeductionInput): Promise<D
   };
   await setBalance(input.chain, input.symbol, entry);
 
+  if (input.sourceTransactionId) {
+    await recordBalanceSnapshot(input.sourceTransactionId, asset.id, current, newBalance).catch(() => {});
+  }
   return { averageCostPerToken, allocatedLots };
 }
 
@@ -217,6 +221,10 @@ export async function addInventory(input: InventoryAdditionInput): Promise<void>
     updatedAt: new Date().toISOString(),
   };
   await setBalance(input.chain, input.symbol, entry);
+
+  if (input.sourceTransactionId) {
+    await recordBalanceSnapshot(input.sourceTransactionId, asset.id, current, newBalance).catch(() => {});
+  }
 }
 
 /**

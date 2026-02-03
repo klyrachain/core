@@ -46,6 +46,29 @@ export async function deleteStoredQuote(quoteId: string): Promise<void> {
   await r.del(quoteKey(quoteId));
 }
 
+/** Claim OTP: store expected OTP for claim verification. TTL 10 min. */
+export const CLAIM_OTP_KEY_PREFIX = "claim_otp:";
+export const CLAIM_OTP_TTL_SECONDS = 600;
+
+export function claimOtpKey(claimId: string): string {
+  return `${CLAIM_OTP_KEY_PREFIX}${claimId}`;
+}
+
+export async function setClaimOtp(claimId: string, otp: string): Promise<void> {
+  const r = getRedis();
+  await r.set(claimOtpKey(claimId), otp, "EX", CLAIM_OTP_TTL_SECONDS);
+}
+
+export async function getClaimOtp(claimId: string): Promise<string | null> {
+  const r = getRedis();
+  return r.get(claimOtpKey(claimId));
+}
+
+export async function deleteClaimOtp(claimId: string): Promise<void> {
+  const r = getRedis();
+  await r.del(claimOtpKey(claimId));
+}
+
 export function costBasisKey(chain: string, token: string): string {
   return `${VALIDATION_KEY_COST_BASIS_PREFIX}${chain.toUpperCase()}:${token.toUpperCase()}`;
 }

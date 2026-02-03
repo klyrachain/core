@@ -12,6 +12,7 @@ import { upsertPaystackPaymentRecord } from "../../services/paystack-payment-rec
 import { sendToAdminDashboard } from "../../services/admin-dashboard.service.js";
 import { triggerTransactionStatusChange } from "../../services/pusher.service.js";
 import { computeTransactionFee } from "../../services/fee.service.js";
+import { executeOnrampSend } from "../../services/onramp-execution.service.js";
 
 type PaystackWebhookEvent = {
   event: string;
@@ -98,6 +99,14 @@ export async function paystackWebhookRoutes(app: FastifyInstance): Promise<void>
                 status: newStatus,
                 type: tx.type,
               }).catch(() => {});
+
+              if (newStatus === "COMPLETED" && tx.type === "BUY") {
+                setImmediate(() => {
+                  executeOnrampSend(ourTransactionId).then((r) => {
+                    if (!r.ok) req.log.warn({ err: r.error, code: r.code, transactionId: ourTransactionId }, "Onramp send failed");
+                  }).catch((err) => req.log.error({ err, transactionId: ourTransactionId }, "Onramp send error"));
+                });
+              }
             }
           } catch (err) {
             req.log.error({ err, ourTransactionId, reference }, "Paystack webhook update transaction");

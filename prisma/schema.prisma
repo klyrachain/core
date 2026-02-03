@@ -177,6 +177,11 @@ model Transaction {
   merchantFee Decimal? @default(0) @db.Decimal(18, 8) // Merchant markup (if any)
   fee        Decimal? @db.Decimal(18, 8) // Fee charged for this transaction (set when status = COMPLETED)
   providerPrice Decimal? @db.Decimal(18, 8) // Provider quote at order time (e.g. onramp: provider buy price)
+  /// For request/claim: original provider quote used at settlement (not pricing-engine); for P&L tracking.
+  settlementQuoteSnapshot Json?
+
+  /// Onramp: tx hash of crypto send from liquidity pool to user (set when send completes).
+  cryptoSendTxHash String?
 
   request   Request?
   requestId String?  @unique
@@ -185,9 +190,27 @@ model Transaction {
   paystackPaymentRecords PaystackPaymentRecord[]
   cryptoTransactions CryptoTransaction[]
   transactionPnLs TransactionPnL[]
+  transactionBalanceSnapshots TransactionBalanceSnapshot[]
 
   @@index([status, type])
   @@index([businessId])
+}
+
+/// Balance before/after for each asset affected by a transaction (audit trail; avoids wrong balance when concurrent txs).
+model TransactionBalanceSnapshot {
+  id            String   @id @default(uuid())
+  createdAt     DateTime @default(now())
+
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  assetId       String
+  asset         InventoryAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  balanceBefore Decimal @db.Decimal(28, 8)
+  balanceAfter  Decimal @db.Decimal(28, 8)
+
+  @@index([transactionId])
+  @@index([assetId])
 }
 
 // Profit & loss per lot used in a sale (FIFO). fee = selling - provider; profit = selling - cost.
@@ -280,6 +303,8 @@ model Claim {
   toIdentifier    String
 
   code String
+  /// Set when recipient verifies OTP (email/phone); claim allowed only after this.
+  otpVerifiedAt DateTime?
 }
 
 // --------------------------------------
@@ -295,6 +320,11 @@ model Wallet {
   encryptedKey     String
   supportedChains  String[] // e.g. ["ETHEREUM", "BASE"]
   supportedTokens  String[] // e.g. ["ETH", "USDC"]
+
+  /// Exactly one wallet should be true; used for onramp send, offramp receive, request/claim crypto.
+  isLiquidityPool Boolean @default(false)
+  /// Optional; where integrator/swap fees are sent (can be same or different wallet).
+  collectFees Boolean @default(false)
 
   inventoryAssets InventoryAsset[]
 }
@@ -315,6 +345,7 @@ model InventoryAsset {
   wallet   Wallet?           @relation(fields: [walletId], references: [id], onDelete: SetNull)
   history  InventoryHistory[]
   lots     InventoryLot[]
+  transactionBalanceSnapshots TransactionBalanceSnapshot[]
 
   @@unique([chainId, tokenAddress, address])
   @@index([address])
