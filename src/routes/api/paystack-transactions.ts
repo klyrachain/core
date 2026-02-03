@@ -14,6 +14,8 @@ import {
 } from "../../services/paystack.service.js";
 import { upsertPaystackPaymentRecord } from "../../services/paystack-payment-record.service.js";
 import { successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
+import { requirePermission } from "../../lib/admin-auth.guard.js";
+import { PERMISSION_CONNECT_TRANSACTIONS } from "../../lib/permissions.js";
 
 const ListQuerySchema = z.object({
   perPage: z.coerce.number().min(1).max(100).optional(),
@@ -33,6 +35,7 @@ export async function paystackTransactionsApiRoutes(app: FastifyInstance): Promi
   app.get<{ Params: { reference: string } }>(
     "/api/paystack/transactions/verify/:reference",
     async (req: FastifyRequest<{ Params: { reference: string } }>, reply) => {
+      if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
       if (!isPaystackConfigured()) {
         return reply.status(503).send({
           success: false,
@@ -62,6 +65,7 @@ export async function paystackTransactionsApiRoutes(app: FastifyInstance): Promi
   app.get<{ Params: { id: string } }>(
     "/api/paystack/transactions/:id",
     async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
+      if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
       if (!isPaystackConfigured()) {
         return reply.status(503).send({
           success: false,
@@ -102,6 +106,7 @@ export async function paystackTransactionsApiRoutes(app: FastifyInstance): Promi
       }>,
       reply
     ) => {
+      if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
       if (!isPaystackConfigured()) {
         return reply.status(503).send({
           success: false,

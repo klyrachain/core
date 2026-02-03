@@ -20,24 +20,14 @@ import {
   VALIDATION_KEY_PRICING_QUOTE,
   VALIDATION_CACHE_TTL_SECONDS,
 } from "../../lib/redis.js";
-
-function requirePlatformKey(req: FastifyRequest, reply: import("fastify").FastifyReply): boolean {
-  if (!req.apiKey) {
-    errorEnvelope(reply, "Not authenticated.", 401);
-    return false;
-  }
-  if (req.apiKey.businessId) {
-    errorEnvelope(reply, "This endpoint is for platform use only.", 403);
-    return false;
-  }
-  return true;
-}
+import { requirePermission } from "../../lib/admin-auth.guard.js";
+import { PERMISSION_VALIDATION_READ, PERMISSION_VALIDATION_WRITE } from "../../lib/permissions.js";
 
 export async function validationApiRoutes(app: FastifyInstance): Promise<void> {
   /** POST /api/validation/cache/refresh — reload providers, chains, tokens, platform fee from DB into Redis (24h cache). */
   app.post("/api/validation/cache/refresh", async (req: FastifyRequest, reply) => {
     try {
-      if (!requirePlatformKey(req, reply)) return;
+      if (!requirePermission(req, reply, PERMISSION_VALIDATION_WRITE)) return;
       await loadValidationCache();
       return successEnvelope(reply, { refreshed: true });
     } catch (err) {
@@ -54,7 +44,7 @@ export async function validationApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
-        if (!requirePlatformKey(req, reply)) return;
+        if (!requirePermission(req, reply, PERMISSION_VALIDATION_READ)) return;
         await ensureValidationCache();
         const chain = (req.query.chain as string)?.trim();
         const token = (req.query.token as string)?.trim();
@@ -109,7 +99,7 @@ export async function validationApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
-        if (!requirePlatformKey(req, reply)) return;
+        if (!requirePermission(req, reply, PERMISSION_VALIDATION_WRITE)) return;
         const body = req.body ?? {};
         const r = getRedis();
         const existing = await r.get(VALIDATION_KEY_PRICING_QUOTE);
@@ -141,7 +131,7 @@ export async function validationApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
-        if (!requirePlatformKey(req, reply)) return;
+        if (!requirePermission(req, reply, PERMISSION_VALIDATION_READ)) return;
         const { page, limit, skip } = parsePagination(req.query);
         const codeFilter = (req.query.code as string)?.trim();
         const where = codeFilter ? { code: codeFilter } : {};
@@ -178,7 +168,7 @@ export async function validationApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
-        if (!requirePlatformKey(req, reply)) return;
+        if (!requirePermission(req, reply, PERMISSION_VALIDATION_READ)) return;
         const limit = Math.min(parseInt(req.query.limit ?? "50", 10) || 50, 200);
         const r = getRedis();
         const raw = await r.lrange(VALIDATION_FAILED_LIST_KEY, 0, limit - 1);
@@ -205,7 +195,7 @@ export async function validationApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
-        if (!requirePlatformKey(req, reply)) return;
+        if (!requirePermission(req, reply, PERMISSION_VALIDATION_READ)) return;
         const days = Math.min(Math.max(parseInt(req.query.days ?? "7", 10) || 7, 1), 90);
         const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
         const now = new Date();

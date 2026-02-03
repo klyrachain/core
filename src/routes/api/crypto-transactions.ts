@@ -13,7 +13,8 @@ import {
 } from "../../services/crypto-transaction.service.js";
 import { getSwapStatusFromProvider } from "../../services/swap-status.service.js";
 import { parsePagination, successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
-import { hasPermission } from "../../lib/auth.guard.js";
+import { requirePermission } from "../../lib/admin-auth.guard.js";
+import { PERMISSION_CONNECT_TRANSACTIONS } from "../../lib/permissions.js";
 
 const PROVIDERS = ["0x", "squid", "lifi"] as const;
 const STATUSES = ["PENDING", "SUBMITTED", "CONFIRMED", "FAILED"] as const;
@@ -121,12 +122,7 @@ export async function cryptoTransactionsApiRoutes(app: FastifyInstance): Promise
       }>,
       reply
     ) => {
-      if (!hasPermission(req, "ADMIN")) {
-        return reply.status(403).send({
-          success: false,
-          error: "Admin permission required. API key must have ADMIN or * permission.",
-        });
-      }
+      if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
       const { page, limit } = parsePagination(req.query);
       const provider = req.query.provider as (typeof PROVIDERS)[number] | undefined;
       const status = req.query.status as (typeof STATUSES)[number] | undefined;
@@ -240,9 +236,9 @@ export async function cryptoTransactionsApiRoutes(app: FastifyInstance): Promise
       const meta = item.metadata as Record<string, unknown> | null | undefined;
       const zeroXTradeHash =
         provider === "0x" &&
-        meta &&
-        typeof meta.zero_x_trade_hash === "string" &&
-        meta.zero_x_trade_hash.trim()
+          meta &&
+          typeof meta.zero_x_trade_hash === "string" &&
+          meta.zero_x_trade_hash.trim()
           ? meta.zero_x_trade_hash.trim()
           : null;
       const statusHash = zeroXTradeHash ?? txHash;

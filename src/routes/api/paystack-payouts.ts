@@ -14,6 +14,8 @@ import {
 } from "../../services/paystack.service.js";
 import { createPaystackTransferRecord } from "../../services/paystack-transfer-record.service.js";
 import { successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
+import { requirePermission } from "../../lib/admin-auth.guard.js";
+import { PERMISSION_PAYOUTS_READ, PERMISSION_PAYOUTS_WRITE } from "../../lib/permissions.js";
 
 function generatePayoutCode(): string {
   return randomBytes(12).toString("base64url");
@@ -67,6 +69,7 @@ export async function paystackPayoutsApiRoutes(app: FastifyInstance): Promise<vo
   app.post<{ Body: unknown }>(
     "/api/paystack/payouts/request",
     async (req: FastifyRequest<{ Body: unknown }>, reply) => {
+      if (!requirePermission(req, reply, PERMISSION_PAYOUTS_WRITE, { allowMerchant: true })) return;
       if (!isPaystackConfigured()) {
         return reply.status(503).send({
           success: false,
@@ -129,6 +132,7 @@ export async function paystackPayoutsApiRoutes(app: FastifyInstance): Promise<vo
   app.get<{ Params: { reference: string } }>(
     "/api/paystack/payouts/verify/:reference",
     async (req: FastifyRequest<{ Params: { reference: string } }>, reply) => {
+      if (!requirePermission(req, reply, PERMISSION_PAYOUTS_READ, { allowMerchant: true })) return;
       if (!isPaystackConfigured()) {
         return reply.status(503).send({
           success: false,
@@ -156,6 +160,7 @@ export async function paystackPayoutsApiRoutes(app: FastifyInstance): Promise<vo
   app.get(
     "/api/paystack/payouts/:code",
     async (req: FastifyRequest<{ Params: { code: string } }>, reply) => {
+      if (!requirePermission(req, reply, PERMISSION_PAYOUTS_READ, { allowMerchant: true })) return;
       const { code } = req.params;
       const payout = await prisma.payoutRequest.findUnique({
         where: { code },
@@ -192,10 +197,10 @@ export async function paystackPayoutsApiRoutes(app: FastifyInstance): Promise<vo
         transaction_id: payout.transactionId,
         transaction: payout.transaction
           ? {
-              ...payout.transaction,
-              f_amount: payout.transaction.f_amount.toString(),
-              t_amount: payout.transaction.t_amount.toString(),
-            }
+            ...payout.transaction,
+            f_amount: payout.transaction.f_amount.toString(),
+            t_amount: payout.transaction.t_amount.toString(),
+          }
           : null,
       };
       return successEnvelope(reply, data);
@@ -211,6 +216,7 @@ export async function paystackPayoutsApiRoutes(app: FastifyInstance): Promise<vo
       }>,
       reply
     ) => {
+      if (!requirePermission(req, reply, PERMISSION_PAYOUTS_READ, { allowMerchant: true })) return;
       if (!isPaystackConfigured()) {
         return reply.status(503).send({
           success: false,
@@ -255,10 +261,10 @@ export async function paystackPayoutsApiRoutes(app: FastifyInstance): Promise<vo
         transaction_id: p.transactionId,
         transaction: p.transaction
           ? {
-              ...p.transaction,
-              f_amount: p.transaction.f_amount.toString(),
-              t_amount: p.transaction.t_amount.toString(),
-            }
+            ...p.transaction,
+            f_amount: p.transaction.f_amount.toString(),
+            t_amount: p.transaction.t_amount.toString(),
+          }
           : null,
         created_at: p.createdAt.toISOString(),
       }));
@@ -272,6 +278,7 @@ export async function paystackPayoutsApiRoutes(app: FastifyInstance): Promise<vo
   app.post<{ Body: unknown }>(
     "/api/paystack/payouts/execute",
     async (req: FastifyRequest<{ Body: unknown }>, reply) => {
+      if (!requirePermission(req, reply, PERMISSION_PAYOUTS_WRITE, { allowMerchant: true })) return;
       if (!isPaystackConfigured()) {
         return reply.status(503).send({
           success: false,
@@ -388,7 +395,7 @@ export async function paystackPayoutsApiRoutes(app: FastifyInstance): Promise<vo
         await prisma.payoutRequest.update({
           where: { id: payout.id },
           data: { status: "failed" },
-        }).catch(() => {});
+        }).catch(() => { });
         const msg = err instanceof Error ? err.message : "Payout execution failed.";
         return errorEnvelope(reply, msg, 502);
       }

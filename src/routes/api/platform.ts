@@ -7,24 +7,16 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { prisma } from "../../lib/prisma.js";
 import { successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
 import { getAccumulatedFees } from "./connect.js";
+import { requirePermission } from "../../lib/admin-auth.guard.js";
+import { PERMISSION_PLATFORM_READ } from "../../lib/permissions.js";
 
 const COMPLETED_STATUS = "COMPLETED";
-
-/** Require platform key (no businessId). Returns 403 if merchant key. */
-function requirePlatformKey(req: FastifyRequest, reply: import("fastify").FastifyReply): boolean {
-  if (req.apiKey?.businessId) {
-    errorEnvelope(reply, "This endpoint is for platform use only.", 403);
-    return false;
-  }
-  return true;
-}
 
 export async function platformApiRoutes(app: FastifyInstance): Promise<void> {
   // --- GET /api/platform/overview ---
   app.get("/api/platform/overview", async (req: FastifyRequest, reply) => {
     try {
-      if (!req.apiKey) return errorEnvelope(reply, "Not authenticated.", 401);
-      if (!requirePlatformKey(req, reply)) return;
+      if (!requirePermission(req, reply, PERMISSION_PLATFORM_READ)) return;
 
       // All completed transactions (no business filter) — platform-wide fee accumulation
       const { byCurrency: feesByCurrency, totalConverted } = await getAccumulatedFees({});

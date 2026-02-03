@@ -1,9 +1,16 @@
 /**
  * Connect (B2B) API: overview, merchants, settlements for Platform/B2B operations.
- * Platform keys see all data; merchant keys see only their own business/settlements.
+ * Platform keys / session see all data; merchant keys see only their own business/settlements.
  */
 
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { requirePermission } from "../../lib/admin-auth.guard.js";
+import {
+  PERMISSION_CONNECT_OVERVIEW,
+  PERMISSION_CONNECT_TRANSACTIONS,
+  PERMISSION_CONNECT_BUSINESSES,
+  PERMISSION_BUSINESS_READ,
+} from "../../lib/permissions.js";
 import type { Prisma } from "../../../prisma/generated/prisma/client.js";
 import { KybStatus, PayoutStatus } from "../../../prisma/generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
@@ -68,21 +75,11 @@ export async function getAccumulatedFees(options: {
   return { byCurrency: byCurrencyStr, totalConverted };
 }
 
-/** Require platform key (no businessId). Returns 403 if merchant key. */
-function requirePlatformKey(req: FastifyRequest, reply: import("fastify").FastifyReply): boolean {
-  if (req.apiKey?.businessId) {
-    errorEnvelope(reply, "This endpoint is for platform use only.", 403);
-    return false;
-  }
-  return true;
-}
-
 export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
   // --- GET /api/connect/overview ---
   app.get("/api/connect/overview", async (req: FastifyRequest, reply) => {
     try {
-      if (!req.apiKey) return errorEnvelope(reply, "Not authenticated.", 401);
-      if (!requirePlatformKey(req, reply)) return;
+      if (!requirePermission(req, reply, PERMISSION_CONNECT_OVERVIEW)) return;
 
       const now = new Date();
       const since24h = new Date(now.getTime() - TWENTY_FOUR_HOURS_MS);
@@ -134,9 +131,9 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
       const businesses =
         businessIds.length > 0
           ? await prisma.business.findMany({
-              where: { id: { in: businessIds } },
-              select: { id: true, name: true },
-            })
+            where: { id: { in: businessIds } },
+            select: { id: true, name: true },
+          })
           : [];
       const nameById = Object.fromEntries(businesses.map((b) => [b.id, b.name]));
 
@@ -163,9 +160,9 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
       const recentBusinesses =
         recentBusinessIds.length > 0
           ? await prisma.business.findMany({
-              where: { id: { in: recentBusinessIds } },
-              select: { id: true, name: true, slug: true, createdAt: true },
-            })
+            where: { id: { in: recentBusinessIds } },
+            select: { id: true, name: true, slug: true, createdAt: true },
+          })
           : [];
       const recentOnboarding = recentBusinessIds
         .map((id) => recentBusinesses.find((b) => b.id === id))
@@ -202,8 +199,7 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
-        if (!req.apiKey) return errorEnvelope(reply, "Not authenticated.", 401);
-        if (!requirePlatformKey(req, reply)) return;
+        if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
 
         const days = Math.min(Math.max(parseInt(req.query.days ?? "0", 10) || 0, 0), 365);
         const since = days > 0 ? new Date(Date.now() - days * 24 * 60 * 60 * 1000) : undefined;
@@ -242,8 +238,7 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
-        if (!req.apiKey) return errorEnvelope(reply, "Not authenticated.", 401);
-        if (!requirePlatformKey(req, reply)) return;
+        if (!requirePermission(req, reply, PERMISSION_CONNECT_BUSINESSES)) return;
 
         const { page, limit, skip } = parsePagination(req.query);
         const status = req.query.status?.trim();
@@ -282,10 +277,10 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
           balance: 0, // TODO: compute from txns - payouts when currency strategy is fixed
           feeTier: b.feeSchedule
             ? {
-                percentage: toNum(b.feeSchedule.percentageFee),
-                flat: toNum(b.feeSchedule.flatFee),
-                max: b.feeSchedule.maxFee != null ? toNum(b.feeSchedule.maxFee) : undefined,
-              }
+              percentage: toNum(b.feeSchedule.percentageFee),
+              flat: toNum(b.feeSchedule.flatFee),
+              max: b.feeSchedule.maxFee != null ? toNum(b.feeSchedule.maxFee) : undefined,
+            }
             : { percentage: 1, flat: 0, max: undefined },
           createdAt: b.createdAt.toISOString(),
         }));
@@ -303,10 +298,10 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
     "/api/connect/merchants/:id",
     async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
       try {
-        if (!req.apiKey) return errorEnvelope(reply, "Not authenticated.", 401);
+        if (!requirePermission(req, reply, PERMISSION_BUSINESS_READ, { allowMerchant: true })) return;
         const { id } = req.params;
-        const isMerchant = !!req.apiKey.businessId;
-        if (isMerchant && req.apiKey.businessId !== id) {
+        const isMerchant = !!(req as FastifyRequest & { apiKey?: { businessId?: string } }).apiKey?.businessId;
+        if (isMerchant && req.apiKey && req.apiKey.businessId !== id) {
           return errorEnvelope(reply, "You can only view your own business.", 403);
         }
 

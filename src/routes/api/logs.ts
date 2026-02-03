@@ -2,6 +2,8 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { getRequestLogs } from "../../lib/request-log-store.js";
 import { parsePagination, successEnvelopeWithMeta, errorEnvelope } from "../../lib/api-helpers.js";
 import { sendToAdminDashboard } from "../../services/admin-dashboard.service.js";
+import { requirePermission } from "../../lib/admin-auth.guard.js";
+import { PERMISSION_PLATFORM_READ } from "../../lib/permissions.js";
 
 export async function logsApiRoutes(app: FastifyInstance): Promise<void> {
   app.get(
@@ -19,6 +21,7 @@ export async function logsApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
+        if (!requirePermission(req, reply, PERMISSION_PLATFORM_READ)) return;
         const { page, limit, skip } = parsePagination({
           page: req.query.page,
           limit: req.query.limit ?? "50",

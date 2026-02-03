@@ -1,12 +1,15 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { prisma } from "../../lib/prisma.js";
 import { parsePagination, successEnvelope, successEnvelopeWithMeta, errorEnvelope } from "../../lib/api-helpers.js";
+import { requirePermission } from "../../lib/admin-auth.guard.js";
+import { PERMISSION_PLATFORM_READ } from "../../lib/permissions.js";
 
 const MASK = "***";
 
 export async function walletsApiRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/wallets", async (req: FastifyRequest<{ Querystring: { page?: string; limit?: string } }>, reply) => {
     try {
+      if (!requirePermission(req, reply, PERMISSION_PLATFORM_READ)) return;
       const { page, limit, skip } = parsePagination(req.query);
       const [items, total] = await Promise.all([
         prisma.wallet.findMany({
@@ -38,6 +41,7 @@ export async function walletsApiRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/api/wallets/:id", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
     try {
+      if (!requirePermission(req, reply, PERMISSION_PLATFORM_READ)) return;
       const wallet = await prisma.wallet.findUnique({
         where: { id: req.params.id },
         select: {

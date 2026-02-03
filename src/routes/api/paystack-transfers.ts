@@ -6,6 +6,8 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { listTransfers, isPaystackConfigured } from "../../services/paystack.service.js";
 import { successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
+import { requirePermission } from "../../lib/admin-auth.guard.js";
+import { PERMISSION_CONNECT_TRANSACTIONS } from "../../lib/permissions.js";
 
 const ListQuerySchema = z.object({
   perPage: z.coerce.number().min(1).max(100).optional(),
@@ -27,6 +29,7 @@ export async function paystackTransfersApiRoutes(app: FastifyInstance): Promise<
       }>,
       reply
     ) => {
+      if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
       if (!isPaystackConfigured()) {
         return reply.status(503).send({
           success: false,

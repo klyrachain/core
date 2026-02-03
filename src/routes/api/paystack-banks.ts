@@ -11,6 +11,8 @@ import {
   isPaystackConfigured,
 } from "../../services/paystack.service.js";
 import { successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
+import { requirePermission } from "../../lib/admin-auth.guard.js";
+import { PERMISSION_CONNECT_TRANSACTIONS } from "../../lib/permissions.js";
 
 const ListBanksQuerySchema = z.object({
   country: z.enum(["ghana", "kenya", "nigeria", "south_africa", "south africa"]).optional(),
@@ -52,6 +54,7 @@ export async function paystackBanksApiRoutes(app: FastifyInstance): Promise<void
       }>,
       reply
     ) => {
+      if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
       if (!isPaystackConfigured()) {
         return reply.status(503).send({
           success: false,
@@ -94,6 +97,7 @@ export async function paystackBanksApiRoutes(app: FastifyInstance): Promise<void
       }>,
       reply
     ) => {
+      if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
       if (!isPaystackConfigured()) {
         return reply.status(503).send({
           success: false,
@@ -122,6 +126,7 @@ export async function paystackBanksApiRoutes(app: FastifyInstance): Promise<void
   app.post<{ Body: unknown }>(
     "/api/paystack/banks/validate",
     async (req: FastifyRequest<{ Body: unknown }>, reply) => {
+      if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
       if (!isPaystackConfigured()) {
         return reply.status(503).send({
           success: false,

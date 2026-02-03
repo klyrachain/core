@@ -591,8 +591,67 @@ model PlatformAdmin {
   role          PlatformAdminRole @default(viewer)
   twoFaEnabled  Boolean  @default(false)
 
+  passwordHash   String?   // argon2; null until account setup after invite
+  totpSecret     String?   // encrypted TOTP secret for authenticator app
+  emailVerifiedAt DateTime? // set when invite is used (signup completes)
+
+  sentInvites    AdminInvite[]  @relation("Inviter")
+  sessions       AdminSession[]
+  passkeys       AdminPasskey[]
+
   @@index([email])
   @@index([role])
+}
+
+// Invitation for new platform admin. Only super_admin can invite. Token in email link; verify then setup (password, TOTP, passkey).
+model AdminInvite {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+
+  email       String
+  role        PlatformAdminRole
+  token       String   @unique // secure token for invite link; single-use
+  expiresAt   DateTime
+  usedAt      DateTime? // set when admin completes setup
+
+  invitedById String?
+  inviter     PlatformAdmin? @relation("Inviter", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@index([email])
+  @@index([token])
+  @@index([expiresAt])
+}
+
+// Session for dashboard login. TTL 15 or 30 minutes; token in cookie or Authorization header.
+model AdminSession {
+  id               String   @id @default(uuid())
+  createdAt        DateTime @default(now())
+
+  adminId          String
+  admin            PlatformAdmin @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  tokenHash        String   @unique // SHA-256 of session token; never store raw token
+  expiresAt        DateTime
+  sessionTtlMinutes Int     @default(15) // 15 or 30
+
+  @@index([adminId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+}
+
+// WebAuthn passkey credential for passwordless login.
+model AdminPasskey {
+  id           String   @id @default(uuid())
+  createdAt    DateTime @default(now())
+
+  adminId      String
+  admin        PlatformAdmin @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  credentialId String   @unique // WebAuthn credential ID (base64url)
+  publicKey    Bytes    // COSE public key
+  counter      Int      @default(0)
+  name         String?  // optional label, e.g. "MacBook"
+
+  @@index([adminId])
+  @@index([credentialId])
 }
 
 // --------------------------------------

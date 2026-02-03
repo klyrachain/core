@@ -1,10 +1,13 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { getPollQueue } from "../../lib/queue.js";
 import { successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
+import { requirePermission } from "../../lib/admin-auth.guard.js";
+import { PERMISSION_PLATFORM_READ } from "../../lib/permissions.js";
 
 export async function queueApiRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/queue/poll", async (req: FastifyRequest<{ Querystring: { limit?: string } }>, reply) => {
     try {
+      if (!requirePermission(req, reply, PERMISSION_PLATFORM_READ)) return;
       const queue = getPollQueue();
       const [counts, waiting, active] = await Promise.all([
         queue.getJobCounts(),

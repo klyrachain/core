@@ -1,18 +1,26 @@
 /**
- * Access context API: returns what the current API key can access (platform vs merchant, business, permissions).
+ * Access context API: returns what the current auth can access (API key or session: platform vs merchant, business, permissions, admin).
  * Used by the frontend to show the correct dashboard and scope (e.g. "Acting as Business X" or "Platform Admin").
  */
 
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { prisma } from "../../lib/prisma.js";
 import { successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
+import { requirePermission } from "../../lib/admin-auth.guard.js";
+import { PERMISSION_ACCESS_READ } from "../../lib/permissions.js";
 
 export type AccessContext = {
   type: "platform" | "merchant";
-  key: {
+  key?: {
     id: string;
     name: string;
     permissions: string[];
+  };
+  admin?: {
+    adminId: string;
+    email: string;
+    name: string | null;
+    role: string;
   };
   business?: {
     id: string;
@@ -24,13 +32,25 @@ export type AccessContext = {
 export async function accessApiRoutes(app: FastifyInstance): Promise<void> {
   /**
    * GET /api/access
-   * Returns the access context for the authenticated API key:
-   * - type: "platform" (key has no business) or "merchant" (key is scoped to a business)
-   * - key: id, name, permissions
-   * - business: when type is "merchant", the business id, name, slug (for display and switching)
+   * Returns the access context:
+   * - When session: type "platform", admin (id, email, name, role).
+   * - When API key: type "platform" (no business) or "merchant" (key scoped to business), key (id, name, permissions), business when merchant.
    */
   app.get("/api/access", async (req: FastifyRequest, reply) => {
     try {
+      if (!requirePermission(req, reply, PERMISSION_ACCESS_READ, { allowMerchant: true })) return;
+      if (req.adminSession) {
+        return successEnvelope(reply, {
+          type: "platform",
+          admin: {
+            adminId: req.adminSession.adminId,
+            email: req.adminSession.email,
+            name: req.adminSession.name,
+            role: req.adminSession.role,
+          },
+        } satisfies AccessContext);
+      }
+
       const apiKey = req.apiKey;
       if (!apiKey) {
         return errorEnvelope(reply, "Not authenticated.", 401);

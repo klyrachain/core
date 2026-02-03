@@ -7,6 +7,8 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { prisma } from "../../lib/prisma.js";
 import { successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
 import { hashApiKey, getKeyPrefix } from "../../services/api-key.service.js";
+import { requirePermission } from "../../lib/admin-auth.guard.js";
+import { PERMISSION_PROVIDERS_READ, PERMISSION_PROVIDERS_WRITE } from "../../lib/permissions.js";
 
 const KEY_DISPLAY_LENGTH = 7;
 
@@ -45,23 +47,11 @@ function serializeProvider(p: {
   };
 }
 
-function requirePlatformKey(req: FastifyRequest, reply: import("fastify").FastifyReply): boolean {
-  if (!req.apiKey) {
-    errorEnvelope(reply, "Not authenticated.", 401);
-    return false;
-  }
-  if (req.apiKey.businessId) {
-    errorEnvelope(reply, "This endpoint is for platform use only.", 403);
-    return false;
-  }
-  return true;
-}
-
 export async function providersApiRoutes(app: FastifyInstance): Promise<void> {
   // --- GET /api/providers ---
   app.get("/api/providers", async (req: FastifyRequest, reply) => {
     try {
-      if (!requirePlatformKey(req, reply)) return;
+      if (!requirePermission(req, reply, PERMISSION_PROVIDERS_READ)) return;
       const list = await prisma.providerRouting.findMany({
         orderBy: [{ priority: "desc" }, { code: "asc" }],
       });
@@ -76,7 +66,7 @@ export async function providersApiRoutes(app: FastifyInstance): Promise<void> {
   // --- GET /api/providers/:id ---
   app.get("/api/providers/:id", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
     try {
-      if (!requirePlatformKey(req, reply)) return;
+      if (!requirePermission(req, reply, PERMISSION_PROVIDERS_READ)) return;
       const provider = await prisma.providerRouting.findUnique({
         where: { id: req.params.id },
       });
@@ -107,7 +97,7 @@ export async function providersApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
-        if (!requirePlatformKey(req, reply)) return;
+        if (!requirePermission(req, reply, PERMISSION_PROVIDERS_WRITE)) return;
         const existing = await prisma.providerRouting.findUnique({
           where: { id: req.params.id },
         });
@@ -157,7 +147,7 @@ export async function providersApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
-        if (!requirePlatformKey(req, reply)) return;
+        if (!requirePermission(req, reply, PERMISSION_PROVIDERS_WRITE)) return;
         const rawKey = typeof req.body?.apiKey === "string" ? req.body.apiKey.trim() : "";
         if (!rawKey) return errorEnvelope(reply, "apiKey is required in body", 400);
 

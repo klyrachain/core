@@ -16,6 +16,13 @@ import {
   maskSecret,
   getSwapFeeConfigMasked,
 } from "../../services/platform-settings.service.js";
+import { requirePermission } from "../../lib/admin-auth.guard.js";
+import {
+  PERMISSION_SETTINGS_READ,
+  PERMISSION_SETTINGS_WRITE,
+  PERMISSION_TEAM_READ,
+  PERMISSION_TEAM_INVITE,
+} from "../../lib/permissions.js";
 
 const DEFAULT_GENERAL = {
   publicName: "MyCryptoApp",
@@ -56,19 +63,6 @@ const DEFAULT_API = {
   alertEmails: "",
 };
 
-/** Require platform key. Returns false and sends 403 if merchant key. */
-function requirePlatformKey(req: FastifyRequest, reply: import("fastify").FastifyReply): boolean {
-  if (!req.apiKey) {
-    errorEnvelope(reply, "Not authenticated.", 401);
-    return false;
-  }
-  if (req.apiKey.businessId) {
-    errorEnvelope(reply, "This endpoint is for platform use only.", 403);
-    return false;
-  }
-  return true;
-}
-
 function parseBlacklist(input: unknown): string[] {
   if (Array.isArray(input)) return input.filter((x) => typeof x === "string").map((s) => s.trim()).filter(Boolean);
   if (typeof input === "string") return input.split(/\n/).map((s) => s.trim()).filter(Boolean);
@@ -79,7 +73,7 @@ export async function settingsApiRoutes(app: FastifyInstance): Promise<void> {
   // --- GET /api/settings/general ---
   app.get("/api/settings/general", async (req: FastifyRequest, reply) => {
     try {
-      if (!requirePlatformKey(req, reply)) return;
+      if (!requirePermission(req, reply, PERMISSION_SETTINGS_READ)) return;
       const data = await getPlatformSettingOrDefault("general", DEFAULT_GENERAL);
       return successEnvelope(reply, data);
     } catch (err) {
@@ -91,7 +85,7 @@ export async function settingsApiRoutes(app: FastifyInstance): Promise<void> {
   // --- PATCH /api/settings/general ---
   app.patch("/api/settings/general", async (req: FastifyRequest<{ Body: Record<string, unknown> }>, reply) => {
     try {
-      if (!requirePlatformKey(req, reply)) return;
+      if (!requirePermission(req, reply, PERMISSION_SETTINGS_WRITE)) return;
       const body = req.body ?? {};
       const patch: Record<string, unknown> = {};
       if (body.publicName !== undefined) patch.publicName = String(body.publicName).slice(0, 100);
@@ -111,7 +105,7 @@ export async function settingsApiRoutes(app: FastifyInstance): Promise<void> {
   // --- GET /api/settings/swap-fee (admin only; recipient never exposed, masked only) ---
   app.get("/api/settings/swap-fee", async (req: FastifyRequest, reply) => {
     try {
-      if (!requirePlatformKey(req, reply)) return;
+      if (!requirePermission(req, reply, PERMISSION_SETTINGS_READ)) return;
       const data = await getSwapFeeConfigMasked();
       return successEnvelope(reply, data);
     } catch (err) {
@@ -123,7 +117,7 @@ export async function settingsApiRoutes(app: FastifyInstance): Promise<void> {
   // --- PATCH /api/settings/swap-fee (admin only; fee config set only here, never from client request body on quote endpoints) ---
   app.patch("/api/settings/swap-fee", async (req: FastifyRequest<{ Body: Record<string, unknown> }>, reply) => {
     try {
-      if (!requirePlatformKey(req, reply)) return;
+      if (!requirePermission(req, reply, PERMISSION_SETTINGS_WRITE)) return;
       const body = req.body ?? {};
       const current = await getPlatformSettingOrDefault("swapFee", {
         squidFeeRecipient: null,
@@ -171,7 +165,7 @@ export async function settingsApiRoutes(app: FastifyInstance): Promise<void> {
   // --- GET /api/settings/financials ---
   app.get("/api/settings/financials", async (req: FastifyRequest, reply) => {
     try {
-      if (!requirePlatformKey(req, reply)) return;
+      if (!requirePermission(req, reply, PERMISSION_SETTINGS_READ)) return;
       const data = await getPlatformSettingOrDefault("financials", DEFAULT_FINANCIALS);
       return successEnvelope(reply, data);
     } catch (err) {
@@ -183,7 +177,7 @@ export async function settingsApiRoutes(app: FastifyInstance): Promise<void> {
   // --- PATCH /api/settings/financials ---
   app.patch("/api/settings/financials", async (req: FastifyRequest<{ Body: Record<string, unknown> }>, reply) => {
     try {
-      if (!requirePlatformKey(req, reply)) return;
+      if (!requirePermission(req, reply, PERMISSION_SETTINGS_WRITE)) return;
       const body = req.body ?? {};
       const patch: Record<string, unknown> = {};
       if (body.baseFeePercent !== undefined) patch.baseFeePercent = Math.min(100, Math.max(0, Number(body.baseFeePercent) || 0));
@@ -202,7 +196,7 @@ export async function settingsApiRoutes(app: FastifyInstance): Promise<void> {
   // --- GET /api/settings/providers ---
   app.get("/api/settings/providers", async (req: FastifyRequest, reply) => {
     try {
-      if (!requirePlatformKey(req, reply)) return;
+      if (!requirePermission(req, reply, PERMISSION_SETTINGS_READ)) return;
       const raw = await getPlatformSettingOrDefault("providers", DEFAULT_PROVIDERS);
       const providers = Array.isArray(raw.providers) ? raw.providers : DEFAULT_PROVIDERS.providers;
       const masked = providers.map((p: Record<string, unknown>) => ({
@@ -223,7 +217,7 @@ export async function settingsApiRoutes(app: FastifyInstance): Promise<void> {
   // --- PATCH /api/settings/providers ---
   app.patch("/api/settings/providers", async (req: FastifyRequest<{ Body: Record<string, unknown> }>, reply) => {
     try {
-      if (!requirePlatformKey(req, reply)) return;
+      if (!requirePermission(req, reply, PERMISSION_SETTINGS_WRITE)) return;
       const body = req.body ?? {};
       const current = await getPlatformSettingOrDefault("providers", DEFAULT_PROVIDERS);
       const providers = Array.isArray(current.providers) ? (current.providers as Record<string, unknown>[]) : [...DEFAULT_PROVIDERS.providers];
@@ -259,7 +253,7 @@ export async function settingsApiRoutes(app: FastifyInstance): Promise<void> {
   // --- PATCH /api/settings/providers/:id (set apiKey or update enabled/priority) ---
   app.patch("/api/settings/providers/:id", async (req: FastifyRequest<{ Params: { id: string }; Body: { apiKey?: string; enabled?: boolean; priority?: number } }>, reply) => {
     try {
-      if (!requirePlatformKey(req, reply)) return;
+      if (!requirePermission(req, reply, PERMISSION_SETTINGS_WRITE)) return;
       const id = String(req.params?.id ?? "").toUpperCase();
       const validIds = ["SQUID", "LIFI", "0X", "PAYSTACK"];
       if (!validIds.includes(id)) return errorEnvelope(reply, "Invalid provider id", 400);
@@ -289,7 +283,7 @@ export async function settingsApiRoutes(app: FastifyInstance): Promise<void> {
   // --- GET /api/settings/risk ---
   app.get("/api/settings/risk", async (req: FastifyRequest, reply) => {
     try {
-      if (!requirePlatformKey(req, reply)) return;
+      if (!requirePermission(req, reply, PERMISSION_SETTINGS_READ)) return;
       const data = await getPlatformSettingOrDefault("risk", DEFAULT_RISK);
       const blacklist = Array.isArray(data.blacklist) ? data.blacklist : [];
       return successEnvelope(reply, {
@@ -306,7 +300,7 @@ export async function settingsApiRoutes(app: FastifyInstance): Promise<void> {
   // --- PATCH /api/settings/risk ---
   app.patch("/api/settings/risk", async (req: FastifyRequest<{ Body: Record<string, unknown> }>, reply) => {
     try {
-      if (!requirePlatformKey(req, reply)) return;
+      if (!requirePermission(req, reply, PERMISSION_SETTINGS_WRITE)) return;
       const body = req.body ?? {};
       const patch: Record<string, unknown> = {};
       if (body.enforceKycOver1000 !== undefined) patch.enforceKycOver1000 = Boolean(body.enforceKycOver1000);
@@ -327,7 +321,7 @@ export async function settingsApiRoutes(app: FastifyInstance): Promise<void> {
   // --- GET /api/settings/team/admins ---
   app.get("/api/settings/team/admins", async (req: FastifyRequest, reply) => {
     try {
-      if (!requirePlatformKey(req, reply)) return;
+      if (!requirePermission(req, reply, PERMISSION_TEAM_READ)) return;
       const admins = await prisma.platformAdmin.findMany({
         orderBy: { createdAt: "asc" },
         select: { id: true, name: true, email: true, role: true, twoFaEnabled: true },
@@ -349,7 +343,7 @@ export async function settingsApiRoutes(app: FastifyInstance): Promise<void> {
   // --- POST /api/settings/team/invite ---
   app.post("/api/settings/team/invite", async (req: FastifyRequest<{ Body: { email?: string; role?: string } }>, reply) => {
     try {
-      if (!requirePlatformKey(req, reply)) return;
+      if (!requirePermission(req, reply, PERMISSION_TEAM_INVITE)) return;
       const email = String(req.body?.email ?? "").trim().toLowerCase();
       const role = String(req.body?.role ?? "viewer").toLowerCase();
       const validRoles = ["super_admin", "support", "developer", "viewer"];
@@ -373,7 +367,7 @@ export async function settingsApiRoutes(app: FastifyInstance): Promise<void> {
   // --- GET /api/settings/api ---
   app.get("/api/settings/api", async (req: FastifyRequest, reply) => {
     try {
-      if (!requirePlatformKey(req, reply)) return;
+      if (!requirePermission(req, reply, PERMISSION_SETTINGS_READ)) return;
       const data = await getPlatformSettingOrDefault("api", DEFAULT_API);
       return successEnvelope(reply, {
         webhookSigningSecretMasked: maskSecret(data.webhookSigningSecret as string, 4),
@@ -389,7 +383,7 @@ export async function settingsApiRoutes(app: FastifyInstance): Promise<void> {
   // --- PATCH /api/settings/api ---
   app.patch("/api/settings/api", async (req: FastifyRequest<{ Body: Record<string, unknown> }>, reply) => {
     try {
-      if (!requirePlatformKey(req, reply)) return;
+      if (!requirePermission(req, reply, PERMISSION_SETTINGS_WRITE)) return;
       const body = req.body ?? {};
       const patch: Record<string, unknown> = {};
       if (body.slackWebhookUrl !== undefined) patch.slackWebhookUrl = String(body.slackWebhookUrl);
@@ -410,7 +404,7 @@ export async function settingsApiRoutes(app: FastifyInstance): Promise<void> {
   // --- POST /api/settings/api/rotate-webhook-secret ---
   app.post("/api/settings/api/rotate-webhook-secret", async (req: FastifyRequest, reply) => {
     try {
-      if (!requirePlatformKey(req, reply)) return;
+      if (!requirePermission(req, reply, PERMISSION_SETTINGS_WRITE)) return;
       const newSecret = "whsec_" + randomBytes(32).toString("hex");
       await patchPlatformSetting("api", DEFAULT_API, { webhookSigningSecret: newSecret });
       return successEnvelope(reply, {

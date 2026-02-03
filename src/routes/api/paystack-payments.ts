@@ -7,6 +7,8 @@ import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { initializePayment, isPaystackConfigured } from "../../services/paystack.service.js";
 import { successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
+import { requirePermission } from "../../lib/admin-auth.guard.js";
+import { PERMISSION_CONNECT_TRANSACTIONS } from "../../lib/permissions.js";
 import type { PaymentProvider, TransactionType } from "../../../prisma/generated/prisma/client.js";
 
 const InitializeBodySchema = z.object({
@@ -25,6 +27,7 @@ export async function paystackPaymentsApiRoutes(app: FastifyInstance): Promise<v
   app.post<{ Body: unknown }>(
     "/api/paystack/payments/initialize",
     async (req: FastifyRequest<{ Body: unknown }>, reply) => {
+      if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS, { allowMerchant: true })) return;
       if (!isPaystackConfigured()) {
         return reply.status(503).send({
           success: false,

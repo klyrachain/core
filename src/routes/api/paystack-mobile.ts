@@ -6,6 +6,8 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { listMobileMoneyProviders, isPaystackConfigured } from "../../services/paystack.service.js";
 import { successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
+import { requirePermission } from "../../lib/admin-auth.guard.js";
+import { PERMISSION_CONNECT_TRANSACTIONS } from "../../lib/permissions.js";
 
 const ListMobileProvidersQuerySchema = z.object({
   currency: z.enum(["GHS", "KES"]).describe("Currency for mobile money (GHS Ghana, KES Kenya)"),
@@ -21,6 +23,7 @@ export async function paystackMobileApiRoutes(app: FastifyInstance): Promise<voi
       }>,
       reply
     ) => {
+      if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
       if (!isPaystackConfigured()) {
         return reply.status(503).send({
           success: false,

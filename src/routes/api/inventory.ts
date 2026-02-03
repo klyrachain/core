@@ -2,6 +2,8 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { prisma } from "../../lib/prisma.js";
 import { parsePagination, successEnvelope, successEnvelopeWithMeta, errorEnvelope } from "../../lib/api-helpers.js";
 import { getAverageCostBasis, getLotsForAsset } from "../../services/inventory.service.js";
+import { requirePermission } from "../../lib/admin-auth.guard.js";
+import { PERMISSION_PLATFORM_READ, PERMISSION_VALIDATION_WRITE } from "../../lib/permissions.js";
 
 function toDecimal(value: unknown): number {
   if (value == null) return 0;
@@ -28,6 +30,7 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
+        if (!requirePermission(req, reply, PERMISSION_VALIDATION_WRITE)) return;
         const body = req.body ?? {};
         const chain = String(body.chain ?? "").trim();
         const chainId = typeof body.chainId === "number" ? body.chainId : parseInt(String(body.chainId ?? ""), 10);
@@ -82,6 +85,7 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
+        if (!requirePermission(req, reply, PERMISSION_PLATFORM_READ)) return;
         const { page, limit, skip } = parsePagination(req.query);
         const chainFilter = req.query.chain as string | undefined;
         const chainIdFilter = req.query.chainId != null ? parseInt(req.query.chainId as string, 10) : undefined;
@@ -121,6 +125,7 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
+        if (!requirePermission(req, reply, PERMISSION_PLATFORM_READ)) return;
         const { page, limit, skip } = parsePagination(req.query);
         const assetId = req.query.assetId as string | undefined;
         const chain = req.query.chain as string | undefined;
@@ -154,6 +159,7 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/api/inventory/:id", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
     try {
+      if (!requirePermission(req, reply, PERMISSION_PLATFORM_READ)) return;
       const asset = await prisma.inventoryAsset.findUnique({
         where: { id: req.params.id },
         include: { wallet: { select: { id: true, address: true } } },
@@ -177,6 +183,7 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
+        if (!requirePermission(req, reply, PERMISSION_PLATFORM_READ)) return;
         const { page, limit, skip } = parsePagination(req.query);
         const assetId = (req.query.assetId as string)?.trim();
         const chain = (req.query.chain as string)?.trim();
@@ -224,6 +231,7 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
+        if (!requirePermission(req, reply, PERMISSION_PLATFORM_READ)) return;
         const asset = await prisma.inventoryAsset.findUnique({ where: { id: req.params.id } });
         if (!asset) return errorEnvelope(reply, "Inventory asset not found", 404);
         const onlyAvailable = req.query.onlyAvailable === "true" || req.query.onlyAvailable === "1";
@@ -247,6 +255,7 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
   // --- GET /api/inventory/:id/cost-basis (volume-weighted avg for pricing engine floor) ---
   app.get("/api/inventory/:id/cost-basis", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
     try {
+      if (!requirePermission(req, reply, PERMISSION_PLATFORM_READ)) return;
       const asset = await prisma.inventoryAsset.findUnique({ where: { id: req.params.id } });
       if (!asset) return errorEnvelope(reply, "Inventory asset not found", 404);
       const averageCostPerToken = await getAverageCostBasis(req.params.id);
@@ -282,6 +291,7 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
+        if (!requirePermission(req, reply, PERMISSION_VALIDATION_WRITE)) return;
         const id = req.params.id;
         const existing = await prisma.inventoryAsset.findUnique({ where: { id } });
         if (!existing) return errorEnvelope(reply, "Inventory asset not found", 404);
@@ -340,6 +350,7 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
   // --- DELETE /api/inventory/:id ---
   app.delete("/api/inventory/:id", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
     try {
+      if (!requirePermission(req, reply, PERMISSION_VALIDATION_WRITE)) return;
       const id = req.params.id;
       const existing = await prisma.inventoryAsset.findUnique({ where: { id } });
       if (!existing) return errorEnvelope(reply, "Inventory asset not found", 404);
@@ -357,6 +368,7 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/api/inventory/:id/history", async (req: FastifyRequest<{ Params: { id: string }; Querystring: { page?: string; limit?: string } }>, reply) => {
     try {
+      if (!requirePermission(req, reply, PERMISSION_PLATFORM_READ)) return;
       const { page, limit, skip } = parsePagination(req.query);
       const [items, total] = await Promise.all([
         prisma.inventoryHistory.findMany({

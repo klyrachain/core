@@ -50,6 +50,13 @@ export function costBasisKey(chain: string, token: string): string {
   return `${VALIDATION_KEY_COST_BASIS_PREFIX}${chain.toUpperCase()}:${token.toUpperCase()}`;
 }
 
+/** Admin auth WebAuthn: registration challenge by adminId; TTL 5 min. */
+export const ADMIN_AUTH_REG_CHALLENGE_PREFIX = "admin-auth:reg:";
+export const ADMIN_AUTH_REG_CHALLENGE_TTL = 300;
+/** Admin auth WebAuthn: authentication challenge by email; TTL 5 min. */
+export const ADMIN_AUTH_AUTH_CHALLENGE_PREFIX = "admin-auth:auth:";
+export const ADMIN_AUTH_AUTH_CHALLENGE_TTL = 300;
+
 export type BalanceEntry = {
   amount: string;
   status: string;

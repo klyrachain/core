@@ -1,6 +1,8 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { prisma } from "../../lib/prisma.js";
 import { parsePagination, successEnvelope, successEnvelopeWithMeta, errorEnvelope } from "../../lib/api-helpers.js";
+import { requirePermission } from "../../lib/admin-auth.guard.js";
+import { PERMISSION_CONNECT_TRANSACTIONS } from "../../lib/permissions.js";
 
 export async function transactionsApiRoutes(app: FastifyInstance): Promise<void> {
   app.get(
@@ -12,15 +14,16 @@ export async function transactionsApiRoutes(app: FastifyInstance): Promise<void>
       reply
     ) => {
       try {
+        if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
         const { page, limit, skip } = parsePagination(req.query);
         const status = req.query.status as string | undefined;
         const type = req.query.type as string | undefined;
         const where =
           status || type
             ? {
-                ...(status ? { status: status as "ACTIVE" | "PENDING" | "COMPLETED" | "CANCELLED" | "FAILED" } : {}),
-                ...(type ? { type: type as "BUY" | "SELL" | "TRANSFER" | "REQUEST" | "CLAIM" } : {}),
-              }
+              ...(status ? { status: status as "ACTIVE" | "PENDING" | "COMPLETED" | "CANCELLED" | "FAILED" } : {}),
+              ...(type ? { type: type as "BUY" | "SELL" | "TRANSFER" | "REQUEST" | "CLAIM" } : {}),
+            }
             : {};
         const [items, total] = await Promise.all([
           prisma.transaction.findMany({
@@ -56,6 +59,7 @@ export async function transactionsApiRoutes(app: FastifyInstance): Promise<void>
 
   app.get("/api/transactions/:id", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
     try {
+      if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
       const tx = await prisma.transaction.findUnique({
         where: { id: req.params.id },
         include: {
@@ -86,6 +90,7 @@ export async function transactionsApiRoutes(app: FastifyInstance): Promise<void>
   /** GET /api/transactions/:id/pnl — PnL rows for a transaction (FIFO lot attribution). */
   app.get("/api/transactions/:id/pnl", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
     try {
+      if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
       const pnls = await prisma.transactionPnL.findMany({
         where: { transactionId: req.params.id },
         orderBy: { createdAt: "asc" },
@@ -120,6 +125,7 @@ export async function transactionsApiRoutes(app: FastifyInstance): Promise<void>
       reply
     ) => {
       try {
+        if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
         const { page, limit, skip } = parsePagination(req.query);
         const transactionId = (req.query.transactionId as string)?.trim();
         const where = transactionId ? { transactionId } : {};

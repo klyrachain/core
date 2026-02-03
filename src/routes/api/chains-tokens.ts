@@ -7,7 +7,8 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
-import { hasPermission } from "../../lib/auth.guard.js";
+import { requirePermission } from "../../lib/admin-auth.guard.js";
+import { PERMISSION_PROVIDERS_READ, PERMISSION_PROVIDERS_WRITE } from "../../lib/permissions.js";
 
 /** Shape of chain row from prisma.chain findMany select. */
 interface ChainRow {
@@ -130,12 +131,7 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
 
   // ---------- Admin: chains ----------
   app.get("/api/admin/chains", async (req: FastifyRequest, reply) => {
-    if (!hasPermission(req, "ADMIN")) {
-      return reply.status(403).send({
-        success: false,
-        error: "Admin permission required. API key must have ADMIN or * permission.",
-      });
-    }
+    if (!requirePermission(req, reply, PERMISSION_PROVIDERS_READ)) return;
     const chains = await prisma.chain.findMany({
       orderBy: [{ chainId: "asc" }],
       select: { id: true, chainId: true, name: true, iconUri: true, createdAt: true, updatedAt: true },
@@ -144,12 +140,7 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
   });
 
   app.post<{ Body: unknown }>("/api/admin/chains", async (req: FastifyRequest<{ Body: unknown }>, reply) => {
-    if (!hasPermission(req, "ADMIN")) {
-      return reply.status(403).send({
-        success: false,
-        error: "Admin permission required. API key must have ADMIN or * permission.",
-      });
-    }
+    if (!requirePermission(req, reply, PERMISSION_PROVIDERS_WRITE)) return;
     const parse = CreateChainBodySchema.safeParse(req.body);
     if (!parse.success) {
       return reply.status(400).send({
@@ -175,12 +166,7 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
   app.patch<{ Params: unknown; Body: unknown }>(
     "/api/admin/chains/:id",
     async (req: FastifyRequest<{ Params: unknown; Body: unknown }>, reply) => {
-      if (!hasPermission(req, "ADMIN")) {
-        return reply.status(403).send({
-          success: false,
-          error: "Admin permission required. API key must have ADMIN or * permission.",
-        });
-      }
+      if (!requirePermission(req, reply, PERMISSION_PROVIDERS_WRITE)) return;
       const paramParse = ChainIdParamSchema.safeParse(req.params);
       if (!paramParse.success) {
         return reply.status(400).send({ success: false, error: "Invalid chain id (UUID) in path." });
@@ -214,12 +200,7 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
   );
 
   app.delete<{ Params: unknown }>("/api/admin/chains/:id", async (req: FastifyRequest<{ Params: unknown }>, reply) => {
-    if (!hasPermission(req, "ADMIN")) {
-      return reply.status(403).send({
-        success: false,
-        error: "Admin permission required. API key must have ADMIN or * permission.",
-      });
-    }
+    if (!requirePermission(req, reply, PERMISSION_PROVIDERS_WRITE)) return;
     const parse = ChainIdParamSchema.safeParse(req.params);
     if (!parse.success) {
       return reply.status(400).send({ success: false, error: "Invalid chain id (UUID) in path." });
@@ -243,12 +224,7 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
 
   // ---------- Admin: tokens ----------
   app.get("/api/admin/tokens", async (req: FastifyRequest, reply) => {
-    if (!hasPermission(req, "ADMIN")) {
-      return reply.status(403).send({
-        success: false,
-        error: "Admin permission required. API key must have ADMIN or * permission.",
-      });
-    }
+    if (!requirePermission(req, reply, PERMISSION_PROVIDERS_READ)) return;
     const tokens = await prisma.supportedToken.findMany({
       orderBy: [{ chainId: "asc" }, { symbol: "asc" }],
       select: { id: true, chainId: true, tokenAddress: true, symbol: true, decimals: true, name: true, logoUri: true, fonbnkCode: true, createdAt: true, updatedAt: true },
@@ -257,12 +233,7 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
   });
 
   app.post<{ Body: unknown }>("/api/admin/tokens", async (req: FastifyRequest<{ Body: unknown }>, reply) => {
-    if (!hasPermission(req, "ADMIN")) {
-      return reply.status(403).send({
-        success: false,
-        error: "Admin permission required. API key must have ADMIN or * permission.",
-      });
-    }
+    if (!requirePermission(req, reply, PERMISSION_PROVIDERS_WRITE)) return;
     const parse = CreateTokenBodySchema.safeParse(req.body);
     if (!parse.success) {
       return reply.status(400).send({
@@ -312,12 +283,7 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
   app.patch<{ Params: unknown; Body: unknown }>(
     "/api/admin/tokens/:id",
     async (req: FastifyRequest<{ Params: unknown; Body: unknown }>, reply) => {
-      if (!hasPermission(req, "ADMIN")) {
-        return reply.status(403).send({
-          success: false,
-          error: "Admin permission required. API key must have ADMIN or * permission.",
-        });
-      }
+      if (!requirePermission(req, reply, PERMISSION_PROVIDERS_WRITE)) return;
       const paramParse = TokenIdParamSchema.safeParse(req.params);
       if (!paramParse.success) {
         return reply.status(400).send({ success: false, error: "Invalid token id (UUID) in path." });
@@ -365,12 +331,7 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
   );
 
   app.delete<{ Params: unknown }>("/api/admin/tokens/:id", async (req: FastifyRequest<{ Params: unknown }>, reply) => {
-    if (!hasPermission(req, "ADMIN")) {
-      return reply.status(403).send({
-        success: false,
-        error: "Admin permission required. API key must have ADMIN or * permission.",
-      });
-    }
+    if (!requirePermission(req, reply, PERMISSION_PROVIDERS_WRITE)) return;
     const parse = TokenIdParamSchema.safeParse(req.params);
     if (!parse.success) {
       return reply.status(400).send({ success: false, error: "Invalid token id (UUID) in path." });

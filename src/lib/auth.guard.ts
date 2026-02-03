@@ -79,7 +79,7 @@ export async function requireApiKey(
     });
   }
 
-  touchLastUsed(record.id).catch(() => {});
+  touchLastUsed(record.id).catch(() => { });
 
   request.apiKey = {
     id: record.id,
@@ -110,7 +110,7 @@ export async function resolveApiKeyIfPresent(request: FastifyRequest): Promise<v
   const originValue = typeof origin === "string" ? origin.trim() : undefined;
   if (!isOriginAllowed(record.domains, originValue)) return;
 
-  touchLastUsed(record.id).catch(() => {});
+  touchLastUsed(record.id).catch(() => { });
 
   request.apiKey = {
     id: record.id,
@@ -133,4 +133,22 @@ export function hasPermission(request: FastifyRequest, permission: string): bool
   if (!key) return false;
   if (key.permissions.includes("*")) return true;
   return key.permissions.includes(permission);
+}
+
+/**
+ * Require that either API key or admin session is present (after resolvers have run).
+ * Use in global preHandler after resolveApiKeyIfPresent + resolveAdminSessionIfPresent for protected routes.
+ */
+export function requireApiKeyOrSession(
+  request: FastifyRequest,
+  reply: FastifyReply
+): boolean {
+  if (request.apiKey) return true;
+  if ((request as { adminSession?: unknown }).adminSession) return true;
+  reply.status(401).send({
+    success: false,
+    error: "Not authenticated. Provide x-api-key or Authorization: Bearer <session>.",
+    code: "UNAUTHORIZED",
+  });
+  return false;
 }

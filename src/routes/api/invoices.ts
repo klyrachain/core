@@ -8,6 +8,8 @@ import {
   errorEnvelope,
 } from "../../lib/api-helpers.js";
 import type { InvoiceStatus } from "../../../prisma/generated/prisma/enums.js";
+import { requirePermission } from "../../lib/admin-auth.guard.js";
+import { PERMISSION_INVOICES_READ, PERMISSION_INVOICES_WRITE } from "../../lib/permissions.js";
 
 // --- Types (spec §2) ---
 
@@ -134,6 +136,7 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
+        if (!requirePermission(req, reply, PERMISSION_INVOICES_READ)) return;
         const { page, limit, skip } = parsePagination(req.query);
         const status = req.query.status;
         const where =
@@ -163,6 +166,7 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
     "/api/invoices/:id",
     async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
       try {
+        if (!requirePermission(req, reply, PERMISSION_INVOICES_READ)) return;
         const row = await prisma.invoice.findUnique({
           where: { id: req.params.id },
         });
@@ -195,6 +199,7 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
+        if (!requirePermission(req, reply, PERMISSION_INVOICES_WRITE)) return;
         const body = req.body ?? {};
         const billedTo = body.billedTo?.trim();
         const subject = body.subject?.trim();
@@ -299,6 +304,7 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
+        if (!requirePermission(req, reply, PERMISSION_INVOICES_WRITE)) return;
         const row = await prisma.invoice.findUnique({
           where: { id: req.params.id },
         });
@@ -368,6 +374,7 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
+        if (!requirePermission(req, reply, PERMISSION_INVOICES_WRITE)) return;
         const row = await prisma.invoice.findUnique({
           where: { id: req.params.id },
         });
@@ -400,6 +407,7 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
     "/api/invoices/:id/duplicate",
     async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
       try {
+        if (!requirePermission(req, reply, PERMISSION_INVOICES_WRITE)) return;
         const row = await prisma.invoice.findUnique({
           where: { id: req.params.id },
         });
@@ -465,6 +473,7 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
     "/api/invoices/:id/mark-paid",
     async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
       try {
+        if (!requirePermission(req, reply, PERMISSION_INVOICES_WRITE)) return;
         const row = await prisma.invoice.findUnique({
           where: { id: req.params.id },
         });
@@ -496,6 +505,7 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
     "/api/invoices/:id/cancel",
     async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
       try {
+        if (!requirePermission(req, reply, PERMISSION_INVOICES_WRITE)) return;
         const row = await prisma.invoice.findUnique({
           where: { id: req.params.id },
         });
@@ -532,6 +542,7 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
+        if (!requirePermission(req, reply, PERMISSION_INVOICES_READ)) return;
         const row = await prisma.invoice.findUnique({
           where: { id: req.params.id },
         });

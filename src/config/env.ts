@@ -47,6 +47,13 @@ const envSchema = z.object({
 
   /** ExchangeRate-API key for fiat↔fiat (USD pivot). Optional; used for non–Fonbnk countries. */
   EXCHANGERATE_API_KEY: z.string().min(1).optional(),
+
+  /** WebAuthn (passkey) RP ID for admin dashboard. Default localhost for dev. */
+  ADMIN_RP_ID: z.string().min(1).optional(),
+  /** WebAuthn origin fallback when request Origin is not in allowlist. Default http://localhost:PORT. */
+  ADMIN_ORIGIN: z.string().url().optional(),
+  /** Comma-separated allowed origins for WebAuthn (admin dashboard URL(s), e.g. http://localhost:3000,https://admin.example.com). */
+  ADMIN_ALLOWED_ORIGINS: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
