@@ -9,6 +9,7 @@ import {
   PERMISSION_CONNECT_OVERVIEW,
   PERMISSION_CONNECT_TRANSACTIONS,
   PERMISSION_CONNECT_BUSINESSES,
+  PERMISSION_CONNECT_PAYOUTS,
   PERMISSION_BUSINESS_READ,
 } from "../../lib/permissions.js";
 import type { Prisma } from "../../../prisma/generated/prisma/client.js";
@@ -374,11 +375,11 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
-        if (!req.apiKey) return errorEnvelope(reply, "Not authenticated.", 401);
+        if (!requirePermission(req, reply, PERMISSION_CONNECT_PAYOUTS, { allowMerchant: true })) return;
 
         const { page, limit, skip } = parsePagination(req.query);
         const status = req.query.status?.trim();
-        const businessId = req.apiKey.businessId; // merchant sees only their payouts
+        const businessId = req.apiKey?.businessId ?? undefined; // platform (session or key) sees all; merchant sees only their payouts
 
         const where: Prisma.PayoutWhereInput = {};
         if (businessId) where.businessId = businessId;
@@ -428,9 +429,9 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
     "/api/connect/settlements/:id",
     async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
       try {
-        if (!req.apiKey) return errorEnvelope(reply, "Not authenticated.", 401);
+        if (!requirePermission(req, reply, PERMISSION_CONNECT_PAYOUTS, { allowMerchant: true })) return;
         const { id } = req.params;
-        const businessId = req.apiKey.businessId;
+        const businessId = req.apiKey?.businessId ?? undefined;
 
         const payout = await prisma.payout.findUnique({
           where: { id },

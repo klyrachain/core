@@ -65,6 +65,8 @@ export const PLATFORM_PERMISSIONS = [
   PERMISSION_CONNECT_BUSINESSES,
   PERMISSION_CONNECT_TRANSACTIONS,
   PERMISSION_CONNECT_PAYOUTS,
+  PERMISSION_PAYOUTS_READ,
+  PERMISSION_PAYOUTS_WRITE,
   PERMISSION_INVOICES_READ,
   PERMISSION_INVOICES_WRITE,
   PERMISSION_ACCESS_READ,
@@ -148,9 +150,11 @@ export function permissionListIncludes(permissions: string[], required: string):
   return permissions.includes(required);
 }
 
-/** Get effective permissions for a platform admin role. */
+/** Get effective permissions for a platform admin role. Super admin always gets full access. */
 export function getPermissionsForRole(role: string): string[] {
-  const mapped = ROLE_PERMISSIONS[role as PlatformAdminRoleName];
+  const roleStr = String(role ?? "").trim();
+  if (roleStr === "super_admin") return [PERMISSION_ALL];
+  const mapped = ROLE_PERMISSIONS[roleStr as PlatformAdminRoleName];
   if (mapped) return [...mapped];
   return [];
 }
@@ -177,7 +181,7 @@ export function getPermissionsForRequest(req: FastifyRequest): string[] {
   return [];
 }
 
-/** Check if request has the given permission. Session uses role map; platform key uses key.permissions; merchant key uses implicit business permissions. */
+/** Check if request has the given permission. Session uses role map; platform key uses key.permissions; merchant key uses implicit business permissions. Super admin (role or *) always passes. */
 export function requestHasPermission(
   req: FastifyRequest,
   permission: string,
