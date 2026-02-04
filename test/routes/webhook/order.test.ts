@@ -37,8 +37,6 @@ const validBody = {
   toType: "ADDRESS",
   f_amount: 100,
   t_amount: 0.05,
-  f_price: 2000,
-  t_price: 2000,
   f_chain: "ETHEREUM",
   t_chain: "ETHEREUM",
   f_token: "USDC",
@@ -180,6 +178,9 @@ describe("webhook order", () => {
             t_amount: 0.05,
             f_token: "USDC",
             t_token: "ETH",
+            exchangeRate: 0.0005,
+            f_tokenPriceUsd: 1,
+            t_tokenPriceUsd: 1,
           }),
         })
       );
@@ -256,8 +257,9 @@ describe("webhook order", () => {
             status: "PENDING",
             f_amount: 100,
             t_amount: 0.05,
-            f_price: 2000,
-            t_price: 2000,
+            exchangeRate: 0.0005,
+            f_tokenPriceUsd: 1,
+            t_tokenPriceUsd: 1,
             f_chain: "ETHEREUM",
             t_chain: "ETHEREUM",
             f_token: "USDC",
@@ -270,7 +272,7 @@ describe("webhook order", () => {
       expect(call.data).toHaveProperty("feePercent");
       expect(call.data).toHaveProperty("totalCost");
       expect(call.data).toHaveProperty("profit");
-      expect(call.data.feeAmount).toBe(1); // 1% of 100
+      expect(call.data.feeAmount).toBe(1);
       expect(call.data.totalCost).toBe(101);
       expect(call.data.profit).toBe(1);
     });
@@ -287,8 +289,37 @@ describe("webhook order", () => {
       });
 
       const call = mockSendToAdminDashboard.mock.calls[0][0];
-      expect(call.data.feeAmount).toBe(2); // 1% of 200
+      expect(call.data.feeAmount).toBe(2);
       expect(call.data.profit).toBe(2);
+    });
+
+    it("accepts order without f_price/t_price (platform derives from amounts)", async () => {
+      mockCreate.mockResolvedValue({ id: "tx-derived", type: "BUY", status: "PENDING" });
+      mockAddPollJob.mockResolvedValue({});
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/webhook/order",
+        payload: validBody,
+        headers: { "content-type": "application/json" },
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: "BUY",
+            status: "PENDING",
+            f_amount: 100,
+            t_amount: 0.05,
+            f_token: "USDC",
+            t_token: "ETH",
+            exchangeRate: 0.0005,
+            f_tokenPriceUsd: 1,
+            t_tokenPriceUsd: 1,
+          }),
+        })
+      );
     });
   });
 });

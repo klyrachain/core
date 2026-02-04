@@ -31,12 +31,22 @@ function toNum(v: { toString(): string } | number | null | undefined): number {
   return parseFloat(String(v)) || 0;
 }
 
-/** Accumulated fees by currency (fee is stored in f_token per transaction). */
+/** Accumulated fees by currency. Fee is attributed by trading pair: the "to" (quote) token. */
 export type FeesByCurrency = Record<string, string>;
 
-type FeeRow = { fee: { toString(): string } | null; f_token: string; type: string; f_price: { toString(): string }; t_price: { toString(): string } };
+type FeeRow = {
+  fee: { toString(): string } | null;
+  f_token: string;
+  t_token: string;
+  feeInUsd: { toString(): string } | null;
+  t_tokenPriceUsd: { toString(): string } | null;
+};
 
-/** Aggregate completed transactions: sum fee by f_token; optional total converted using f_price (sell) / t_price (buy). */
+/**
+ * Aggregate completed transactions: sum fee by t_token (fee is denominated in the "to" / quote
+ * currency of the pair). totalConverted = sum of feeInUsd (stored at completion); when feeInUsd
+ * is null (legacy rows), fee is excluded from totalConverted.
+ */
 export async function getAccumulatedFees(options: {
   since?: Date;
   businessId?: string | null;
@@ -53,7 +63,7 @@ export async function getAccumulatedFees(options: {
 
   const rows = await prisma.transaction.findMany({
     where,
-    select: { fee: true, f_token: true, type: true, f_price: true, t_price: true },
+    select: { fee: true, f_token: true, t_token: true, feeInUsd: true, t_tokenPriceUsd: true },
   });
 
   const byCurrency: Record<string, number> = {};
@@ -61,13 +71,15 @@ export async function getAccumulatedFees(options: {
   for (const r of rows as FeeRow[]) {
     const fee = toNum(r.fee);
     if (fee <= 0) continue;
-    const token = r.f_token || "UNKNOWN";
+    const token = r.t_token || "UNKNOWN";
     byCurrency[token] = (byCurrency[token] ?? 0) + fee;
-    const rate =
-      r.type === "SELL" || r.type === "REQUEST" || r.type === "CLAIM"
-        ? toNum(r.f_price)
-        : toNum(r.t_price);
-    if (Number.isFinite(rate) && rate > 0) totalConverted += fee * rate;
+    const feeUsd = toNum(r.feeInUsd);
+    if (Number.isFinite(feeUsd) && feeUsd > 0) {
+      totalConverted += feeUsd;
+    } else {
+      const rate = toNum(r.t_tokenPriceUsd);
+      if (Number.isFinite(rate) && rate > 0) totalConverted += fee * rate;
+    }
   }
   const byCurrencyStr: FeesByCurrency = {};
   for (const [k, v] of Object.entries(byCurrency)) {
@@ -97,15 +109,17 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
           createdAt: true,
           f_amount: true,
           t_amount: true,
-          f_price: true,
-          t_price: true,
+          f_tokenPriceUsd: true,
+          t_tokenPriceUsd: true,
           platformFee: true,
         },
       });
 
       const totalPlatformVolume = partnerTxns.reduce((sum, t) => {
-        const gross = toNum(t.f_amount) * toNum(t.f_price) + toNum(t.t_amount) * toNum(t.t_price);
-        return sum + gross / 2; // approximate single-side value
+        const sideF = toNum(t.f_amount) * toNum(t.f_tokenPriceUsd);
+        const sideT = toNum(t.t_amount) * toNum(t.t_tokenPriceUsd);
+        if (sideF > 0 && sideT > 0) return sum + (sideF + sideT) / 2;
+        return sum + sideF + sideT;
       }, 0);
 
       const netRevenueFees = partnerTxns.reduce((sum, t) => sum + toNum(t.platformFee), 0);
@@ -121,7 +135,9 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
       const volumeByBusinessId = new Map<string, number>();
       for (const t of partnerTxns) {
         const bid = t.businessId ?? "_unknown";
-        const gross = (toNum(t.f_amount) * toNum(t.f_price) + toNum(t.t_amount) * toNum(t.t_price)) / 2;
+        const sideF = toNum(t.f_amount) * toNum(t.f_tokenPriceUsd);
+        const sideT = toNum(t.t_amount) * toNum(t.t_tokenPriceUsd);
+        const gross = sideF > 0 && sideT > 0 ? (sideF + sideT) / 2 : sideF + sideT;
         volumeByBusinessId.set(bid, (volumeByBusinessId.get(bid) ?? 0) + gross);
       }
       const sorted = [...volumeByBusinessId.entries()].sort((a, b) => b[1] - a[1]);
@@ -332,9 +348,13 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
         const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
         const txns = await prisma.transaction.findMany({
           where: { businessId: id, status: COMPLETED_STATUS, createdAt: { gte: since30d } },
-          select: { f_amount: true, f_price: true, t_amount: true, t_price: true },
+          select: { f_amount: true, t_amount: true, f_tokenPriceUsd: true, t_tokenPriceUsd: true },
         });
-        const volume30d = txns.reduce((s, t) => s + (toNum(t.f_amount) * toNum(t.f_price) + toNum(t.t_amount) * toNum(t.t_price)) / 2, 0);
+        const volume30d = txns.reduce((s, t) => {
+          const sideF = toNum(t.f_amount) * toNum(t.f_tokenPriceUsd);
+          const sideT = toNum(t.t_amount) * toNum(t.t_tokenPriceUsd);
+          return s + (sideF > 0 && sideT > 0 ? (sideF + sideT) / 2 : sideF + sideT);
+        }, 0);
 
         return successEnvelope(reply, {
           id: business.id,

@@ -116,6 +116,17 @@ enum PayoutStatus {
   REVERSED
 }
 
+enum LotStatus {
+  OPEN
+  DEPLETED
+}
+
+enum LedgerType {
+  ACQUIRED
+  DISPOSED
+  REBALANCE
+}
+
 // --------------------------------------
 // Core Models
 // --------------------------------------
@@ -157,8 +168,14 @@ model Transaction {
 
   f_amount Decimal @db.Decimal(18, 8)
   t_amount Decimal @db.Decimal(18, 8)
-  f_price  Decimal @db.Decimal(18, 8)
-  t_price  Decimal @db.Decimal(18, 8)
+  /// Effective rate for the trade: t_amount / f_amount (units of to-token per unit of from-token).
+  exchangeRate    Decimal?  @db.Decimal(18, 8)
+  /// Price of 1 unit of FROM token in USD (e.g. 1.00 for USDC, ~0.064 for GHS).
+  f_tokenPriceUsd Decimal?  @db.Decimal(18, 8)
+  /// Price of 1 unit of TO token in USD (e.g. 1.00 for USDC, ~0.064 for GHS).
+  t_tokenPriceUsd Decimal?  @db.Decimal(18, 8)
+  /// Fee value in USD at completion (fee amount × token price USD).
+  feeInUsd Decimal? @db.Decimal(18, 8)
 
   f_chain  String  // Source chain (e.g. ETHEREUM, BASE)
   t_chain  String  // Target chain (e.g. ETHEREUM, BASE) — enables cross-chain e.g. USDC on BASE → USDT on ETHEREUM
@@ -213,7 +230,7 @@ model TransactionBalanceSnapshot {
   @@index([assetId])
 }
 
-// Profit & loss per lot used in a sale (FIFO). fee = selling - provider; profit = selling - cost.
+// Profit & loss per lot used in a sale (FIFO). All amounts in USD.
 model TransactionPnL {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
@@ -223,13 +240,10 @@ model TransactionPnL {
   lotId         String?
   lot           InventoryLot? @relation(fields: [lotId], references: [id], onDelete: SetNull)
 
-  quantity      Decimal @db.Decimal(28, 8) // tokens sold from this lot
-  costPerToken  Decimal @db.Decimal(18, 8) // initial buy price (cost basis)
-  providerPrice Decimal @db.Decimal(18, 8) // provider quote at time of sale
-  sellingPrice  Decimal @db.Decimal(18, 8) // price we sold to user (e.g. t_price)
-
-  feeAmount   Decimal @db.Decimal(18, 8) // (sellingPrice - providerPrice) * quantity
-  profitLoss  Decimal @db.Decimal(18, 8) // (sellingPrice - costPerToken) * quantity
+  quantity        Decimal @db.Decimal(28, 8) // tokens sold from this lot
+  costPerTokenUsd Decimal @db.Decimal(28, 8) // lot cost basis in USD per token
+  feeAmountUsd    Decimal @db.Decimal(28, 8) // (selling - provider) * qty in USD
+  profitLossUsd  Decimal @db.Decimal(28, 8) // (selling - cost) * qty in USD
 
   @@index([transactionId])
   @@index([lotId])
@@ -343,7 +357,7 @@ model InventoryAsset {
 
   walletId String?
   wallet   Wallet?           @relation(fields: [walletId], references: [id], onDelete: SetNull)
-  history  InventoryHistory[]
+  ledger   InventoryLedger[]
   lots     InventoryLot[]
   transactionBalanceSnapshots TransactionBalanceSnapshot[]
 
@@ -352,7 +366,7 @@ model InventoryAsset {
   @@index([walletId])
 }
 
-// Order-book style lots: each acquisition is a lot with cost basis. Fulfill sell orders FIFO.
+// Order-book style lots: each acquisition is a lot with USD cost basis. Fulfill sell orders FIFO.
 model InventoryLot {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
@@ -360,32 +374,41 @@ model InventoryLot {
   assetId String
   asset   InventoryAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
-  quantity   Decimal @db.Decimal(28, 8)  // remaining quantity in this lot
-  costPerToken Decimal @db.Decimal(18, 8) // price we paid per token (cost basis)
-  acquiredAt DateTime @default(now())
+  originalQuantity  Decimal @db.Decimal(28, 8) // how much we acquired in this lot
+  remainingQuantity Decimal @db.Decimal(28, 8) // how much is left (FIFO deduction)
+  costPerTokenUsd   Decimal @db.Decimal(28, 8) // USD price per token at acquisition
+  totalCostUsd      Decimal @db.Decimal(28, 8) // originalQuantity * costPerTokenUsd
+  status            LotStatus @default(OPEN)   // OPEN or DEPLETED
+  acquiredAt        DateTime  @default(now())
 
   sourceType          String?  // e.g. PURCHASE, REBALANCE
-  sourceTransactionId String? // link to Transaction when from an order
+  sourceTransactionId String?  // link to Transaction that created this lot
 
   transactionPnLs TransactionPnL[]
 
   @@index([assetId, acquiredAt])
   @@index([sourceTransactionId])
+  @@index([assetId, status])
 }
 
-model InventoryHistory {
+// Audit trail of every inventory movement (in/out). USD-denominated.
+model InventoryLedger {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
 
   assetId String
-  asset   InventoryAsset @relation(fields: [assetId], references: [id])
+  asset   InventoryAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
-  type     String
-  amount   Decimal @db.Decimal(28, 8)
-  quantity Decimal @db.Decimal(28, 8)
+  type   LedgerType // ACQUIRED (in), DISPOSED (out), REBALANCE
+  quantity Decimal @db.Decimal(28, 8) // positive = in, negative = out
+  pricePerTokenUsd Decimal @db.Decimal(28, 8) // USD price at time of event
+  totalValueUsd    Decimal @db.Decimal(28, 8) // |quantity| * pricePerTokenUsd
 
-  initialPurchasePrice Decimal @db.Decimal(18, 8)
-  providerQuotePrice   Decimal @db.Decimal(18, 8)
+  referenceId  String  // transaction id or order id
+  counterparty String? // optional: user id or liquidity provider
+
+  @@index([assetId])
+  @@index([createdAt])
 }
 
 // --------------------------------------

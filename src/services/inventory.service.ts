@@ -29,8 +29,8 @@ export type InventoryDeductionInput = {
   amount: Decimal | string | number;
   address: string;
   type?: "PURCHASE" | "SALE" | "REBALANCE";
-  initialPurchasePrice?: Decimal | string | number;
-  providerQuotePrice?: Decimal | string | number;
+  /** USD price per token at time of disposal (for ledger). */
+  pricePerTokenUsd: Decimal | string | number;
   sourceTransactionId?: string;
 };
 
@@ -42,31 +42,31 @@ export type InventoryAdditionInput = {
   amount: Decimal | string | number;
   address: string;
   type?: "PURCHASE" | "SALE" | "REBALANCE";
-  initialPurchasePrice?: Decimal | string | number;
-  providerQuotePrice?: Decimal | string | number;
+  /** USD price per token at acquisition (cost basis). Required for correct valuation. */
+  costPerTokenUsd: Decimal | string | number;
   sourceTransactionId?: string;
 };
 
 export type AllocatedLot = {
   lotId: string;
   quantity: Decimal;
-  costPerToken: Decimal;
+  costPerTokenUsd: Decimal;
 };
 
 export type DeductInventoryResult = {
-  averageCostPerToken: Decimal | null; // volume-weighted cost of allocated lots; null if no lots used
-  allocatedLots: AllocatedLot[]; // FIFO allocation for P&L (fee = selling - provider, profit = selling - cost)
+  averageCostPerTokenUsd: Decimal | null; // volume-weighted USD cost of allocated lots; null if no lots used
+  allocatedLots: AllocatedLot[]; // FIFO allocation for P&L
 };
 
 /**
  * Deduct from inventory (we give token to user). Used when we deliver t_token on BUY or t_token on SELL.
- * Allocates from lots FIFO (oldest first); updates lot quantities and returns volume-weighted cost basis.
+ * Allocates from lots FIFO (oldest OPEN first); updates remainingQuantity and status; writes DISPOSED ledger.
  * Uses DB for source of truth and updates Redis cache.
  */
 export async function deductInventory(input: InventoryDeductionInput): Promise<DeductInventoryResult> {
   const amount = toDecimal(input.amount);
-  const type = input.type ?? "SALE";
   const chainId = input.chainId ?? chainToChainId(input.chain);
+  const pricePerTokenUsd = toDecimal(input.pricePerTokenUsd);
 
   const asset = await prisma.inventoryAsset.findUnique({
     where: {
@@ -78,7 +78,7 @@ export async function deductInventory(input: InventoryDeductionInput): Promise<D
     },
     include: {
       lots: {
-        where: { quantity: { gt: 0 } },
+        where: { status: "OPEN", remainingQuantity: { gt: 0 } },
         orderBy: { acquiredAt: "asc" },
       },
     },
@@ -96,14 +96,14 @@ export async function deductInventory(input: InventoryDeductionInput): Promise<D
   }
 
   const newBalance = current.minus(amount);
-  let totalCost = new Decimal(0);
+  let totalCostUsd = new Decimal(0);
   let allocated = new Decimal(0);
-  const lotUpdates: { id: string; newQuantity: Decimal }[] = [];
+  const lotUpdates: { id: string; newRemaining: Decimal }[] = [];
   const allocatedLots: AllocatedLot[] = [];
 
   for (const lot of asset.lots) {
     if (allocated.gte(amount)) break;
-    const lotQty = new Decimal(lot.quantity);
+    const lotQty = new Decimal(lot.remainingQuantity);
     if (lotQty.lte(0)) continue;
     const need = amount.minus(allocated);
     const take = Decimal.min(lotQty, need);
@@ -111,39 +111,43 @@ export async function deductInventory(input: InventoryDeductionInput): Promise<D
       allocatedLots.push({
         lotId: lot.id,
         quantity: take,
-        costPerToken: new Decimal(lot.costPerToken),
+        costPerTokenUsd: new Decimal(lot.costPerTokenUsd),
       });
     }
-    const cost = take.mul(lot.costPerToken);
-    totalCost = totalCost.plus(cost);
+    const costUsd = take.mul(lot.costPerTokenUsd);
+    totalCostUsd = totalCostUsd.plus(costUsd);
     allocated = allocated.plus(take);
-    const newQty = lotQty.minus(take);
-    lotUpdates.push({ id: lot.id, newQuantity: newQty });
+    const newRemaining = lotQty.minus(take);
+    lotUpdates.push({ id: lot.id, newRemaining });
   }
 
-  const averageCostPerToken =
-    allocated.gt(0) && totalCost.gte(0) ? totalCost.div(allocated) : null;
-  const historyCost = averageCostPerToken ?? toDecimal(input.initialPurchasePrice ?? input.providerQuotePrice ?? 0);
+  const averageCostPerTokenUsd =
+    allocated.gt(0) && totalCostUsd.gte(0) ? totalCostUsd.div(allocated) : null;
+  const totalValueUsd = amount.mul(pricePerTokenUsd);
 
   await prisma.$transaction(async (tx) => {
-    for (const { id, newQuantity } of lotUpdates) {
+    for (const { id, newRemaining } of lotUpdates) {
       await tx.inventoryLot.update({
         where: { id },
-        data: { quantity: newQuantity },
+        data: {
+          remainingQuantity: newRemaining,
+          status: newRemaining.lte(0) ? "DEPLETED" : "OPEN",
+        },
       });
     }
     await tx.inventoryAsset.update({
       where: { id: asset.id },
       data: { currentBalance: newBalance },
     });
-    await tx.inventoryHistory.create({
+    await tx.inventoryLedger.create({
       data: {
         assetId: asset.id,
-        type,
-        amount,
-        quantity: amount,
-        initialPurchasePrice: historyCost,
-        providerQuotePrice: input.providerQuotePrice ?? 0,
+        type: "DISPOSED",
+        quantity: amount.negated(),
+        pricePerTokenUsd,
+        totalValueUsd,
+        referenceId: input.sourceTransactionId ?? "",
+        counterparty: null,
       },
     });
   });
@@ -156,21 +160,22 @@ export async function deductInventory(input: InventoryDeductionInput): Promise<D
   await setBalance(input.chain, input.symbol, entry);
 
   if (input.sourceTransactionId) {
-    await recordBalanceSnapshot(input.sourceTransactionId, asset.id, current, newBalance).catch(() => {});
+    await recordBalanceSnapshot(input.sourceTransactionId, asset.id, current, newBalance).catch(() => { });
   }
-  return { averageCostPerToken, allocatedLots };
+  return { averageCostPerTokenUsd, allocatedLots };
 }
 
 /**
  * Add to inventory (we receive token from user). Used when we receive f_token on BUY or f_token on SELL.
- * Creates a lot with cost basis (initialPurchasePrice or providerQuotePrice) for FIFO fulfillment.
- * Each token is in its own currency (e.g. USDC in USDC, ETH in ETH); no conversion between tokens here.
+ * Creates a lot with USD cost basis for FIFO fulfillment and an ACQUIRED ledger entry.
+ * costPerTokenUsd must be the USD price per token at acquisition (e.g. 1.0 for USDC, ~0.064 for GHS).
  */
 export async function addInventory(input: InventoryAdditionInput): Promise<void> {
   const amount = toDecimal(input.amount);
-  const type = input.type ?? "PURCHASE";
+  const sourceType = input.type ?? "PURCHASE";
   const chainId = input.chainId ?? chainToChainId(input.chain);
-  const costPerToken = toDecimal(input.initialPurchasePrice ?? input.providerQuotePrice ?? 0);
+  const costPerTokenUsd = toDecimal(input.costPerTokenUsd);
+  const totalCostUsd = amount.mul(costPerTokenUsd);
 
   const asset = await prisma.inventoryAsset.findUnique({
     where: {
@@ -194,22 +199,26 @@ export async function addInventory(input: InventoryAdditionInput): Promise<void>
       where: { id: asset.id },
       data: { currentBalance: newBalance },
     }),
-    prisma.inventoryHistory.create({
+    prisma.inventoryLedger.create({
       data: {
         assetId: asset.id,
-        type,
-        amount,
+        type: "ACQUIRED",
         quantity: amount,
-        initialPurchasePrice: costPerToken,
-        providerQuotePrice: input.providerQuotePrice ?? 0,
+        pricePerTokenUsd: costPerTokenUsd,
+        totalValueUsd: totalCostUsd,
+        referenceId: input.sourceTransactionId ?? "",
+        counterparty: null,
       },
     }),
     prisma.inventoryLot.create({
       data: {
         assetId: asset.id,
-        quantity: amount,
-        costPerToken,
-        sourceType: type,
+        originalQuantity: amount,
+        remainingQuantity: amount,
+        costPerTokenUsd,
+        totalCostUsd,
+        status: "OPEN",
+        sourceType: sourceType,
         sourceTransactionId: input.sourceTransactionId ?? undefined,
       },
     }),
@@ -223,7 +232,7 @@ export async function addInventory(input: InventoryAdditionInput): Promise<void>
   await setBalance(input.chain, input.symbol, entry);
 
   if (input.sourceTransactionId) {
-    await recordBalanceSnapshot(input.sourceTransactionId, asset.id, current, newBalance).catch(() => {});
+    await recordBalanceSnapshot(input.sourceTransactionId, asset.id, current, newBalance).catch(() => { });
   }
 }
 
@@ -276,11 +285,11 @@ export async function refreshBalanceCache(
   const chainId = chainToChainId(chain);
   const asset = address
     ? await prisma.inventoryAsset.findUnique({
-        where: { chainId_tokenAddress_address: { chainId, tokenAddress, address } },
-      })
+      where: { chainId_tokenAddress_address: { chainId, tokenAddress, address } },
+    })
     : await prisma.inventoryAsset.findFirst({
-        where: { chainId, tokenAddress },
-      });
+      where: { chainId, tokenAddress },
+    });
   if (!asset) return;
   const entry: BalanceEntry = {
     amount: asset.currentBalance.toString(),
@@ -291,31 +300,29 @@ export async function refreshBalanceCache(
 }
 
 /**
- * Volume-weighted average cost basis of available lots for an asset.
- * Use as minSellingPrice (floor) in pricing engine quoteOnRamp so we never sell below cost.
- * Returns null if no lots or total quantity is zero.
+ * Volume-weighted average USD cost basis of available lots for an asset.
+ * Use as floor in pricing so we never sell below cost. Returns null if no lots or total quantity is zero.
  */
 export async function getAverageCostBasis(assetId: string): Promise<Decimal | null> {
   const lots = await prisma.inventoryLot.findMany({
-    where: { assetId, quantity: { gt: 0 } },
+    where: { assetId, status: "OPEN", remainingQuantity: { gt: 0 } },
     orderBy: { acquiredAt: "asc" },
   });
   if (lots.length === 0) return null;
   let totalQty = new Decimal(0);
-  let totalCost = new Decimal(0);
+  let totalCostUsd = new Decimal(0);
   for (const lot of lots) {
-    const q = new Decimal(lot.quantity);
+    const q = new Decimal(lot.remainingQuantity);
     totalQty = totalQty.plus(q);
-    totalCost = totalCost.plus(q.mul(lot.costPerToken));
+    totalCostUsd = totalCostUsd.plus(q.mul(lot.costPerTokenUsd));
   }
   if (totalQty.lte(0)) return null;
-  return totalCost.div(totalQty);
+  return totalCostUsd.div(totalQty);
 }
 
 /**
- * Volume-weighted average cost basis across all InventoryAssets with the same chain+symbol.
- * Used for validation cache so cost basis reflects all inventory (not just the first asset).
- * Returns null if no lots or total quantity is zero.
+ * Volume-weighted average USD cost basis across all InventoryAssets with the same chain+symbol.
+ * Used for validation cache. Returns null if no lots or total quantity is zero.
  */
 export async function getAggregateCostBasis(chain: string, symbol: string): Promise<Decimal | null> {
   const assets = await prisma.inventoryAsset.findMany({
@@ -328,18 +335,18 @@ export async function getAggregateCostBasis(chain: string, symbol: string): Prom
   if (assets.length === 0) return null;
   const assetIds = assets.map((a) => a.id);
   const lots = await prisma.inventoryLot.findMany({
-    where: { assetId: { in: assetIds }, quantity: { gt: 0 } },
+    where: { assetId: { in: assetIds }, status: "OPEN", remainingQuantity: { gt: 0 } },
   });
   if (lots.length === 0) return null;
   let totalQty = new Decimal(0);
-  let totalCost = new Decimal(0);
+  let totalCostUsd = new Decimal(0);
   for (const lot of lots) {
-    const q = new Decimal(lot.quantity);
+    const q = new Decimal(lot.remainingQuantity);
     totalQty = totalQty.plus(q);
-    totalCost = totalCost.plus(q.mul(lot.costPerToken));
+    totalCostUsd = totalCostUsd.plus(q.mul(lot.costPerTokenUsd));
   }
   if (totalQty.lte(0)) return null;
-  return totalCost.div(totalQty);
+  return totalCostUsd.div(totalQty);
 }
 
 /**
@@ -352,7 +359,7 @@ export async function getLotsForAsset(
   return prisma.inventoryLot.findMany({
     where: {
       assetId,
-      ...(options?.onlyAvailable === true ? { quantity: { gt: 0 } } : {}),
+      ...(options?.onlyAvailable === true ? { status: "OPEN", remainingQuantity: { gt: 0 } } : {}),
     },
     orderBy: { acquiredAt: "asc" },
   });

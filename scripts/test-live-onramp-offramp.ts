@@ -425,9 +425,9 @@ Env: CORE_URL, CORE_API_KEY (optional).
     process.exit(0);
   }
 
-  const health = await fetchJson("/health");
+  const health = await fetchJson("/api/health");
   if (!health.ok) {
-    console.error("Health check failed. Is the server running at", CORE_URL, "?");
+    console.error("Health check failed. Is the server running at", CORE_URL, "? Start it with: pnpm dev");
     process.exit(1);
   }
 

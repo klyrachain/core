@@ -1,6 +1,12 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { prisma } from "../../lib/prisma.js";
-import { parsePagination, successEnvelope, successEnvelopeWithMeta, errorEnvelope } from "../../lib/api-helpers.js";
+import {
+  parsePagination,
+  successEnvelope,
+  successEnvelopeWithMeta,
+  errorEnvelope,
+  serializeTransactionPrices,
+} from "../../lib/api-helpers.js";
 import { requirePermission } from "../../lib/admin-auth.guard.js";
 import { PERMISSION_CONNECT_TRANSACTIONS } from "../../lib/permissions.js";
 
@@ -25,8 +31,7 @@ export async function requestsApiRoutes(app: FastifyInstance): Promise<void> {
             ...r.transaction,
             f_amount: r.transaction.f_amount.toString(),
             t_amount: r.transaction.t_amount.toString(),
-            f_price: r.transaction.f_price.toString(),
-            t_price: r.transaction.t_price.toString(),
+            ...serializeTransactionPrices(r.transaction),
           }
           : null,
       }));
@@ -52,8 +57,7 @@ export async function requestsApiRoutes(app: FastifyInstance): Promise<void> {
             ...request.transaction,
             f_amount: request.transaction.f_amount.toString(),
             t_amount: request.transaction.t_amount.toString(),
-            f_price: request.transaction.f_price.toString(),
-            t_price: request.transaction.t_price.toString(),
+            ...serializeTransactionPrices(request.transaction),
           }
           : null,
         claim: request.claim

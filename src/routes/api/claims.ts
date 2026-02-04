@@ -1,7 +1,13 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
-import { parsePagination, successEnvelope, successEnvelopeWithMeta, errorEnvelope } from "../../lib/api-helpers.js";
+import {
+  parsePagination,
+  successEnvelope,
+  successEnvelopeWithMeta,
+  errorEnvelope,
+  serializeTransactionPrices,
+} from "../../lib/api-helpers.js";
 import { requirePermission } from "../../lib/admin-auth.guard.js";
 import { PERMISSION_CONNECT_TRANSACTIONS } from "../../lib/permissions.js";
 import { getClaimOtp, deleteClaimOtp } from "../../lib/redis.js";
@@ -35,8 +41,7 @@ export async function claimsApiRoutes(app: FastifyInstance): Promise<void> {
                 ...c.request.transaction,
                 f_amount: c.request.transaction.f_amount.toString(),
                 t_amount: c.request.transaction.t_amount.toString(),
-                f_price: c.request.transaction.f_price.toString(),
-                t_price: c.request.transaction.t_price.toString(),
+                ...serializeTransactionPrices(c.request.transaction),
               }
               : null,
           }
@@ -69,8 +74,7 @@ export async function claimsApiRoutes(app: FastifyInstance): Promise<void> {
                 ...claim.request.transaction,
                 f_amount: claim.request.transaction.f_amount.toString(),
                 t_amount: claim.request.transaction.t_amount.toString(),
-                f_price: claim.request.transaction.f_price.toString(),
-                t_price: claim.request.transaction.t_price.toString(),
+                ...serializeTransactionPrices(claim.request.transaction),
               }
               : null,
           }
@@ -100,17 +104,16 @@ export async function claimsApiRoutes(app: FastifyInstance): Promise<void> {
         otpVerified: !!claim.otpVerifiedAt,
         request: claim.request
           ? {
-              ...claim.request,
-              transaction: claim.request.transaction
-                ? {
-                    ...claim.request.transaction,
-                    f_amount: claim.request.transaction.f_amount.toString(),
-                    t_amount: claim.request.transaction.t_amount.toString(),
-                    f_price: claim.request.transaction.f_price.toString(),
-                    t_price: claim.request.transaction.t_price.toString(),
-                  }
-                : null,
-            }
+            ...claim.request,
+            transaction: claim.request.transaction
+              ? {
+                ...claim.request.transaction,
+                f_amount: claim.request.transaction.f_amount.toString(),
+                t_amount: claim.request.transaction.t_amount.toString(),
+                ...serializeTransactionPrices(claim.request.transaction),
+              }
+              : null,
+          }
           : null,
       };
       return successEnvelope(reply, data);
@@ -168,7 +171,7 @@ export async function claimsApiRoutes(app: FastifyInstance): Promise<void> {
     if (!parse.success) {
       return reply.status(400).send({ success: false, error: "Validation failed", details: parse.error.flatten() });
     }
-    const { code, payout_type, payout_target } = parse.data;
+    const { code, payout_type } = parse.data;
     const codeNorm = code.trim().toUpperCase();
     const claim = await prisma.claim.findFirst({
       where: { code: codeNorm },

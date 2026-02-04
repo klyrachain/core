@@ -2,20 +2,32 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import Fastify from "fastify";
 import { quoteApiRoutes } from "../../../src/routes/api/quote.js";
 import * as swapQuoteService from "../../../src/services/swap-quote.service.js";
+import * as publicQuoteService from "../../../src/services/public-quote.service.js";
+import * as redis from "../../../src/lib/redis.js";
 
 vi.mock("../../../src/services/swap-quote.service.js", () => ({
   getSwapQuote: vi.fn(),
   getBestQuotes: vi.fn(),
 }));
+vi.mock("../../../src/services/public-quote.service.js", () => ({
+  buildPublicQuote: vi.fn(),
+}));
+vi.mock("../../../src/lib/redis.js", () => ({
+  setStoredQuote: vi.fn().mockResolvedValue(undefined),
+  QUOTE_TTL_SECONDS: 32,
+}));
 
 const mockGetSwapQuote = vi.mocked(swapQuoteService.getSwapQuote);
 const mockGetBestQuotes = vi.mocked(swapQuoteService.getBestQuotes);
+const mockBuildPublicQuote = vi.mocked(publicQuoteService.buildPublicQuote);
+const mockSetStoredQuote = vi.mocked(redis.setStoredQuote);
 
 describe("Quote API", () => {
   let app: Awaited<ReturnType<typeof Fastify>>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockSetStoredQuote.mockResolvedValue(undefined);
     app = Fastify();
     app.addContentTypeParser("application/json", { parseAs: "string" }, (_, body, done) => {
       try {
@@ -27,15 +39,13 @@ describe("Quote API", () => {
     await app.register(quoteApiRoutes, { prefix: "" });
   });
 
-  describe("GET /api/quote", () => {
+  describe("GET /api/quote (pricing endpoint)", () => {
     const validQuery = {
       action: "buy",
-      f_amount: "100",
-      t_amount: "0.05",
-      f_price: "1",
-      t_price: "2000",
-      f_token: "USDC",
-      t_token: "ETH",
+      amount: "100",
+      f_token: "GHS",
+      t_token: "USDC",
+      chain: "BASE",
     };
 
     it("returns 400 when query validation fails (missing required)", async () => {
@@ -48,75 +58,151 @@ describe("Quote API", () => {
       expect(json.success).toBe(false);
       expect(json.error).toContain("Validation");
       expect(json.details).toBeDefined();
+      expect(mockBuildPublicQuote).not.toHaveBeenCalled();
     });
 
-    it("returns 400 when action is invalid", async () => {
+    it("returns 400 when action is invalid (only buy, sell, swap supported)", async () => {
       const res = await app.inject({
         method: "GET",
-        url: "/api/quote?action=invalid&f_amount=100&t_amount=0.05&f_price=1&t_price=2000&f_token=USDC&t_token=ETH",
+        url: "/api/quote?action=request&amount=100&f_token=GHS&t_token=USDC&chain=BASE",
       });
       expect(res.statusCode).toBe(400);
       const json = res.json() as { error: string };
       expect(json.error).toContain("Validation");
+      expect(mockBuildPublicQuote).not.toHaveBeenCalled();
     });
 
-    it("returns 200 with fee quote envelope and expected shape for valid query", async () => {
+    it("returns 200 with platform quote (exchangeRate, input, output, fees) when pricing engine succeeds", async () => {
+      mockBuildPublicQuote.mockResolvedValue({
+        success: true,
+        data: {
+          quoteId: "q-123",
+          expiresAt: new Date(Date.now() + 30000).toISOString(),
+          exchangeRate: "15.50",
+          input: { amount: "100.00", currency: "GHS" },
+          output: { amount: "6.45", currency: "USDC", chain: "BASE" },
+          fees: { networkFee: "0", platformFee: "0.50", totalFee: "0.50" },
+        },
+      });
+
       const q = new URLSearchParams(validQuery as Record<string, string>).toString();
       const res = await app.inject({
         method: "GET",
         url: `/api/quote?${q}`,
       });
+
       expect(res.statusCode).toBe(200);
-      const json = res.json() as {
-        success: boolean;
-        data: {
-          feeAmount: number;
-          feePercent: number;
-          totalCost: number;
-          totalReceived: number;
-          rate: number;
-          grossValue: number;
-          profit: number;
-        };
-      };
+      const json = res.json() as { success: boolean; data: Record<string, unknown> };
       expect(json.success).toBe(true);
       expect(json.data).toMatchObject({
-        feePercent: 1,
-        feeAmount: 1,
-        totalCost: 101,
-        totalReceived: 0.05,
-        grossValue: 100,
-        profit: 1,
+        quoteId: "q-123",
+        exchangeRate: "15.50",
+        input: { amount: "100.00", currency: "GHS" },
+        output: { amount: "6.45", currency: "USDC", chain: "BASE" },
+        fees: { networkFee: "0", platformFee: "0.50", totalFee: "0.50" },
       });
-      expect(typeof json.data.rate).toBe("number");
+      expect(mockBuildPublicQuote).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "ONRAMP",
+          inputAmount: "100",
+          inputCurrency: "GHS",
+          outputCurrency: "USDC",
+          chain: "BASE",
+          inputSide: "from",
+        })
+      );
+      expect(mockSetStoredQuote).toHaveBeenCalledWith("q-123", expect.any(String), 32);
     });
 
-    it("returns different feePercent for buy (1%) vs request (0.5%)", async () => {
-      const buyRes = await app.inject({
-        method: "GET",
-        url: "/api/quote?action=buy&f_amount=100&t_amount=0.05&f_price=1&t_price=2000&f_token=USDC&t_token=ETH",
+    it("returns 400 when pricing engine returns failure", async () => {
+      mockBuildPublicQuote.mockResolvedValue({
+        success: false,
+        error: "chain is required for ONRAMP",
+        code: "CHAIN_REQUIRED",
+        status: 400,
       });
-      const requestRes = await app.inject({
-        method: "GET",
-        url: "/api/quote?action=request&f_amount=20&t_amount=20&f_price=1&t_price=1&f_token=GHS&t_token=GHS",
-      });
-      expect(buyRes.statusCode).toBe(200);
-      expect(requestRes.statusCode).toBe(200);
-      const buyData = (buyRes.json() as { data: { feePercent: number } }).data;
-      const requestData = (requestRes.json() as { data: { feePercent: number } }).data;
-      expect(buyData.feePercent).toBe(1);
-      expect(requestData.feePercent).toBe(0.5);
-    });
 
-    it("accepts optional f_chain and t_chain", async () => {
       const res = await app.inject({
         method: "GET",
-        url: "/api/quote?action=buy&f_amount=100&t_amount=0.05&f_price=1&t_price=2000&f_chain=ETHEREUM&t_chain=BASE&f_token=USDC&t_token=USDC",
+        url: "/api/quote?action=buy&amount=100&f_token=GHS&t_token=USDC&chain=",
+      });
+
+      expect(res.statusCode).toBe(400);
+      const json = res.json() as { success: boolean; error: string; code: string };
+      expect(json.success).toBe(false);
+      expect(json.error).toContain("chain is required");
+      expect(json.code).toBe("CHAIN_REQUIRED");
+    });
+
+    it("accepts input_side=to (amount is what user wants to receive)", async () => {
+      mockBuildPublicQuote.mockResolvedValue({
+        success: true,
+        data: {
+          quoteId: "q-to",
+          expiresAt: new Date().toISOString(),
+          exchangeRate: "15.50",
+          input: { amount: "155.00", currency: "GHS" },
+          output: { amount: "10.00", currency: "USDC", chain: "BASE" },
+          fees: { networkFee: "0", platformFee: "0.25", totalFee: "0.25" },
+        },
+      });
+
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/quote?action=buy&amount=10&input_side=to&f_token=GHS&t_token=USDC&chain=BASE",
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(mockBuildPublicQuote).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "ONRAMP",
+          inputAmount: "10",
+          inputSide: "to",
+        })
+      );
+    });
+
+    it("supports action=sell (offramp) and action=swap", async () => {
+      mockBuildPublicQuote.mockResolvedValue({
+        success: true,
+        data: {
+          quoteId: "q-sell",
+          expiresAt: new Date().toISOString(),
+          exchangeRate: "15.25",
+          input: { amount: "100.00", currency: "USDC" },
+          output: { amount: "1525.00", currency: "GHS", chain: "BASE" },
+          fees: { networkFee: "0", platformFee: "1.00", totalFee: "1.00" },
+        },
+      });
+
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/quote?action=sell&amount=100&f_token=USDC&t_token=GHS&chain=BASE",
       });
       expect(res.statusCode).toBe(200);
-      const json = res.json() as { success: boolean; data: unknown };
-      expect(json.success).toBe(true);
-      expect(json.data).toBeDefined();
+      expect(mockBuildPublicQuote).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "OFFRAMP" })
+      );
+
+      mockBuildPublicQuote.mockResolvedValue({
+        success: true,
+        data: {
+          quoteId: "q-swap",
+          expiresAt: new Date().toISOString(),
+          exchangeRate: "1.02",
+          input: { amount: "100.00", currency: "USDC" },
+          output: { amount: "98.04", currency: "USDT", chain: "BASE" },
+          fees: { networkFee: "0", platformFee: "0.50", totalFee: "0.50" },
+        },
+      });
+      const swapRes = await app.inject({
+        method: "GET",
+        url: "/api/quote?action=swap&amount=100&f_token=USDC&t_token=USDT&chain=BASE",
+      });
+      expect(swapRes.statusCode).toBe(200);
+      expect(mockBuildPublicQuote).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "SWAP" })
+      );
     });
   });
 

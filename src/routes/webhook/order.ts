@@ -5,6 +5,7 @@ import { prisma } from "../../lib/prisma.js";
 import { addPollJob } from "../../lib/queue.js";
 import { getStoredQuote } from "../../lib/redis.js";
 import { getFeeForOrder } from "../../services/fee.service.js";
+import { deriveTransactionPrices, derivePricesFromAmounts } from "../../services/transaction-price.service.js";
 import { sendToAdminDashboard } from "../../services/admin-dashboard.service.js";
 import { validateOrder, storeFailedValidation, type OrderValidationInput } from "../../services/order-validation.service.js";
 
@@ -18,8 +19,8 @@ const OrderWebhookSchema = z.object({
   toUserId: z.string().uuid().optional().nullable(),
   f_amount: z.coerce.number().positive(),
   t_amount: z.coerce.number().positive(),
-  f_price: z.coerce.number().nonnegative(),
-  t_price: z.coerce.number().nonnegative(),
+  f_price: z.coerce.number().nonnegative().optional(),
+  t_price: z.coerce.number().nonnegative().optional(),
   f_chain: z.string().min(1).optional().default("ETHEREUM"),
   t_chain: z.string().min(1).optional().default("ETHEREUM"),
   f_token: z.string().min(1),
@@ -77,6 +78,11 @@ export async function orderWebhookRoutes(app: FastifyInstance): Promise<void> {
     const body = parse.data;
     const type = actionToType[body.action];
 
+    const resolvedPrices =
+      body.f_price != null && body.t_price != null
+        ? { f_price: body.f_price, t_price: body.t_price }
+        : derivePricesFromAmounts(body.action, body.f_amount, body.t_amount);
+
     const validationInput: OrderValidationInput = {
       action: body.action,
       fromIdentifier: body.fromIdentifier,
@@ -87,8 +93,8 @@ export async function orderWebhookRoutes(app: FastifyInstance): Promise<void> {
       toUserId: body.toUserId,
       f_amount: body.f_amount,
       t_amount: body.t_amount,
-      f_price: body.f_price,
-      t_price: body.t_price,
+      f_price: resolvedPrices.f_price,
+      t_price: resolvedPrices.t_price,
       f_chain: body.f_chain,
       t_chain: body.t_chain,
       f_token: body.f_token,
@@ -144,6 +150,16 @@ export async function orderWebhookRoutes(app: FastifyInstance): Promise<void> {
         }
       }
 
+      const prices = deriveTransactionPrices({
+        f_token: body.f_token,
+        t_token: body.t_token,
+        f_price: resolvedPrices.f_price,
+        t_price: resolvedPrices.t_price,
+        f_amount: body.f_amount,
+        t_amount: body.t_amount,
+        action: body.action,
+      });
+
       const transaction = await prisma.transaction.create({
         data: {
           type,
@@ -156,8 +172,9 @@ export async function orderWebhookRoutes(app: FastifyInstance): Promise<void> {
           toUserId: body.toUserId ?? null,
           f_amount: body.f_amount,
           t_amount: body.t_amount,
-          f_price: body.f_price,
-          t_price: body.t_price,
+          exchangeRate: prices.exchangeRate,
+          f_tokenPriceUsd: prices.f_tokenPriceUsd,
+          t_tokenPriceUsd: prices.t_tokenPriceUsd,
           f_chain: body.f_chain,
           t_chain: body.t_chain,
           f_token: body.f_token,
@@ -176,8 +193,8 @@ export async function orderWebhookRoutes(app: FastifyInstance): Promise<void> {
         action: body.action,
         f_amount: body.f_amount,
         t_amount: body.t_amount,
-        f_price: body.f_price,
-        t_price: body.t_price,
+        f_price: resolvedPrices.f_price,
+        t_price: resolvedPrices.t_price,
         f_token: body.f_token,
         t_token: body.t_token,
       });
@@ -197,8 +214,9 @@ export async function orderWebhookRoutes(app: FastifyInstance): Promise<void> {
             requestId: body.requestId ?? null,
             f_amount: body.f_amount,
             t_amount: body.t_amount,
-            f_price: body.f_price,
-            t_price: body.t_price,
+            exchangeRate: prices.exchangeRate,
+            f_tokenPriceUsd: prices.f_tokenPriceUsd,
+            t_tokenPriceUsd: prices.t_tokenPriceUsd,
             f_chain: body.f_chain,
             t_chain: body.t_chain,
             f_token: body.f_token,

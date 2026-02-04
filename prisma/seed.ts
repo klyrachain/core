@@ -243,8 +243,9 @@ async function main() {
       toType: "ADDRESS",
       f_amount: 100,
       t_amount: 0.05,
-      f_price: 2000,
-      t_price: 2000,
+      exchangeRate: 0.0005,
+      f_tokenPriceUsd: 1,
+      t_tokenPriceUsd: 2000,
       f_chain: "ETHEREUM",
       t_chain: "ETHEREUM",
       f_token: "USDC",
@@ -271,8 +272,9 @@ async function main() {
       toType: "EMAIL",
       f_amount: 0.02,
       t_amount: 40,
-      f_price: 2000,
-      t_price: 2000,
+      exchangeRate: 2000,
+      f_tokenPriceUsd: 2000,
+      t_tokenPriceUsd: 1,
       f_chain: "ETHEREUM",
       t_chain: "ETHEREUM",
       f_token: "ETH",
@@ -296,8 +298,9 @@ async function main() {
       toType: "NUMBER",
       f_amount: 20,
       t_amount: 20,
-      f_price: 12.5,
-      t_price: 12.5,
+      exchangeRate: 1,
+      f_tokenPriceUsd: 1 / 12.5,
+      t_tokenPriceUsd: 1 / 12.5,
       f_chain: "ETHEREUM",
       t_chain: "ETHEREUM",
       f_token: "GHS",
@@ -458,31 +461,31 @@ async function main() {
     });
   }
 
-  console.log("Seeding inventory history...");
+  console.log("Seeding inventory ledger...");
   await Promise.all([
-    prisma.inventoryHistory.upsert({
+    prisma.inventoryLedger.upsert({
       where: { id: "00000000-0000-0000-0000-000000000010" },
       create: {
         id: "00000000-0000-0000-0000-000000000010",
         assetId: usdcEth.id,
-        type: "SALE",
-        amount: 100,
-        quantity: 100,
-        initialPurchasePrice: 1,
-        providerQuotePrice: 2000,
+        type: "DISPOSED",
+        quantity: -100,
+        pricePerTokenUsd: 1,
+        totalValueUsd: 100,
+        referenceId: "",
       },
       update: {},
     }),
-    prisma.inventoryHistory.upsert({
+    prisma.inventoryLedger.upsert({
       where: { id: "00000000-0000-0000-0000-000000000011" },
       create: {
         id: "00000000-0000-0000-0000-000000000011",
         assetId: ethEth.id,
-        type: "PURCHASE",
-        amount: 0.05,
+        type: "ACQUIRED",
         quantity: 0.05,
-        initialPurchasePrice: 2000,
-        providerQuotePrice: 2000,
+        pricePerTokenUsd: 2000,
+        totalValueUsd: 100,
+        referenceId: "",
       },
       update: {},
     }),
@@ -498,7 +501,7 @@ async function main() {
     transactions: 3,
     request: request.code,
     claim: claim.id,
-    inventoryHistory: 2,
+    inventoryLedger: 2,
     countries: countryData.length,
     chains: 4,
     supportedTokens: tokenData.length,

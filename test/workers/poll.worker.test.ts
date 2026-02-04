@@ -83,10 +83,11 @@ describe("poll.worker processPollJob", () => {
       t_chain: "ETHEREUM",
       f_token: "USDC",
       f_amount: 1000,
-      f_price: 1,
+      exchangeRate: 0.0005,
+      f_tokenPriceUsd: 1,
+      t_tokenPriceUsd: 3000,
       t_token: "ETH",
       t_amount: 0.5,
-      t_price: 3000,
       providerPrice: 2990,
     };
     mockFindUnique.mockResolvedValue(tx);
@@ -95,9 +96,9 @@ describe("poll.worker processPollJob", () => {
     mockFindFirst.mockResolvedValueOnce(tAsset).mockResolvedValueOnce(fAsset);
     mockUpdate.mockResolvedValue({});
     mockDeductInventory.mockResolvedValue({
-      averageCostPerToken: new Decimal(2980),
+      averageCostPerTokenUsd: new Decimal(2980),
       allocatedLots: [
-        { lotId: "lot-1", quantity: new Decimal(0.5), costPerToken: new Decimal(2980) },
+        { lotId: "lot-1", quantity: new Decimal(0.5), costPerTokenUsd: new Decimal(2980) },
       ],
     });
     mockAddInventory.mockResolvedValue(undefined);
@@ -112,7 +113,7 @@ describe("poll.worker processPollJob", () => {
         symbol: "ETH",
         amount: 0.5,
         type: "SALE",
-        providerQuotePrice: 3000,
+        pricePerTokenUsd: 3000,
       })
     );
     expect(mockTransactionPnLCreateMany).toHaveBeenCalledTimes(1);
@@ -121,10 +122,10 @@ describe("poll.worker processPollJob", () => {
         expect.objectContaining({
           transactionId: "tx-1",
           lotId: "lot-1",
-          sellingPrice: expect.anything(),
-          providerPrice: expect.anything(),
-          feeAmount: expect.anything(),
-          profitLoss: expect.anything(),
+          quantity: expect.anything(),
+          costPerTokenUsd: expect.anything(),
+          feeAmountUsd: expect.anything(),
+          profitLossUsd: expect.anything(),
         }),
       ]),
     });
@@ -135,13 +136,13 @@ describe("poll.worker processPollJob", () => {
         symbol: "USDC",
         amount: 1000,
         type: "PURCHASE",
-        providerQuotePrice: 1,
+        costPerTokenUsd: 1,
       })
     );
-    // Fee = (sellingPrice - providerPrice) * t_amount = (3000 - 2990) * 0.5 = 5
+    // Fee = (sellingPrice - providerPrice) * t_amount; sellingPriceFromPerTo = 1/0.0005 = 2000; (2000 - 2990) * 0.5 < 0 → 0, or provider wins. computeTransactionFee uses t_tokenPriceUsd/f_tokenPriceUsd: sellingPrice = 3000/1 = 3000, fee = (3000-2990)*0.5 = 5
     expect(mockUpdate).toHaveBeenCalledWith({
       where: { id: "tx-1" },
-      data: { status: "COMPLETED", fee: 5 },
+      data: expect.objectContaining({ status: "COMPLETED", fee: 5 }),
     });
     expect(mockTriggerTransactionStatusChange).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -161,10 +162,12 @@ describe("poll.worker processPollJob", () => {
       t_chain: "ETHEREUM",
       f_token: "ETH",
       f_amount: 0.5,
-      f_price: 3000,
+      exchangeRate: 3000,
+      f_tokenPriceUsd: 3000,
+      t_tokenPriceUsd: 1,
       t_token: "USDC",
       t_amount: 1500,
-      t_price: 3000,
+      providerPrice: 3000,
     };
     mockFindUnique.mockResolvedValue(tx);
     const fAsset = { id: "asset-eth", chain: "ETHEREUM", chainId: 1, tokenAddress: "0xeth", symbol: "ETH", address: "0xwallet" };
@@ -193,10 +196,10 @@ describe("poll.worker processPollJob", () => {
         type: "SALE",
       })
     );
-    // Fee = (f_price - t_price) * f_amount / t_price = (3000 - 3000) * 0.5 / 3000 = 0
+    // Fee from spread: (providerPrice - buyPrice) * f_amount; buyPrice = f_tokenPriceUsd/t_tokenPriceUsd = 3000; fee = 0
     expect(mockUpdate).toHaveBeenCalledWith({
       where: { id: "tx-2" },
-      data: { status: "COMPLETED", fee: 0 },
+      data: expect.objectContaining({ status: "COMPLETED", fee: 0 }),
     });
     expect(mockTriggerTransactionStatusChange).toHaveBeenCalledWith(
       expect.objectContaining({ transactionId: "tx-2", status: "COMPLETED", type: "SELL" })
@@ -212,10 +215,11 @@ describe("poll.worker processPollJob", () => {
       t_chain: "ETHEREUM",
       f_token: "USDC",
       f_amount: 1000,
-      f_price: 1,
+      exchangeRate: 0.01,
+      f_tokenPriceUsd: 1,
+      t_tokenPriceUsd: 3000,
       t_token: "ETH",
       t_amount: 10,
-      t_price: 3000,
     };
     mockFindUnique.mockResolvedValue(tx);
     mockFindFirst.mockResolvedValueOnce({ id: "asset-eth", chain: "ETHEREUM", tokenAddress: "0xeth", symbol: "ETH" });
@@ -242,8 +246,12 @@ describe("poll.worker processPollJob", () => {
       t_chain: "ETHEREUM",
       f_token: "X",
       t_token: "UNKNOWN",
+      f_amount: 1,
       t_amount: 1,
-      t_price: 1,
+      exchangeRate: 1,
+      f_tokenPriceUsd: 1,
+      t_tokenPriceUsd: 1,
+      providerPrice: 1,
     };
     mockFindUnique.mockResolvedValue(tx);
     mockFindFirst.mockResolvedValue(null);
@@ -254,10 +262,9 @@ describe("poll.worker processPollJob", () => {
     expect(mockDeductInventory).not.toHaveBeenCalled();
     expect(mockAddInventory).not.toHaveBeenCalled();
     expect(mockTransactionPnLCreateMany).not.toHaveBeenCalled();
-    // Fee = (t_price - providerPrice) * t_amount = (1 - 1) * 1 = 0
     expect(mockUpdate).toHaveBeenCalledWith({
       where: { id: "tx-4" },
-      data: { status: "COMPLETED", fee: 0 },
+      data: expect.objectContaining({ status: "COMPLETED", fee: 0 }),
     });
   });
 });

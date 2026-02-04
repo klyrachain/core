@@ -43,9 +43,22 @@ describe("fee.service", () => {
     it("should return correct fee for claim (0.5% fee)", () => {
       const result = getFeeForOrder({ ...baseInput, action: "claim", f_amount: 50, t_amount: 50, f_token: "GHS", t_token: "GHS" });
       expect(result.feePercent).toBe(0.5);
-      expect(result.feeAmount).toBe(0.25); // 0.5% of 50
+      expect(result.feeAmount).toBe(0.25);
       expect(result.totalCost).toBe(50.25);
       expect(result.profit).toBe(0.25);
+    });
+
+    it("derives f_price/t_price from amounts when omitted (platform-determined rate)", () => {
+      const result = getFeeForOrder({
+        action: "buy",
+        f_amount: 100,
+        t_amount: 0.05,
+        f_token: "USDC",
+        t_token: "ETH",
+      });
+      expect(result.rate).toBe(2000);
+      expect(result.feeAmount).toBe(1);
+      expect(result.totalCost).toBe(101);
     });
   });
 
@@ -140,13 +153,14 @@ describe("fee.service", () => {
 
   describe("computeTransactionFee (spread-based, for DB)", () => {
     it("BUY: fee = (sellingPrice - providerPrice) * t_amount", () => {
+      // sellingPrice = t_tokenPriceUsd / f_tokenPriceUsd = 12/1 = 12
       expect(
         computeTransactionFee({
           type: "BUY",
           f_amount: 100,
           t_amount: 10,
-          f_price: 1,
-          t_price: 12,
+          f_tokenPriceUsd: 1,
+          t_tokenPriceUsd: 12,
           providerPrice: 11,
         })
       ).toBe(10); // (12 - 11) * 10
@@ -155,44 +169,48 @@ describe("fee.service", () => {
           type: "BUY",
           f_amount: 100,
           t_amount: 1000,
-          f_price: 1,
-          t_price: 10.75,
+          f_tokenPriceUsd: 1,
+          t_tokenPriceUsd: 10.75,
           providerPrice: 11,
         })
       ).toBe(-250); // (10.75 - 11) * 1000
     });
 
-    it("BUY: when providerPrice missing, uses t_price so fee = 0", () => {
+    it("BUY: when providerPrice missing, uses sellingPrice so fee = 0", () => {
       expect(
         computeTransactionFee({
           type: "BUY",
           f_amount: 1000,
           t_amount: 0.5,
-          f_price: 1,
-          t_price: 3000,
+          f_tokenPriceUsd: 1,
+          t_tokenPriceUsd: 3000,
         })
       ).toBe(0);
     });
 
-    it("SELL: fee in f_token = (f_price - t_price) * f_amount / t_price", () => {
+    it("SELL: fee = (providerPrice - buyPrice) * f_amount, buyPrice = f_tokenPriceUsd/t_tokenPriceUsd", () => {
+      // buyPrice = 3000/1 = 3000, providerPrice 3000 => fee 0
       expect(
         computeTransactionFee({
           type: "SELL",
           f_amount: 0.5,
           t_amount: 1500,
-          f_price: 3000,
-          t_price: 3000,
+          f_tokenPriceUsd: 3000,
+          t_tokenPriceUsd: 1,
+          providerPrice: 3000,
         })
       ).toBe(0);
+      // buyPrice = 3010/1 = 3010, providerPrice 3010 + 10/3000 => fee = (10/3000) * 0.5
       expect(
         computeTransactionFee({
           type: "SELL",
           f_amount: 0.5,
           t_amount: 1500,
-          f_price: 3010,
-          t_price: 3000,
+          f_tokenPriceUsd: 3010,
+          t_tokenPriceUsd: 1,
+          providerPrice: 3010 + 10 / 3000,
         })
-      ).toBeCloseTo(0.5 * 10 / 3000, 8);
+      ).toBeCloseTo((0.5 * 10) / 3000, 8);
     });
 
     it("REQUEST/CLAIM: falls back to getFeeForOrder (percentage)", () => {
@@ -201,8 +219,8 @@ describe("fee.service", () => {
           type: "REQUEST",
           f_amount: 20,
           t_amount: 20,
-          f_price: 1,
-          t_price: 1,
+          f_tokenPriceUsd: 1,
+          t_tokenPriceUsd: 1,
         })
       ).toBe(0.1);
       expect(
@@ -210,8 +228,8 @@ describe("fee.service", () => {
           type: "CLAIM",
           f_amount: 50,
           t_amount: 50,
-          f_price: 1,
-          t_price: 1,
+          f_tokenPriceUsd: 1,
+          t_tokenPriceUsd: 1,
         })
       ).toBe(0.25);
     });

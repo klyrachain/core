@@ -22,7 +22,7 @@ vi.mock("../../src/lib/prisma.js", () => ({
       findFirst: (...args: unknown[]) => mockFindUnique(...args),
       update: (...args: unknown[]) => mockUpdate(...args),
     },
-    inventoryHistory: {
+    inventoryLedger: {
       create: (...args: unknown[]) => mockCreate(...args),
     },
     inventoryLot: {
@@ -64,6 +64,7 @@ describe("inventory.service", () => {
           symbol: "USDC",
           amount: 10,
           address: "0xwallet1",
+          pricePerTokenUsd: 1,
         })
       ).rejects.toThrow("InventoryAsset not found");
       expect(mockTransaction).not.toHaveBeenCalled();
@@ -85,12 +86,13 @@ describe("inventory.service", () => {
           symbol: "USDC",
           amount: 10,
           address: "0xwallet1",
+          pricePerTokenUsd: 1,
         })
       ).rejects.toThrow("Insufficient inventory");
       expect(mockTransaction).not.toHaveBeenCalled();
     });
 
-    it("should update asset, create history, and set Redis balance on success", async () => {
+    it("should update asset, create ledger DISPOSED, and set Redis balance on success", async () => {
       const asset = {
         id: "asset-1",
         chain: "ETHEREUM",
@@ -107,7 +109,7 @@ describe("inventory.service", () => {
         const tx = {
           inventoryLot: { update: mockLotUpdate },
           inventoryAsset: { update: mockUpdate },
-          inventoryHistory: { create: mockCreate },
+          inventoryLedger: { create: mockCreate },
         };
         return fn(tx);
       });
@@ -119,15 +121,24 @@ describe("inventory.service", () => {
         amount: 20,
         address: "0xwallet1",
         type: "SALE",
-        providerQuotePrice: 1.5,
+        pricePerTokenUsd: 1.5,
       });
 
-      expect(result.averageCostPerToken).toBeNull();
+      expect(result.averageCostPerTokenUsd).toBeNull();
       expect(mockTransaction).toHaveBeenCalled();
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: "asset-1" },
           data: { currentBalance: expect.anything() },
+        })
+      );
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: "DISPOSED",
+            pricePerTokenUsd: expect.anything(),
+            totalValueUsd: expect.anything(),
+          }),
         })
       );
       expect(mockSetBalance).toHaveBeenCalledWith(
@@ -151,12 +162,13 @@ describe("inventory.service", () => {
           symbol: "ETH",
           amount: 1,
           address: "0xwallet1",
+          costPerTokenUsd: 3000,
         })
       ).rejects.toThrow("InventoryAsset not found");
       expect(mockTransaction).not.toHaveBeenCalled();
     });
 
-    it("should update asset, create history, and set Redis balance on success", async () => {
+    it("should update asset, create ledger ACQUIRED and lot, set Redis balance on success", async () => {
       const asset = {
         id: "asset-eth",
         chain: "ETHEREUM",
@@ -176,7 +188,7 @@ describe("inventory.service", () => {
         amount: 2,
         address: "0xwallet1",
         type: "PURCHASE",
-        providerQuotePrice: 3000,
+        costPerTokenUsd: 3000,
       });
 
       expect(mockTransaction).toHaveBeenCalledWith([
@@ -248,10 +260,10 @@ describe("inventory.service", () => {
       expect(result).toBeNull();
     });
 
-    it("should return volume-weighted average when lots exist", async () => {
+    it("should return volume-weighted average USD when lots exist", async () => {
       mockFindMany.mockResolvedValue([
-        { quantity: 10, costPerToken: 1 },
-        { quantity: 20, costPerToken: 2 },
+        { remainingQuantity: 10, costPerTokenUsd: 1 },
+        { remainingQuantity: 20, costPerTokenUsd: 2 },
       ]);
       const result = await getAverageCostBasis("asset-1");
       expect(result).not.toBeNull();
@@ -262,8 +274,8 @@ describe("inventory.service", () => {
   describe("getLotsForAsset", () => {
     it("should return lots in FIFO order", async () => {
       const lots = [
-        { id: "l1", quantity: 5, costPerToken: 1, acquiredAt: new Date(), sourceType: "PURCHASE", sourceTransactionId: null },
-        { id: "l2", quantity: 10, costPerToken: 1.5, acquiredAt: new Date(), sourceType: "PURCHASE", sourceTransactionId: null },
+        { id: "l1", originalQuantity: 5, remainingQuantity: 5, costPerTokenUsd: 1, status: "OPEN", acquiredAt: new Date(), sourceType: "PURCHASE", sourceTransactionId: null },
+        { id: "l2", originalQuantity: 10, remainingQuantity: 10, costPerTokenUsd: 1.5, status: "OPEN", acquiredAt: new Date(), sourceType: "PURCHASE", sourceTransactionId: null },
       ];
       mockFindMany.mockResolvedValue(lots);
       const result = await getLotsForAsset("asset-1");

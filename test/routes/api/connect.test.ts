@@ -84,8 +84,8 @@ describe("Connect API", () => {
           createdAt: new Date(),
           f_amount: 100,
           t_amount: 0.05,
-          f_price: 2000,
-          t_price: 2000,
+          f_tokenPriceUsd: 2000,
+          t_tokenPriceUsd: 2000,
           platformFee: 1,
         },
       ]);

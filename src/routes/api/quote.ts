@@ -1,26 +1,26 @@
 /**
- * Quote API: swap quotes (0x, Squid, LiFi) and fee quotes.
+ * Quote API: pricing endpoint (GET /api/quote) and raw swap/onramp quotes (POST).
+ * GET /api/quote uses the pricing engine (buildPublicQuote) to return the platform's rate, amounts, and fees.
  */
 
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { getFeeForOrder } from "../../services/fee.service.js";
+import { buildPublicQuote } from "../../services/public-quote.service.js";
+import { setStoredQuote, QUOTE_TTL_SECONDS } from "../../lib/redis.js";
 import { getSwapQuote, getBestQuotes } from "../../services/swap-quote.service.js";
 import { getOnrampQuote } from "../../services/onramp-quote.service.js";
 import { isFonbnkConfigured } from "../../services/fonbnk.service.js";
 import { successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
 import { SWAP_QUOTE_PROVIDERS } from "../../lib/swap-quote.types.js";
 
+/** GET /api/quote: pricing endpoint. One amount + input_side; platform returns the other amount and rate. */
 const QuoteQuerySchema = z.object({
-  action: z.enum(["buy", "sell", "request", "claim"]),
-  f_amount: z.coerce.number().positive(),
-  t_amount: z.coerce.number().positive(),
-  f_price: z.coerce.number().nonnegative(),
-  t_price: z.coerce.number().nonnegative(),
-  f_chain: z.string().min(1).optional(),
-  t_chain: z.string().min(1).optional(),
+  action: z.enum(["buy", "sell", "swap"]),
+  amount: z.coerce.number().positive(),
+  input_side: z.enum(["from", "to"]).optional().default("from"),
   f_token: z.string().min(1),
   t_token: z.string().min(1),
+  chain: z.string().min(1),
 });
 
 const SwapQuoteBodySchema = z.object({
@@ -178,21 +178,23 @@ export async function quoteApiRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
-  /** Fee quote for order (buy/sell/request/claim). */
+  /**
+   * GET /api/quote — Platform pricing endpoint.
+   * Uses the pricing engine (provider rates + platform margin) to return the quote we will honor.
+   * User sends one amount (and input_side); platform returns the other amount, exchange rate, and fees.
+   * Supports buy (onramp), sell (offramp), and swap (same-chain; platform adds swap fees).
+   */
   app.get(
     "/api/quote",
     async (
       req: FastifyRequest<{
         Querystring: {
           action?: string;
-          f_amount?: string;
-          t_amount?: string;
-          f_price?: string;
-          t_price?: string;
-          f_chain?: string;
-          t_chain?: string;
+          amount?: string;
+          input_side?: string;
           f_token?: string;
           t_token?: string;
+          chain?: string;
         };
       }>,
       reply
@@ -206,21 +208,30 @@ export async function quoteApiRoutes(app: FastifyInstance): Promise<void> {
         });
       }
       const query = parse.data;
-      const fChain = (query.f_chain ?? "").trim();
-      const tChain = (query.t_chain ?? "").trim();
-      if (fChain && tChain && fChain === tChain && query.f_token.toLowerCase().trim() === query.t_token.toLowerCase().trim()) {
-        return reply.status(400).send({
-          success: false,
-          error: "Same token on same chain is not allowed; swap must be to a different token or chain",
-          code: "SAME_TOKEN_SAME_CHAIN",
-        });
-      }
+      const actionMap = { buy: "ONRAMP" as const, sell: "OFFRAMP" as const, swap: "SWAP" as const };
+      const request = {
+        action: actionMap[query.action],
+        inputAmount: String(query.amount),
+        inputCurrency: query.f_token.trim().toUpperCase(),
+        outputCurrency: query.t_token.trim().toUpperCase(),
+        chain: query.chain.trim(),
+        inputSide: query.input_side === "to" ? ("to" as const) : ("from" as const),
+      };
       try {
-        const quote = getFeeForOrder(query);
-        return successEnvelope(reply, quote);
+        const result = await buildPublicQuote(request);
+        if (!result.success) {
+          const status = result.status ?? 400;
+          return reply.status(status).send({
+            success: false,
+            error: result.error,
+            code: result.code ?? "QUOTE_FAILED",
+          });
+        }
+        await setStoredQuote(result.data.quoteId, JSON.stringify(result.data), QUOTE_TTL_SECONDS);
+        return successEnvelope(reply, result.data);
       } catch (err) {
-        req.log.error({ err }, "GET /api/quote");
-        return errorEnvelope(reply, "Something went wrong.", 500);
+        req.log.error({ err, request }, "GET /api/quote");
+        return errorEnvelope(reply, "Quote unavailable.", 502);
       }
     }
   );

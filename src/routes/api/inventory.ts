@@ -133,21 +133,20 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
         if (assetId) where.assetId = assetId;
         if (chain) where.asset = { chain };
         const [items, total] = await Promise.all([
-          prisma.inventoryHistory.findMany({
+          prisma.inventoryLedger.findMany({
             where,
             skip,
             take: limit,
             orderBy: { createdAt: "desc" },
             include: { asset: { select: { id: true, chain: true, chainId: true, symbol: true, address: true } } },
           }),
-          prisma.inventoryHistory.count({ where }),
+          prisma.inventoryLedger.count({ where }),
         ]);
         const data = items.map((h) => ({
           ...h,
-          amount: h.amount.toString(),
           quantity: h.quantity.toString(),
-          initialPurchasePrice: h.initialPurchasePrice.toString(),
-          providerQuotePrice: h.providerQuotePrice.toString(),
+          pricePerTokenUsd: h.pricePerTokenUsd.toString(),
+          totalValueUsd: h.totalValueUsd.toString(),
         }));
         return successEnvelopeWithMeta(reply, data, { page, limit, total });
       } catch (err) {
@@ -188,10 +187,13 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
         const assetId = (req.query.assetId as string)?.trim();
         const chain = (req.query.chain as string)?.trim();
         const onlyAvailable = req.query.onlyAvailable === "true" || req.query.onlyAvailable === "1";
-        const where: { assetId?: string; asset?: { chain?: string }; quantity?: { gt: number } } = {};
+        const where: { assetId?: string; asset?: { chain?: string }; status?: "OPEN"; remainingQuantity?: { gt: number } } = {};
         if (assetId) where.assetId = assetId;
         if (chain) where.asset = { chain };
-        if (onlyAvailable) where.quantity = { gt: 0 };
+        if (onlyAvailable) {
+          where.status = "OPEN";
+          where.remainingQuantity = { gt: 0 };
+        }
         const [items, total] = await Promise.all([
           prisma.inventoryLot.findMany({
             where,
@@ -205,8 +207,11 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
         const data = items.map((l) => ({
           id: l.id,
           assetId: l.assetId,
-          quantity: l.quantity.toString(),
-          costPerToken: l.costPerToken.toString(),
+          originalQuantity: l.originalQuantity.toString(),
+          remainingQuantity: l.remainingQuantity.toString(),
+          costPerTokenUsd: l.costPerTokenUsd.toString(),
+          totalCostUsd: l.totalCostUsd.toString(),
+          status: l.status,
           acquiredAt: l.acquiredAt.toISOString(),
           sourceType: l.sourceType,
           sourceTransactionId: l.sourceTransactionId,
@@ -238,8 +243,11 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
         const lots = await getLotsForAsset(req.params.id, { onlyAvailable });
         const data = lots.map((l) => ({
           id: l.id,
-          quantity: l.quantity.toString(),
-          costPerToken: l.costPerToken.toString(),
+          originalQuantity: l.originalQuantity.toString(),
+          remainingQuantity: l.remainingQuantity.toString(),
+          costPerTokenUsd: l.costPerTokenUsd.toString(),
+          totalCostUsd: l.totalCostUsd.toString(),
+          status: l.status,
           acquiredAt: l.acquiredAt.toISOString(),
           sourceType: l.sourceType,
           sourceTransactionId: l.sourceTransactionId,
@@ -258,10 +266,10 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
       if (!requirePermission(req, reply, PERMISSION_PLATFORM_READ)) return;
       const asset = await prisma.inventoryAsset.findUnique({ where: { id: req.params.id } });
       if (!asset) return errorEnvelope(reply, "Inventory asset not found", 404);
-      const averageCostPerToken = await getAverageCostBasis(req.params.id);
+      const averageCostPerTokenUsd = await getAverageCostBasis(req.params.id);
       const data = {
         assetId: req.params.id,
-        averageCostPerToken: averageCostPerToken == null ? null : averageCostPerToken.toString(),
+        averageCostPerTokenUsd: averageCostPerTokenUsd == null ? null : averageCostPerTokenUsd.toString(),
       };
       return successEnvelope(reply, data);
     } catch (err) {
@@ -356,7 +364,7 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
       if (!existing) return errorEnvelope(reply, "Inventory asset not found", 404);
 
       await prisma.$transaction([
-        prisma.inventoryHistory.deleteMany({ where: { assetId: id } }),
+        prisma.inventoryLedger.deleteMany({ where: { assetId: id } }),
         prisma.inventoryAsset.delete({ where: { id } }),
       ]);
       return successEnvelope(reply, { deleted: true, id }, 200);
@@ -371,20 +379,19 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
       if (!requirePermission(req, reply, PERMISSION_PLATFORM_READ)) return;
       const { page, limit, skip } = parsePagination(req.query);
       const [items, total] = await Promise.all([
-        prisma.inventoryHistory.findMany({
+        prisma.inventoryLedger.findMany({
           where: { assetId: req.params.id },
           skip,
           take: limit,
           orderBy: { createdAt: "desc" },
         }),
-        prisma.inventoryHistory.count({ where: { assetId: req.params.id } }),
+        prisma.inventoryLedger.count({ where: { assetId: req.params.id } }),
       ]);
       const data = items.map((h) => ({
         ...h,
-        amount: h.amount.toString(),
         quantity: h.quantity.toString(),
-        initialPurchasePrice: h.initialPurchasePrice.toString(),
-        providerQuotePrice: h.providerQuotePrice.toString(),
+        pricePerTokenUsd: h.pricePerTokenUsd.toString(),
+        totalValueUsd: h.totalValueUsd.toString(),
       }));
       return successEnvelopeWithMeta(reply, data, { page, limit, total });
     } catch (err) {

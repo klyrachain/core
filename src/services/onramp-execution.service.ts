@@ -37,6 +37,7 @@ export async function executeOnrampSend(transactionId: string): Promise<ExecuteO
       t_chain: true,
       t_token: true,
       t_amount: true,
+      t_tokenPriceUsd: true,
       cryptoSendTxHash: true,
     },
   });
@@ -104,6 +105,7 @@ export async function executeOnrampSend(transactionId: string): Promise<ExecuteO
     return { ok: false, error: sendResult.error, code: "SEND_FAILED" };
   }
 
+  const tTokenPriceUsd = tx.t_tokenPriceUsd != null ? Number(tx.t_tokenPriceUsd) : 0;
   await deductInventory({
     chain: tx.t_chain,
     chainId,
@@ -112,7 +114,7 @@ export async function executeOnrampSend(transactionId: string): Promise<ExecuteO
     amount: tx.t_amount,
     address: poolWallet.address.toLowerCase(),
     type: "PURCHASE",
-    providerQuotePrice: null,
+    pricePerTokenUsd: tTokenPriceUsd > 0 ? tTokenPriceUsd : 0,
     sourceTransactionId: transactionId,
   });
 

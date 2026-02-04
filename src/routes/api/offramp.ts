@@ -104,7 +104,7 @@ export async function offrampApiRoutes(app: FastifyInstance): Promise<void> {
         f_chain: true,
         f_token: true,
         f_amount: true,
-        providerPrice: true,
+        f_tokenPriceUsd: true,
       },
     });
     if (!tx) return errorEnvelope(reply, "Transaction not found", 404);
@@ -121,9 +121,9 @@ export async function offrampApiRoutes(app: FastifyInstance): Promise<void> {
     if (!poolToken) return errorEnvelope(reply, `Unsupported token ${tx.f_token}`, 400);
 
     // TODO: verify on-chain that tx_hash sent tx.f_amount of tx.f_token to pool.address; if not, return 400
-    // For now we trust the client and credit inventory
+    // For now we trust the client and credit inventory with USD cost basis
     const amount = new Decimal(tx.f_amount);
-    const providerPrice = tx.providerPrice != null ? Number(tx.providerPrice) : undefined;
+    const costPerTokenUsd = tx.f_tokenPriceUsd != null && Number(tx.f_tokenPriceUsd) > 0 ? Number(tx.f_tokenPriceUsd) : 1;
 
     try {
       await addInventory({
@@ -134,7 +134,7 @@ export async function offrampApiRoutes(app: FastifyInstance): Promise<void> {
         amount,
         address: pool.address.toLowerCase(),
         type: "PURCHASE",
-        providerQuotePrice: providerPrice,
+        costPerTokenUsd,
         sourceTransactionId: transaction_id,
       });
     } catch (err) {
