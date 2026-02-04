@@ -8,12 +8,59 @@
  *   --delay   ms between iterations (default 2000)
  *   --submit  also POST to /webhook/order with quote amounts (validates full flow)
  * Env: CORE_URL (default http://localhost:4000), CORE_API_KEY (optional, for cache refresh/submit).
+ *
+ * Keys (when running): p = pause, r = resume, q = quiet (toggle verbose output). Ctrl+C = exit.
  */
 
 import "dotenv/config";
+import * as fs from "fs";
+import * as path from "path";
+import * as readline from "readline";
 
 const CORE_URL = process.env.CORE_URL ?? "http://localhost:4000";
 const CORE_API_KEY = process.env.CORE_API_KEY ?? "";
+
+const LOG_DIR = path.join(process.cwd(), "logs");
+const LOG_FILE = path.join(LOG_DIR, "test-live-onramp-offramp.log");
+
+function writeTestLog(record: Record<string, unknown>): void {
+  try {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+    const line = JSON.stringify({ ...record, ts: record.ts ?? new Date().toISOString() }) + "\n";
+    fs.appendFileSync(LOG_FILE, line);
+  } catch (err) {
+    console.error("[log]", err);
+  }
+}
+
+let paused = false;
+let quiet = false;
+
+function setupKeypressListener(): void {
+  if (!process.stdin.isTTY) return;
+  readline.emitKeypressEvents(process.stdin);
+  process.stdin.setRawMode?.(true);
+  process.stdin.resume();
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("keypress", (_str: string, key: { name: string; ctrl?: boolean }) => {
+    if (key.ctrl && key.name === "c") {
+      writeTestLog({ event: "end", reason: "sigint" });
+      process.exit(130);
+    }
+    if (key.name === "p") {
+      paused = true;
+      console.log("\n[Paused. Press r to resume.]");
+    }
+    if (key.name === "r") {
+      paused = false;
+      console.log("[Resumed.]");
+    }
+    if (key.name === "q") {
+      quiet = !quiet;
+      console.log(quiet ? "[Quiet mode on.]" : "[Quiet mode off.]");
+    }
+  });
+}
 
 type QuoteResponseData = {
   quoteId: string;
@@ -196,12 +243,22 @@ function logQuote(flow: string, data: QuoteResponseData, submitResult?: { ok: bo
   if (submitResult !== undefined) {
     lines.push(`  order        ${submitResult.ok ? `created ${submitResult.orderId ?? ""}` : `error ${submitResult.error ?? submitResult.error}`}`);
   }
-  console.log(lines.join("\n"));
+  writeTestLog({
+    event: "quote",
+    scenario: flow,
+    ok: true,
+    quoteId: data.quoteId,
+    input: data.input,
+    output: data.output,
+    orderId: submitResult?.ok ? submitResult.orderId : undefined,
+    orderError: submitResult && !submitResult.ok ? submitResult.error : undefined,
+  });
+  if (!quiet) console.log(lines.join("\n"));
 }
 
 async function runOnramp(doSubmit: boolean): Promise<boolean | void> {
   if (onchainPairs.length === 0) {
-    console.log("[skip] No onchain pairs for onramp.");
+    if (!quiet) console.log("[skip] No onchain pairs for onramp.");
     return;
   }
   const pair = randomChoice(onchainPairs);
@@ -217,7 +274,8 @@ async function runOnramp(doSubmit: boolean): Promise<boolean | void> {
     { retryOn5xx: true }
   );
   if (!quote.ok) {
-    console.log(
+    writeTestLog({ event: "quote", scenario: "ONRAMP", ok: false, status: quote.status, error: quote.error, code: quote.code, inputAmount, chain: pair.chainCode, output: pair.symbol });
+    if (!quiet) console.log(
       `[ONRAMP] quote failed: ${quote.status} ${quote.error} (${quote.code ?? ""}) — inputAmount=${inputAmount} chain=${pair.chainCode} output=${pair.symbol}`
     );
     return false;
@@ -248,7 +306,7 @@ async function runOnramp(doSubmit: boolean): Promise<boolean | void> {
 
 async function runOfframp(doSubmit: boolean): Promise<boolean | void> {
   if (onchainPairs.length === 0) {
-    console.log("[skip] No onchain pairs for offramp.");
+    if (!quiet) console.log("[skip] No onchain pairs for offramp.");
     return;
   }
   const pair = randomChoice(onchainPairs);
@@ -264,7 +322,8 @@ async function runOfframp(doSubmit: boolean): Promise<boolean | void> {
     { retryOn5xx: true }
   );
   if (!quote.ok) {
-    console.log(
+    writeTestLog({ event: "quote", scenario: "OFFRAMP", ok: false, status: quote.status, error: quote.error, code: quote.code, inputAmount, chain: pair.chainCode, input: pair.symbol });
+    if (!quiet) console.log(
       `[OFFRAMP] quote failed: ${quote.status} ${quote.error} (${quote.code ?? ""}) — inputAmount=${inputAmount} chain=${pair.chainCode} input=${pair.symbol}`
     );
     return false;
@@ -296,7 +355,7 @@ async function runOfframp(doSubmit: boolean): Promise<boolean | void> {
 /** Onramp reversed: user enters crypto amount ("I want X USDC") → get fiat to pay. inputSide "to". */
 async function runOnrampReversed(doSubmit: boolean): Promise<boolean | void> {
   if (onchainPairs.length === 0) {
-    console.log("[skip] No onchain pairs for onramp reversed.");
+    if (!quiet) console.log("[skip] No onchain pairs for onramp reversed.");
     return;
   }
   const pair = randomChoice(onchainPairs);
@@ -313,7 +372,8 @@ async function runOnrampReversed(doSubmit: boolean): Promise<boolean | void> {
     { retryOn5xx: true }
   );
   if (!quote.ok) {
-    console.log(
+    writeTestLog({ event: "quote", scenario: "ONRAMP-reversed", ok: false, status: quote.status, error: quote.error, code: quote.code, want: cryptoAmount, symbol: pair.symbol });
+    if (!quiet) console.log(
       `[ONRAMP-reversed] quote failed: ${quote.status} ${quote.error} (${quote.code ?? ""}) — want ${cryptoAmount} ${pair.symbol}`
     );
     return false;
@@ -345,7 +405,7 @@ async function runOnrampReversed(doSubmit: boolean): Promise<boolean | void> {
 /** Offramp reversed: user enters fiat amount ("I want X GHS") → get crypto to sell. inputSide "to". */
 async function runOfframpReversed(doSubmit: boolean): Promise<boolean | void> {
   if (onchainPairs.length === 0) {
-    console.log("[skip] No onchain pairs for offramp reversed.");
+    if (!quiet) console.log("[skip] No onchain pairs for offramp reversed.");
     return;
   }
   const pair = randomChoice(onchainPairs);
@@ -362,7 +422,8 @@ async function runOfframpReversed(doSubmit: boolean): Promise<boolean | void> {
     { retryOn5xx: true }
   );
   if (!quote.ok) {
-    console.log(
+    writeTestLog({ event: "quote", scenario: "OFFRAMP-reversed", ok: false, status: quote.status, error: quote.error, code: quote.code, want: fiatAmount, output: "GHS" });
+    if (!quiet) console.log(
       `[OFFRAMP-reversed] quote failed: ${quote.status} ${quote.error} (${quote.code ?? ""}) — want ${fiatAmount} GHS`
     );
     return false;
@@ -419,6 +480,8 @@ Usage: pnpm test:live:onramp-offramp [options]
   --submit       Also POST to /webhook/order with quote amounts.
   -h, --help     Show this help.
 
+Keys (while running): p = pause, r = resume, q = quiet (toggle verbose). Ctrl+C = exit.
+
 Scenarios (25% each): onramp (enter fiat), onramp-reversed (want crypto), offramp (enter crypto), offramp-reversed (want fiat).
 Env: CORE_URL, CORE_API_KEY (optional).
 `);
@@ -436,9 +499,21 @@ Env: CORE_URL, CORE_API_KEY (optional).
     await fetchJson("/api/validation/cache/refresh", { method: "POST" });
     await syncBalances();
   }
+  writeTestLog({
+    event: "start",
+    delayMs,
+    submit,
+    onchainPairs: onchainPairs.length,
+    fiatChains: fiatChains.join(", ") || "none",
+    logFile: LOG_FILE,
+  });
   console.log(
-    `Quotes test started. Supported: ${onchainPairs.length} onchain pairs, fiat: ${fiatChains.join(", ") || "none"}. Delay ${delayMs}ms. Submit orders: ${submit}. Stop with Ctrl+C.\n`
+    `Quotes test started. Supported: ${onchainPairs.length} onchain pairs, fiat: ${fiatChains.join(", ") || "none"}. Delay ${delayMs}ms. Submit orders: ${submit}.`
   );
+  console.log("Keys: p = pause, r = resume, q = quiet. Ctrl+C = exit.");
+  console.log(`Log file: ${LOG_FILE}\n`);
+
+  setupKeypressListener();
 
   let round = 0;
   let okCount = 0;
@@ -446,6 +521,7 @@ Env: CORE_URL, CORE_API_KEY (optional).
   const summaryInterval = 20;
 
   for (; ;) {
+    while (paused) await delay(500);
     round++;
     const r = Math.random();
     const scenario = r < 0.25 ? "onramp" : r < 0.5 ? "onramp-reversed" : r < 0.75 ? "offramp" : "offramp-reversed";
@@ -468,10 +544,12 @@ Env: CORE_URL, CORE_API_KEY (optional).
         else if (hadQuote === false) failCount++;
       }
     } catch (err) {
+      writeTestLog({ event: "error", error: err instanceof Error ? err.message : String(err) });
       console.error("[error]", err);
       failCount++;
     }
     if (round % summaryInterval === 0 && round > 0) {
+      writeTestLog({ event: "summary", okCount, failCount, rounds: summaryInterval });
       console.log(`[summary] Quotes: ${okCount} ok, ${failCount} failed (last ${summaryInterval} rounds)\n`);
       okCount = 0;
       failCount = 0;
