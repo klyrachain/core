@@ -4,7 +4,6 @@ dist
 *.env*
 .env*
 .env.local
-*.log
 prisma/generated
 
 *paystack*.md
