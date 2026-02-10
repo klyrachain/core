@@ -1,0 +1,342 @@
+Quotes test started. Supported: 5 onchain pairs, fiat: MOMO, BANK. Delay 2000ms. Submit orders: true.
+Keys: p = pause, r = resume, q = quiet. Ctrl+C = exit.
+Log file: /mnt/windows-e/Users/patri/Desktop/HACKERTHON/DORAHACKS/KLYRA-ADMIN/core/logs/test-live-onramp-offramp.log
+
+[2026-02-05T09:33:47.709Z] ---------- OFFRAMP ----------
+
+  --- Provider (Fonbnk) — before pricing engine ---
+  rate (from Fonbnk)     11.00
+
+  --- Platform (pricing engine) — final quote ---
+  rate (final)           10.72
+  spread (final - provider)  -0.2800
+
+  quoteId      6b8c332f-f74c-4bc5-80b5-e15c04e3cdba
+  expiresAt    2026-02-05T09:34:17.696Z
+  input        20.03 USDC
+  output       214.82 GHS (BASE)
+  avgBuy(inventory)  —
+  fees         network 0  platform 5.51  total 5.51
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 90786e01-62a6-41f0-91e8-52320294c495
+[ONRAMP-reversed] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — want 2.93 DAI
+[2026-02-05T09:33:54.503Z] ---------- ONRAMP (want crypto) ----------
+
+  --- Provider (Fonbnk) — before pricing engine ---
+  rate (from Fonbnk)     12.00
+
+  --- Platform (pricing engine) — final quote ---
+  rate (final)           12.30
+  spread (final - provider)  0.3000
+
+  quoteId      fbfe442b-5a7a-4c43-9837-2a77b2e70d5b
+  expiresAt    2026-02-05T09:34:24.486Z
+  input        166.17 GHS
+  output       13.51 USDC (BASE)
+  avgBuy(inventory)  1.00
+  fees         network 0  platform 4.05  total 4.05
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created b0492501-c7e3-4b92-be8a-ae1d23aeab0d
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=72.91 chain=ETHEREUM output=ETH
+[2026-02-05T09:34:00.206Z] ---------- OFFRAMP ----------
+
+  --- Provider (Fonbnk) — before pricing engine ---
+  rate (from Fonbnk)     11.00
+
+  --- Platform (pricing engine) — final quote ---
+  rate (final)           10.72
+  spread (final - provider)  -0.2800
+
+  quoteId      19901b05-6bab-441c-91ce-1aee82ef16ff
+  expiresAt    2026-02-05T09:34:30.191Z
+  input        16.05 USDC
+  output       172.14 GHS (BASE)
+  avgBuy(inventory)  —
+  fees         network 0  platform 4.41  total 4.41
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 13deaa7d-3f2a-494e-8e24-47ceabc3d8c9
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=70.39 chain=BASE output=ETH
+[OFFRAMP-reversed] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — want 113.95 GHS
+[2026-02-05T09:34:10.603Z] ---------- ONRAMP (want crypto) ----------
+
+  --- Provider (Fonbnk) — before pricing engine ---
+  rate (from Fonbnk)     12.00
+
+  --- Platform (pricing engine) — final quote ---
+  rate (final)           12.30
+  spread (final - provider)  0.3000
+
+  quoteId      2f09f367-a55f-4c46-a290-068d955feb95
+  expiresAt    2026-02-05T09:34:40.593Z
+  input        59.53 GHS
+  output       4.84 USDC (ETHEREUM)
+  avgBuy(inventory)  1.00
+  fees         network 0  platform 1.45  total 1.45
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 1bea6ded-8e0b-49d5-8463-c9f65a3ebaf3
+[2026-02-05T09:34:12.854Z] ---------- OFFRAMP (want fiat) ----------
+
+  --- Provider (Fonbnk) — before pricing engine ---
+  rate (from Fonbnk)     11.00
+
+  --- Platform (pricing engine) — final quote ---
+  rate (final)           10.72
+  spread (final - provider)  -0.2800
+
+  quoteId      c0f62ec5-a3f9-4cd7-8d6f-69f525d44501
+  expiresAt    2026-02-05T09:34:42.839Z
+  input        15.82 USDC
+  output       169.64 GHS (ETHEREUM)
+  avgBuy(inventory)  —
+  fees         network 0  platform 4.35  total 4.35
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 17190f7d-ae3e-4db3-ad1d-b90a4f33717f
+[2026-02-05T09:34:15.100Z] ---------- ONRAMP ----------
+
+  --- Provider (Fonbnk) — before pricing engine ---
+  rate (from Fonbnk)     12.00
+
+  --- Platform (pricing engine) — final quote ---
+  rate (final)           12.30
+  spread (final - provider)  0.3000
+
+  quoteId      80f59e45-c408-429a-aad4-5f9861189071
+  expiresAt    2026-02-05T09:34:45.089Z
+  input        68.78 GHS
+  output       5.59 USDC (ETHEREUM)
+  avgBuy(inventory)  1.00
+  fees         network 0  platform 1.68  total 1.68
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created a6965172-c1b2-4250-af56-29db435cbbc7
+[2026-02-05T09:34:17.350Z] ---------- ONRAMP (want crypto) ----------
+
+  --- Provider (Fonbnk) — before pricing engine ---
+  rate (from Fonbnk)     12.00
+
+  --- Platform (pricing engine) — final quote ---
+  rate (final)           12.30
+  spread (final - provider)  0.3000
+
+  quoteId      81377981-93bf-4cd8-8307-a16b505ebbeb
+  expiresAt    2026-02-05T09:34:47.337Z
+  input        49.45 GHS
+  output       4.02 USDC (ETHEREUM)
+  avgBuy(inventory)  1.00
+  fees         network 0  platform 1.21  total 1.21
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created a3e3f327-a492-462f-bf61-ce088e5dee4c
+[2026-02-05T09:34:19.623Z] ---------- OFFRAMP ----------
+
+  --- Provider (Fonbnk) — before pricing engine ---
+  rate (from Fonbnk)     11.00
+
+  --- Platform (pricing engine) — final quote ---
+  rate (final)           10.72
+  spread (final - provider)  -0.2800
+
+  quoteId      3ac9fad4-982c-4d24-aadf-8862d990b7a3
+  expiresAt    2026-02-05T09:34:49.612Z
+  input        12.24 USDC
+  output       131.27 GHS (BASE)
+  avgBuy(inventory)  —
+  fees         network 0  platform 3.37  total 3.37
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 6898851c-d5e9-42b5-816d-d6d066a04a22
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=110.15 chain=BASE output=DAI
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=43.90 chain=BASE input=DAI
+[2026-02-05T09:34:29.941Z] ---------- OFFRAMP ----------
+
+  --- Provider (Fonbnk) — before pricing engine ---
+  rate (from Fonbnk)     11.00
+
+  --- Platform (pricing engine) — final quote ---
+  rate (final)           10.72
+  spread (final - provider)  -0.2800
+
+  quoteId      360db64d-f462-4a43-ab81-39cfbfd44596
+  expiresAt    2026-02-05T09:34:59.929Z
+  input        35.34 USDC
+  output       379.02 GHS (BASE)
+  avgBuy(inventory)  —
+  fees         network 0  platform 9.72  total 9.72
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 46f2d054-c2be-4c37-b22f-036e0fdc1225
+[OFFRAMP-reversed] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — want 206.59 GHS
+[2026-02-05T09:34:35.628Z] ---------- ONRAMP (want crypto) ----------
+
+  --- Provider (Fonbnk) — before pricing engine ---
+  rate (from Fonbnk)     12.00
+
+  --- Platform (pricing engine) — final quote ---
+  rate (final)           12.30
+  spread (final - provider)  0.3000
+
+  quoteId      540f44eb-e532-4233-bc61-c4599b82ef68
+  expiresAt    2026-02-05T09:35:05.613Z
+  input        74.91 GHS
+  output       6.09 USDC (ETHEREUM)
+  avgBuy(inventory)  1.00
+  fees         network 0  platform 1.83  total 1.83
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 58043e60-8ae9-4ada-a802-44221ffabd76
+[2026-02-05T09:34:37.878Z] ---------- OFFRAMP (want fiat) ----------
+
+  --- Provider (Fonbnk) — before pricing engine ---
+  rate (from Fonbnk)     11.00
+
+  --- Platform (pricing engine) — final quote ---
+  rate (final)           10.72
+  spread (final - provider)  -0.2800
+
+  quoteId      ab4af744-710f-4b2c-96aa-83534c96d060
+  expiresAt    2026-02-05T09:35:07.865Z
+  input        8.05 USDC
+  output       86.35 GHS (ETHEREUM)
+  avgBuy(inventory)  —
+  fees         network 0  platform 2.21  total 2.21
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created bcbace83-4d44-4235-a6c7-359076e63a1b
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=22.22 chain=BASE input=ETH
+[2026-02-05T09:34:44.673Z] ---------- OFFRAMP (want fiat) ----------
+
+  --- Provider (Fonbnk) — before pricing engine ---
+  rate (from Fonbnk)     11.00
+
+  --- Platform (pricing engine) — final quote ---
+  rate (final)           10.72
+  spread (final - provider)  -0.2800
+
+  quoteId      63df701b-caf2-4ade-b572-e69e0c678112
+  expiresAt    2026-02-05T09:35:14.661Z
+  input        31.21 USDC
+  output       334.70 GHS (BASE)
+  avgBuy(inventory)  —
+  fees         network 0  platform 8.58  total 8.58
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created f116468a-e8eb-4c7a-9fac-e33d8cc0cad8
+[summary] Quotes: 12 ok, 8 failed (last 20 rounds)
+
+[ONRAMP-reversed] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — want 1.95 ETH
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=44.24 chain=ETHEREUM input=ETH
+[2026-02-05T09:34:54.918Z] ---------- ONRAMP ----------
+
+  --- Provider (Fonbnk) — before pricing engine ---
+  rate (from Fonbnk)     12.00
+
+  --- Platform (pricing engine) — final quote ---
+  rate (final)           12.30
+  spread (final - provider)  0.3000
+
+  quoteId      749c9e14-493f-4e63-ad9a-6b9047bd0466
+  expiresAt    2026-02-05T09:35:24.906Z
+  input        125.04 GHS
+  output       10.17 USDC (BASE)
+  avgBuy(inventory)  1.00
+  fees         network 0  platform 3.05  total 3.05
+  debug        basePrice 12.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 32e38d92-0f3a-466e-af0e-b09e02da11b8
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=97.52 chain=BASE output=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=93.89 chain=BASE output=DAI
+[OFFRAMP-reversed] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — want 376.27 GHS
+[ONRAMP-reversed] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — want 10.23 ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=48.44 chain=BASE input=DAI
+[2026-02-05T09:35:16.459Z] ---------- OFFRAMP ----------
+
+  --- Provider (Fonbnk) — before pricing engine ---
+  rate (from Fonbnk)     11.00
+
+  --- Platform (pricing engine) — final quote ---
+  rate (final)           10.72
+  spread (final - provider)  -0.2800
+
+  quoteId      fe7b4294-cf65-45db-9000-a6f225101dd6
+  expiresAt    2026-02-05T09:35:46.445Z
+  input        29.09 USDC
+  output       311.99 GHS (ETHEREUM)
+  avgBuy(inventory)  —
+  fees         network 0  platform 8.00  total 8.00
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 691d015c-a8c2-46ae-85a4-5ca31b00eaaa
+[2026-02-05T09:35:18.716Z] ---------- OFFRAMP (want fiat) ----------
+
+  --- Provider (Fonbnk) — before pricing engine ---
+  rate (from Fonbnk)     11.00
+
+  --- Platform (pricing engine) — final quote ---
+  rate (final)           10.72
+  spread (final - provider)  -0.2800
+
+  quoteId      61e7e267-a196-4e91-ae76-12c7a94fc5f0
+  expiresAt    2026-02-05T09:35:48.702Z
+  input        30.45 USDC
+  output       326.61 GHS (BASE)
+  avgBuy(inventory)  —
+  fees         network 0  platform 8.37  total 8.37
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 6257516f-1125-467f-b385-2f6e1b362cd0
+[ONRAMP-reversed] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — want 8.60 ETH
+[2026-02-05T09:35:24.411Z] ---------- OFFRAMP (want fiat) ----------
+
+  --- Provider (Fonbnk) — before pricing engine ---
+  rate (from Fonbnk)     11.00
+
+  --- Platform (pricing engine) — final quote ---
+  rate (final)           10.72
+  spread (final - provider)  -0.2800
+
+  quoteId      1b297d88-105c-45e9-b6a7-40828e7aae5d
+  expiresAt    2026-02-05T09:35:54.401Z
+  input        29.75 USDC
+  output       319.04 GHS (BASE)
+  avgBuy(inventory)  —
+  fees         network 0  platform 8.18  total 8.18
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created ef789e7f-6774-4df3-9124-e079384c72d4
+[OFFRAMP-reversed] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — want 268.47 GHS
+[OFFRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=29.99 chain=ETHEREUM input=ETH
+[OFFRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=24.24 chain=BASE input=ETH
+[ONRAMP] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — inputAmount=130.59 chain=BASE output=DAI
+[OFFRAMP-reversed] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — want 62.69 GHS
+[OFFRAMP-reversed] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — want 104.67 GHS
+[OFFRAMP-reversed] quote failed: 502 The input is invalid (RATE_UNAVAILABLE) — want 124.47 GHS
+[ONRAMP] quote failed: 502 Provider rate unavailable (RATE_UNAVAILABLE) — inputAmount=138.99 chain=ETHEREUM output=ETH
+[summary] Quotes: 4 ok, 16 failed (last 20 rounds)
+
+[2026-02-05T09:35:57.495Z] ---------- OFFRAMP ----------
+
+  --- Provider (Fonbnk) — before pricing engine ---
+  rate (from Fonbnk)     11.00
+
+  --- Platform (pricing engine) — final quote ---
+  rate (final)           10.72
+  spread (final - provider)  -0.2800
+
+  quoteId      874a0a76-c5eb-4d9c-897f-d8902e8dc9e9
+  expiresAt    2026-02-05T09:36:27.486Z
+  input        40.20 USDC
+  output       431.15 GHS (BASE)
+  avgBuy(inventory)  —
+  fees         network 0  platform 11.05  total 11.05
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created ba053616-4978-4c60-9437-42b9203fa252
+
+[Paused. Press r to resume.]
+[2026-02-05T09:35:59.737Z] ---------- OFFRAMP ----------
+
+  --- Provider (Fonbnk) — before pricing engine ---
+  rate (from Fonbnk)     11.00
+
+  --- Platform (pricing engine) — final quote ---
+  rate (final)           10.72
+  spread (final - provider)  -0.2800
+
+  quoteId      8de921b6-d7f3-4f33-8d1b-c8b04fc3aea1
+  expiresAt    2026-02-05T09:36:29.727Z
+  input        30.76 USDC
+  output       329.90 GHS (ETHEREUM)
+  avgBuy(inventory)  —
+  fees         network 0  platform 8.46  total 8.46
+  debug        basePrice 11.00  margin 2.50%  volatility 0.0050  inventoryRisk 0
+  order        created 0448d287-35df-4a77-811d-e92a8b6882a8
+
+[Paused. Press r to resume.]
