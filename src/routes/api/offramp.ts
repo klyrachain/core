@@ -6,11 +6,13 @@
 
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
+import { parseUnits } from "viem";
 import { Decimal } from "@prisma/client/runtime/client";
 import { prisma } from "../../lib/prisma.js";
 import { getLiquidityPoolWallet } from "../../services/liquidity-pool.service.js";
 import { findPoolTokenFromDb } from "../../services/supported-token.service.js";
 import { addInventory } from "../../services/inventory.service.js";
+import { verifyTransactionByHash, transferMatches } from "../../services/transaction-verify.service.js";
 import { successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
 import { requirePermission } from "../../lib/admin-auth.guard.js";
 import { PERMISSION_CONNECT_TRANSACTIONS } from "../../lib/permissions.js";
@@ -18,6 +20,7 @@ import { PERMISSION_CONNECT_TRANSACTIONS } from "../../lib/permissions.js";
 const CHAIN_NAME_TO_ID: Record<string, number> = {
   ETHEREUM: 1,
   BASE: 8453,
+  "BASE SEPOLIA": 84532,
   BNB: 56,
   POLYGON: 137,
   ARBITRUM: 42161,
@@ -60,9 +63,15 @@ export async function offrampApiRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const pool = await getLiquidityPoolWallet(tx.f_chain);
-      if (!pool) return errorEnvelope(reply, "No liquidity pool for this chain", 503);
+      if (!pool) {
+        return reply.status(503).send({
+          success: false,
+          error: `No liquidity pool wallet for chain "${tx.f_chain}". Add a Wallet with isLiquidityPool=true and supportedChains including "${tx.f_chain}" (e.g. BASE or BASE SEPOLIA). The pool is the Wallet that receives crypto, not an InventoryAsset.`,
+        });
+      }
 
-      const chainId = CHAIN_NAME_TO_ID[tx.f_chain?.toUpperCase() ?? ""] ?? 8453;
+      const chainKey = tx.f_chain?.toUpperCase().replace(/-/g, " ") ?? "";
+      const chainId = CHAIN_NAME_TO_ID[chainKey] ?? CHAIN_NAME_TO_ID[tx.f_chain?.toUpperCase() ?? ""] ?? 8453;
       const poolToken = await findPoolTokenFromDb(chainId, tx.f_token);
       if (!poolToken) return errorEnvelope(reply, `Unsupported token ${tx.f_token}`, 400);
 
@@ -101,6 +110,7 @@ export async function offrampApiRoutes(app: FastifyInstance): Promise<void> {
         id: true,
         type: true,
         status: true,
+        createdAt: true,
         f_chain: true,
         f_token: true,
         f_amount: true,
@@ -114,14 +124,44 @@ export async function offrampApiRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const pool = await getLiquidityPoolWallet(tx.f_chain);
-    if (!pool) return errorEnvelope(reply, "No liquidity pool for this chain", 503);
+    if (!pool) {
+      return reply.status(503).send({
+        success: false,
+        error: `No liquidity pool wallet for chain "${tx.f_chain}". Add a Wallet with isLiquidityPool=true and supportedChains including "${tx.f_chain}" (e.g. BASE or BASE SEPOLIA). The pool is the Wallet that receives crypto, not an InventoryAsset.`,
+      });
+    }
 
-    const chainId = CHAIN_NAME_TO_ID[tx.f_chain?.toUpperCase() ?? ""] ?? 8453;
+    const chainId = CHAIN_NAME_TO_ID[tx.f_chain?.toUpperCase().replace(/-/g, " ") ?? ""] ?? CHAIN_NAME_TO_ID[tx.f_chain?.toUpperCase() ?? ""] ?? 8453;
     const poolToken = await findPoolTokenFromDb(chainId, tx.f_token);
     if (!poolToken) return errorEnvelope(reply, `Unsupported token ${tx.f_token}`, 400);
 
-    // TODO: verify on-chain that tx_hash sent tx.f_amount of tx.f_token to pool.address; if not, return 400
-    // For now we trust the client and credit inventory with USD cost basis
+    const verify = await verifyTransactionByHash(chainId, tx_hash);
+    if (!verify.ok) {
+      return reply.status(400).send({ success: false, error: `On-chain verification failed: ${verify.error}` });
+    }
+    if (verify.status !== "success") {
+      return reply.status(400).send({ success: false, error: "Transaction reverted on-chain" });
+    }
+    const decimals = poolToken.decimals ?? 18;
+    const expectedAmountWei = parseUnits(tx.f_amount.toString(), decimals);
+    if (!transferMatches(verify.transfers, poolToken.address, pool.address, expectedAmountWei)) {
+      return reply.status(400).send({
+        success: false,
+        error: `No ERC20 Transfer to pool ${pool.address} for token ${poolToken.address} with amount >= ${tx.f_amount} (${expectedAmountWei} raw). Check tx hash and that you sent to the calldata toAddress.`,
+      });
+    }
+
+    // Reject tx mined before order creation (replay protection: only tx created after calldata/order is valid).
+    const orderCreatedAtSeconds = Math.floor(tx.createdAt.getTime() / 1000);
+    const CLOCK_SKEW_SECONDS = 60;
+    if (verify.blockTimestamp < orderCreatedAtSeconds - CLOCK_SKEW_SECONDS) {
+      return reply.status(400).send({
+        success: false,
+        error:
+          "Transaction was mined before this order was created. Only transactions executed after receiving the calldata for this order are accepted (replay protection).",
+      });
+    }
+
     const amount = new Decimal(tx.f_amount);
     const costPerTokenUsd = tx.f_tokenPriceUsd != null && Number(tx.f_tokenPriceUsd) > 0 ? Number(tx.f_tokenPriceUsd) : 1;
 

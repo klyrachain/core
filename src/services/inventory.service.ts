@@ -1,6 +1,6 @@
 import { Decimal } from "@prisma/client/runtime/client";
 import { prisma } from "../lib/prisma.js";
-import { setBalance, getBalance, type BalanceEntry } from "../lib/redis.js";
+import { setBalance, getBalance, BALANCE_SYNC_TTL_SECONDS, type BalanceEntry } from "../lib/redis.js";
 import { recordBalanceSnapshot } from "./transaction-balance-snapshot.service.js";
 
 const CHAIN_NAME_TO_ID: Record<string, number> = {
@@ -268,7 +268,7 @@ export async function syncAllInventoryBalancesToRedis(): Promise<{ synced: numbe
       status: "synced",
       updatedAt: new Date().toISOString(),
     };
-    await setBalance(chain, symbol, entry);
+    await setBalance(chain, symbol, entry, BALANCE_SYNC_TTL_SECONDS);
   }
   return { synced: byChainSymbol.size };
 }

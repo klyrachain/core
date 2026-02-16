@@ -54,6 +54,15 @@ const envSchema = z.object({
   ADMIN_ORIGIN: z.string().url().optional(),
   /** Comma-separated allowed origins for WebAuthn (admin dashboard URL(s), e.g. http://localhost:3000,https://admin.example.com). */
   ADMIN_ALLOWED_ORIGINS: z.string().optional(),
+
+  /** When set (e.g. "1" or "true"), onramp send uses Base Sepolia + TESTNET_SEND_PRIVATE_KEY instead of mainnet. No mainnet funds at risk. */
+  ONRAMP_TESTNET_SEND: z.string().optional(),
+  /** Private key (64 hex chars, with or without 0x) for the wallet that holds Base Sepolia USDC. Used only when ONRAMP_TESTNET_SEND is set. */
+  TESTNET_SEND_PRIVATE_KEY: z.string().min(1).optional(),
+  /** RPC URL for Base mainnet (chainId 8453). Used for transaction verification. */
+  BASE_RPC_URL: z.string().url().optional(),
+  /** RPC URL for Base Sepolia (chainId 84532). Defaults to https://sepolia.base.org when not set. */
+  BASE_SEPOLIA_RPC_URL: z.string().url().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

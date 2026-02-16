@@ -7,6 +7,7 @@ import { triggerTransactionStatusChange } from "../services/pusher.service.js";
 import { computeTransactionFee, getFeeForOrder } from "../services/fee.service.js";
 import { feeInUsdFromAmount } from "../services/transaction-price.service.js";
 import { sendToAdminDashboard } from "../services/admin-dashboard.service.js";
+import { executeOnrampSend } from "../services/onramp-execution.service.js";
 import type { TransactionStatus } from "../../prisma/generated/prisma/client.js";
 
 function toNum(v: { toString(): string } | number | null | undefined): number {
@@ -37,9 +38,11 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
     toNum(tx.exchangeRate) > 0 ? toNum(tx.exchangeRate) : Number(tx.t_amount) / Number(tx.f_amount) || 0;
   const sellingPriceFromPerTo = exchangeRateNum > 0 ? 1 / exchangeRateNum : 0;
 
+  const isOnrampBuy = tx.type === "BUY" && (fChain === "MOMO" || fChain === "BANK");
   try {
     // BUY: user gives f_token on f_chain, receives t_token on t_chain. We deduct t_token (give to user), add f_token (receive).
-    if (tx.type === "BUY") {
+    // For onramp (fiat -> crypto), skip t_token deduct here; executeOnrampSend will handle deduct + send (or testnet send only).
+    if (tx.type === "BUY" && !isOnrampBuy) {
       const tAsset = await prisma.inventoryAsset.findFirst({
         where: { symbol: tx.t_token, chain: tChain },
       });
@@ -208,6 +211,14 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
       status: "COMPLETED" as TransactionStatus,
       type: tx.type,
     });
+
+    if (tx.type === "BUY") {
+      setImmediate(() => {
+        executeOnrampSend(transactionId).then((r) => {
+          if (!r.ok) console.warn("[onramp] Send failed (poll path):", r.error, "code:", r.code);
+        }).catch((err) => console.error("[onramp] Send error (poll path):", err));
+      });
+    }
   } catch (err) {
     await prisma.transaction.update({
       where: { id: transactionId },

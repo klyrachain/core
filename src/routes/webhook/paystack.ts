@@ -103,8 +103,14 @@ export async function paystackWebhookRoutes(app: FastifyInstance): Promise<void>
               if (newStatus === "COMPLETED" && tx.type === "BUY") {
                 setImmediate(() => {
                   executeOnrampSend(ourTransactionId).then((r) => {
-                    if (!r.ok) req.log.warn({ err: r.error, code: r.code, transactionId: ourTransactionId }, "Onramp send failed");
-                  }).catch((err) => req.log.error({ err, transactionId: ourTransactionId }, "Onramp send error"));
+                    if (!r.ok) {
+                      req.log.warn({ err: r.error, code: r.code, transactionId: ourTransactionId }, "Onramp send failed");
+                      console.warn("[onramp] Send failed:", r.error, "code:", r.code);
+                    }
+                  }).catch((err) => {
+                    req.log.error({ err, transactionId: ourTransactionId }, "Onramp send error");
+                    console.error("[onramp] Send error:", err);
+                  });
                 });
               }
             }

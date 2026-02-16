@@ -60,7 +60,9 @@ async function main() {
   ]);
 
   console.log("Seeding wallets...");
-  const [walletEth, walletBase] = await Promise.all([
+  // Single platform receiving wallet for offramp (BASE + BASE SEPOLIA). Use this address to receive crypto.
+  const PLATFORM_RECEIVING_ADDRESS = "0x9f08eFb0767Bf180B8b8094FaaEF9DAB5a0755e1";
+  const [walletEth, walletBase, walletPool] = await Promise.all([
     prisma.wallet.upsert({
       where: { address: "0xEeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee1" },
       create: {
@@ -68,8 +70,10 @@ async function main() {
         encryptedKey,
         supportedChains: ["ETHEREUM", "BASE"],
         supportedTokens: ["ETH", "USDC"],
+        isLiquidityPool: false,
+        collectFees: false,
       },
-      update: {},
+      update: { isLiquidityPool: false },
     }),
     prisma.wallet.upsert({
       where: { address: "0xEeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee2" },
@@ -80,6 +84,18 @@ async function main() {
         supportedTokens: ["USDC", "DAI"],
       },
       update: {},
+    }),
+    prisma.wallet.upsert({
+      where: { address: PLATFORM_RECEIVING_ADDRESS },
+      create: {
+        address: PLATFORM_RECEIVING_ADDRESS,
+        encryptedKey,
+        supportedChains: ["BASE", "BASE SEPOLIA"],
+        supportedTokens: ["USDC", "ETH"],
+        isLiquidityPool: true,
+        collectFees: false,
+      },
+      update: { isLiquidityPool: true, supportedChains: ["BASE", "BASE SEPOLIA"] },
     }),
   ]);
 
@@ -370,16 +386,23 @@ async function main() {
 
   console.log("Seeding supported chains and tokens...");
   const CHAIN_ID_BASE = 8453;
+  const CHAIN_ID_BASE_SEPOLIA = 84532;
   const CHAIN_ID_ETHEREUM = 1;
   const CHAIN_ID_MOMO = 0; // fiat/offchain (onramp, offramp)
   const CHAIN_ID_BANK = 2;
   const NATIVE = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
   const FIAT_SENTINEL = "0x0000000000000000000000000000000000000000";
+  const BASE_SEPOLIA_USDC = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
 
   await prisma.chain.upsert({
     where: { chainId: CHAIN_ID_BASE },
     create: { chainId: CHAIN_ID_BASE, name: "Base", iconUri: null },
     update: { name: "Base", iconUri: undefined },
+  });
+  await prisma.chain.upsert({
+    where: { chainId: CHAIN_ID_BASE_SEPOLIA },
+    create: { chainId: CHAIN_ID_BASE_SEPOLIA, name: "Base Sepolia", iconUri: null },
+    update: { name: "Base Sepolia", iconUri: undefined },
   });
   await prisma.chain.upsert({
     where: { chainId: CHAIN_ID_ETHEREUM },
@@ -401,6 +424,8 @@ async function main() {
     { chainId: CHAIN_ID_BASE, tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", symbol: "USDC", decimals: 6, name: "USD Coin", logoUri: null, fonbnkCode: "BASE_USDC" },
     { chainId: CHAIN_ID_BASE, tokenAddress: NATIVE, symbol: "ETH", decimals: 18, name: "Ether", logoUri: null, fonbnkCode: "BASE_ETH" },
     { chainId: CHAIN_ID_BASE, tokenAddress: "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb", symbol: "DAI", decimals: 18, name: "Dai Stablecoin", logoUri: null, fonbnkCode: null },
+    { chainId: CHAIN_ID_BASE_SEPOLIA, tokenAddress: BASE_SEPOLIA_USDC, symbol: "USDC", decimals: 6, name: "USD Coin (Base Sepolia)", logoUri: null, fonbnkCode: "BASE_SEPOLIA_USDC" },
+    { chainId: CHAIN_ID_BASE_SEPOLIA, tokenAddress: NATIVE, symbol: "ETH", decimals: 18, name: "Ether", logoUri: null, fonbnkCode: "BASE_SEPOLIA_ETH" },
     { chainId: CHAIN_ID_ETHEREUM, tokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", symbol: "USDC", decimals: 6, name: "USD Coin", logoUri: null, fonbnkCode: "ETHEREUM_USDC" },
     { chainId: CHAIN_ID_ETHEREUM, tokenAddress: NATIVE, symbol: "ETH", decimals: 18, name: "Ether", logoUri: null, fonbnkCode: "ETHEREUM_NATIVE" },
     { chainId: CHAIN_ID_MOMO, tokenAddress: FIAT_SENTINEL, symbol: "GHS", decimals: 2, name: "Ghana Cedi", logoUri: null, fonbnkCode: "MOMO_GHS" },

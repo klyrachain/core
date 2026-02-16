@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import {
   parsePagination,
@@ -9,6 +10,16 @@ import {
 } from "../../lib/api-helpers.js";
 import { requirePermission } from "../../lib/admin-auth.guard.js";
 import { PERMISSION_CONNECT_TRANSACTIONS } from "../../lib/permissions.js";
+import { verifyTransactionByHash } from "../../services/transaction-verify.service.js";
+
+const CHAIN_NAME_TO_ID: Record<string, number> = {
+  ETHEREUM: 1,
+  BASE: 8453,
+  "BASE SEPOLIA": 84532,
+  BNB: 56,
+  POLYGON: 137,
+  ARBITRUM: 42161,
+};
 
 export async function transactionsApiRoutes(app: FastifyInstance): Promise<void> {
   app.get(
@@ -59,6 +70,63 @@ export async function transactionsApiRoutes(app: FastifyInstance): Promise<void>
         req.log.error({ err }, "GET /api/transactions");
         return errorEnvelope(reply, "Something went wrong.", 500);
       }
+    }
+  );
+
+  /**
+   * GET /api/transactions/verify-by-hash?chain=BASE&tx_hash=0x... (or chainId=84532)
+   * Returns full on-chain tx data + receipt + parsed ERC20 Transfer events.
+   * Use to verify that a tx sent expected amount to an address (e.g. offramp: user → pool).
+   */
+  app.get(
+    "/api/transactions/verify-by-hash",
+    async (
+      req: FastifyRequest<{
+        Querystring: { chain?: string; chainId?: string; tx_hash: string };
+      }>,
+      reply
+    ) => {
+      if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS, { allowMerchant: true })) return;
+      const schema = z.object({
+        tx_hash: z.string().min(1),
+        chain: z.string().optional(),
+        chainId: z.coerce.number().optional(),
+      });
+      const parse = schema.safeParse({
+        tx_hash: req.query.tx_hash?.trim(),
+        chain: req.query.chain?.trim(),
+        chainId: req.query.chainId != null ? Number(req.query.chainId) : undefined,
+      });
+      if (!parse.success) {
+        return reply.status(400).send({ success: false, error: "tx_hash required; chain or chainId required", details: parse.error.flatten() });
+      }
+      const { tx_hash, chain, chainId } = parse.data;
+      let resolvedChainId: number | undefined = chainId;
+      if (resolvedChainId == null && chain) {
+        const name = chain.toUpperCase().replace(/-/g, " ");
+        resolvedChainId = CHAIN_NAME_TO_ID[name] ?? CHAIN_NAME_TO_ID[chain.toUpperCase()];
+      }
+      if (resolvedChainId == null) {
+        return reply.status(400).send({
+          success: false,
+          error: "Provide chain (e.g. BASE, BASE SEPOLIA) or chainId (e.g. 8453, 84532)",
+        });
+      }
+      const result = await verifyTransactionByHash(resolvedChainId, tx_hash);
+      if (!result.ok) {
+        return reply.status(400).send({ success: false, error: result.error });
+      }
+      return successEnvelope(reply, {
+        chainId: result.chainId,
+        hash: result.hash,
+        blockNumber: String(result.blockNumber),
+        blockTimestamp: result.blockTimestamp,
+        status: result.status,
+        from: result.from,
+        to: result.to,
+        transfers: result.transfers,
+        receipt: result.receipt,
+      });
     }
   );
 

@@ -1,5 +1,7 @@
 /**
  * Paystack payouts (offramp): request payout link after confirming crypto tx, then execute transfer.
+ * Test vs live: Paystack uses the same API; test/live is determined by PAYSTACK_SECRET_KEY (sk_test_* vs sk_live_*).
+ * No separate test payout endpoint — use test key for sandbox, live key when you fund live balance.
  */
 
 import { randomBytes } from "node:crypto";
@@ -323,11 +325,17 @@ export async function paystackPayoutsApiRoutes(app: FastifyInstance): Promise<vo
       }
 
       const type = recipient_type === "nuban" ? "nuban" : "mobile_money";
+      // Ghana (GHS) mobile money: Paystack expects local format (0XXXXXXXXX). Strip country code 233 if present.
+      let accountForPaystack = account_number.trim();
+      if (currency === "GHS" && type === "mobile_money" && accountForPaystack.startsWith("233")) {
+        const local = accountForPaystack.slice(3).replace(/^0+/, "") || "0";
+        accountForPaystack = local.length === 9 ? `0${local}` : local.startsWith("0") ? local : `0${local}`;
+      }
       try {
         const { recipient_code } = await createTransferRecipient({
           type,
           name,
-          account_number,
+          account_number: accountForPaystack,
           bank_code: bank_code ?? undefined,
           currency,
         });
@@ -391,13 +399,22 @@ export async function paystackPayoutsApiRoutes(app: FastifyInstance): Promise<vo
             : "Transfer queued; use GET /api/paystack/payouts/verify/:reference to check status or wait for webhook.",
         });
       } catch (err) {
-        req.log.error({ err, code }, "Paystack payout execute");
+        const paystackResponse =
+          err && typeof err === "object" && "paystackResponse" in err
+            ? (err as { paystackResponse: unknown }).paystackResponse
+            : undefined;
+        req.log.error(
+          { err, code, paystackResponse, body: { recipient_type, account_number: `${account_number?.slice(0, 4)}***`, currency, bank_code } },
+          "Paystack payout execute"
+        );
         await prisma.payoutRequest.update({
           where: { id: payout.id },
           data: { status: "failed" },
         }).catch(() => { });
         const msg = err instanceof Error ? err.message : "Payout execution failed.";
-        return errorEnvelope(reply, msg, 502);
+        const payload: { success: false; error: string; paystackResponse?: unknown } = { success: false, error: msg };
+        if (paystackResponse !== undefined) payload.paystackResponse = paystackResponse;
+        return reply.status(502).send(payload);
       }
     }
   );

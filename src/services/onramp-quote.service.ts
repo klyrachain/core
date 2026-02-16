@@ -54,6 +54,11 @@ export async function getOnrampQuote(
 
   const pool = await findPoolTokenFromDb(chain_id, token);
   const useDirectFonbnk = pool != null && useDirectFonbnkForPoolToken(pool);
+  // For swap path we need the requested token's contract address (getBestQuotes expects addresses, not symbols).
+  if (!useDirectFonbnk && !pool) {
+    return { ok: false, error: "Token not supported for this chain; add it in SupportedToken to get swap-based quotes.", status: 400 };
+  }
+  const requestedTokenAddress = pool?.address ?? token;
   if (useDirectFonbnk && pool) {
     // Sell + amount_in fiat: "I want X fiat, how much crypto to sell?" — Fonbnk only accepts crypto amount,
     // so we get a rate quote (nominal 1 unit) and compute counterpart.
@@ -128,7 +133,7 @@ export async function getOnrampQuote(
       const estimatePoolWei = humanToWei(1000, poolDecimals);
       const swapEstimate = await getBestQuotes({
         from_token: intermediate.address,
-        to_token: token,
+        to_token: requestedTokenAddress,
         amount: estimatePoolWei,
         from_chain: intermediate.chainId,
         to_chain: chain_id,
@@ -143,7 +148,7 @@ export async function getOnrampQuote(
         toAmt > 0n ? (BigInt(poolAmountWei) * fromAmt) / toAmt : 0n;
       const neededRequestedStr = neededRequestedWei > 0n ? neededRequestedWei.toString() : "1";
       const swapResult = await getBestQuotes({
-        from_token: token,
+        from_token: requestedTokenAddress,
         to_token: intermediate.address,
         amount: neededRequestedStr,
         from_chain: chain_id,
@@ -179,7 +184,7 @@ export async function getOnrampQuote(
     }
     const swapResult = await getBestQuotes({
       from_token: intermediate.address,
-      to_token: token,
+      to_token: requestedTokenAddress,
       amount: poolAmountWei,
       from_chain: intermediate.chainId,
       to_chain: chain_id,
@@ -217,7 +222,7 @@ export async function getOnrampQuote(
   const requestedWei = humanToWei(amount, token_decimals);
   if (isSell) {
     const swapResult = await getBestQuotes({
-      from_token: token,
+      from_token: requestedTokenAddress,
       to_token: intermediate.address,
       amount: requestedWei,
       from_chain: chain_id,
@@ -265,7 +270,7 @@ export async function getOnrampQuote(
   const estimatePoolWei = humanToWei(1000, poolDecimals);
   const swapResult = await getBestQuotes({
     from_token: intermediate.address,
-    to_token: token,
+    to_token: requestedTokenAddress,
     amount: estimatePoolWei,
     from_chain: intermediate.chainId,
     to_chain: chain_id,
@@ -285,7 +290,7 @@ export async function getOnrampQuote(
   const neededFromWeiStr = neededFromWei > 0n ? neededFromWei.toString() : "1";
   const swapResult2 = await getBestQuotes({
     from_token: intermediate.address,
-    to_token: token,
+    to_token: requestedTokenAddress,
     amount: neededFromWeiStr,
     from_chain: intermediate.chainId,
     to_chain: chain_id,

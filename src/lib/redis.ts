@@ -126,15 +126,19 @@ export async function getBalance(chain: string, token: string): Promise<BalanceE
   return raw as unknown as BalanceEntry;
 }
 
+/** TTL for balance keys when doing a full sync from DB (so validation sees them). */
+export const BALANCE_SYNC_TTL_SECONDS = 3600; // 1 hour
+
 export async function setBalance(
   chain: string,
   token: string,
-  entry: BalanceEntry
+  entry: BalanceEntry,
+  ttlSeconds: number = BALANCE_TTL_SECONDS
 ): Promise<void> {
   const r = getRedis();
   const key = balanceKey(chain, token);
   await r.hset(key, entry as unknown as Record<string, string>);
-  await r.expire(key, BALANCE_TTL_SECONDS);
+  await r.expire(key, ttlSeconds);
 }
 
 export type BalanceKeyEntry = BalanceEntry & { chain: string; token: string };

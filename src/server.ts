@@ -34,6 +34,7 @@ import { paystackPayoutsApiRoutes } from "./routes/api/paystack-payouts.js";
 import { paystackTransactionsApiRoutes } from "./routes/api/paystack-transactions.js";
 import { paystackTransfersApiRoutes } from "./routes/api/paystack-transfers.js";
 import { offrampApiRoutes } from "./routes/api/offramp.js";
+import { testApiRoutes } from "./routes/api/test.js";
 import { v1QuotesRoutes } from "./routes/api/v1/quotes.js";
 import { adminAuthRoutes } from "./routes/api/admin-auth.js";
 import { paystackWebhookRoutes } from "./routes/webhook/paystack.js";
@@ -122,6 +123,7 @@ await app.register(paystackPayoutsApiRoutes, { prefix: "" });
 await app.register(paystackTransactionsApiRoutes, { prefix: "" });
 await app.register(paystackTransfersApiRoutes, { prefix: "" });
 await app.register(offrampApiRoutes, { prefix: "" });
+await app.register(testApiRoutes, { prefix: "" });
 await app.register(paystackWebhookRoutes, { prefix: "" });
 
 const pollWorker = createPollWorker(processPollJob);

@@ -35,6 +35,8 @@ async function paystackGet<T>(path: string, query?: Record<string, string>): Pro
   return data as T;
 }
 
+export type PaystackError = Error & { paystackResponse?: unknown };
+
 async function paystackPost<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const key = getSecretKey();
   if (!key) throw new Error("PAYSTACK_SECRET_KEY is not configured");
@@ -46,10 +48,12 @@ async function paystackPost<T>(path: string, body: Record<string, unknown>): Pro
     },
     body: JSON.stringify(body),
   });
-  const data = (await res.json()) as { status?: boolean; message?: string; data?: unknown };
+  const data = (await res.json()) as { status?: boolean; message?: string; data?: unknown; errors?: unknown };
   if (!res.ok || data.status === false) {
     const msg = data.message ?? `Paystack API error: ${res.status}`;
-    throw new Error(msg);
+    const err = new Error(msg) as PaystackError;
+    err.paystackResponse = { status: data.status, message: data.message, data: data.data, errors: data.errors };
+    throw err;
   }
   return data as T;
 }

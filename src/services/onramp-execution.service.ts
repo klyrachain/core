@@ -1,14 +1,18 @@
 /**
  * Execute onramp: after Paystack charge.success, send crypto from liquidity pool to user.
  * Records balance before/after for audit; deducts inventory on success.
+ *
+ * When ONRAMP_TESTNET_SEND and TESTNET_SEND_PRIVATE_KEY are set and t_chain is BASE,
+ * sends Base Sepolia USDC instead (no mainnet funds at risk; no inventory deduction).
  */
 
 import { Decimal } from "@prisma/client/runtime/client";
 import { prisma } from "../lib/prisma.js";
+import { getEnv } from "../config/env.js";
 import { getLiquidityPoolWallet } from "./liquidity-pool.service.js";
 import { findPoolTokenFromDb } from "./supported-token.service.js";
 import { deductInventory } from "./inventory.service.js";
-import { sendFromLiquidityPool } from "./crypto-send.service.js";
+import { sendFromLiquidityPool, sendTestnetBaseSepoliaUsdc } from "./crypto-send.service.js";
 
 const CHAIN_NAME_TO_ID: Record<string, number> = {
   ETHEREUM: 1,
@@ -49,6 +53,31 @@ export async function executeOnrampSend(transactionId: string): Promise<ExecuteO
   const toAddress = (tx.toIdentifier ?? "").trim();
   if (!toAddress || !toAddress.startsWith("0x")) {
     return { ok: false, error: "Missing or invalid toIdentifier (wallet address)", code: "INVALID_TO" };
+  }
+
+  const env = getEnv();
+  const testnetSendEnabled = (v: string | undefined) =>
+    typeof v === "string" && v.trim() !== "" && v.trim().toLowerCase() !== "0" && v.trim().toLowerCase() !== "false";
+  const useTestnetSend =
+    testnetSendEnabled(env.ONRAMP_TESTNET_SEND) &&
+    !!env.TESTNET_SEND_PRIVATE_KEY?.trim() &&
+    (tx.t_chain?.toUpperCase() === "BASE") &&
+    (tx.t_token?.toUpperCase() === "USDC");
+
+  if (useTestnetSend) {
+    const amountStr = tx.t_amount.toString();
+    console.warn(`[onramp] Testnet send: Base Sepolia USDC ${amountStr} → ${toAddress} (tx ${transactionId})`);
+    const sendResult = await sendTestnetBaseSepoliaUsdc(toAddress, amountStr, transactionId);
+    if (!sendResult.ok) {
+      console.warn(`[onramp] Testnet send failed:`, sendResult.error);
+      return { ok: false, error: sendResult.error, code: "SEND_FAILED" };
+    }
+    await prisma.transaction.update({
+      where: { id: transactionId },
+      data: { cryptoSendTxHash: sendResult.txHash },
+    });
+    console.warn(`[onramp] Testnet send success: txHash=${sendResult.txHash}`);
+    return { ok: true, txHash: sendResult.txHash };
   }
 
   const poolWallet = await getLiquidityPoolWallet(tx.t_chain);
