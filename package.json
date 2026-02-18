@@ -19,8 +19,11 @@
     "test:ci": "pnpm db:generate && vitest run",
     "test:live": "tsx scripts/test-live.ts",
     "test:live:onramp-offramp": "tsx scripts/test-live-onramp-offramp.ts",
+    "test:live:requests-payouts": "tsx scripts/test-live-requests-payouts.ts",
     "e2e:cli": "tsx scripts/e2e-cli.ts",
-    "key:generate": "tsx scripts/generate-backend-key.ts"
+    "e2e:cli:requests-claims": "tsx scripts/e2e-cli-requests-claims.ts",
+    "key:generate": "tsx scripts/generate-backend-key.ts",
+    "sent:push-templates": "tsx scripts/push-sent-templates.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",
@@ -31,9 +34,10 @@
     "fastify": "^5.0.0",
     "ioredis": "^5.4.1",
     "otplib": "^13.2.1",
-"pusher": "^5.2.0",
-  "viem": "^2.21.0",
-  "zod": "^3.23.8"
+    "pusher": "^5.2.0",
+    "resend": "^6.9.2",
+    "viem": "^2.21.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@prisma/client": "^7.4.0",

@@ -1,0 +1,28 @@
+{
+  "displayName": "Klyra Claim Notification",
+  "category": "UTILITY",
+  "language": "en_US",
+  "submitForReview": false,
+  "definition": {
+    "header": null,
+    "body": {
+      "multiChannel": {
+        "type": null,
+        "template": "You have {{1:variable}} {{2:variable}} waiting to claim. Claim code: {{3:variable}}. Your verification code (OTP): {{4:variable}}. Claim your funds here (OTP valid 10 min): {{5:variable}}",
+        "variables": [
+          { "id": 1, "name": "amount", "type": "variable", "props": { "variableType": "text", "sample": "25", "url": null, "shortUrl": null, "alt": null, "mediaType": null } },
+          { "id": 2, "name": "currency", "type": "variable", "props": { "variableType": "text", "sample": "USDC", "url": null, "shortUrl": null, "alt": null, "mediaType": null } },
+          { "id": 3, "name": "claimCode", "type": "variable", "props": { "variableType": "text", "sample": "A1B2C3", "url": null, "shortUrl": null, "alt": null, "mediaType": null } },
+          { "id": 4, "name": "otp", "type": "variable", "props": { "variableType": "text", "sample": "847291", "url": null, "shortUrl": null, "alt": null, "mediaType": null } },
+          { "id": 5, "name": "link", "type": "variable", "props": { "variableType": "text", "sample": "https://app.klyra.com/claim/A1B2C3", "url": null, "shortUrl": null, "alt": null, "mediaType": null } }
+        ]
+      },
+      "sms": null,
+      "whatsapp": null
+    },
+    "footer": null,
+    "buttons": null,
+    "definitionVersion": "1.0",
+    "authenticationConfig": null
+  }
+}

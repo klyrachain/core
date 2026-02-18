@@ -8,6 +8,7 @@ import { computeTransactionFee, getFeeForOrder } from "../services/fee.service.j
 import { feeInUsdFromAmount } from "../services/transaction-price.service.js";
 import { sendToAdminDashboard } from "../services/admin-dashboard.service.js";
 import { executeOnrampSend } from "../services/onramp-execution.service.js";
+import { onRequestPaymentConfirmed } from "../services/request-claim-notify.service.js";
 import type { TransactionStatus } from "../../prisma/generated/prisma/client.js";
 
 function toNum(v: { toString(): string } | number | null | undefined): number {
@@ -217,6 +218,13 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
         executeOnrampSend(transactionId).then((r) => {
           if (!r.ok) console.warn("[onramp] Send failed (poll path):", r.error, "code:", r.code);
         }).catch((err) => console.error("[onramp] Send error (poll path):", err));
+      });
+    }
+    if (tx.type === "REQUEST") {
+      setImmediate(() => {
+        onRequestPaymentConfirmed({ transactionId }).then((r) => {
+          if (!r.ok) console.warn("[request] Claim notify failed (poll path):", r.error);
+        }).catch((err) => console.error("[request] Claim notify error (poll path):", err));
       });
     }
   } catch (err) {

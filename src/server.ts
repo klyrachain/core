@@ -24,6 +24,8 @@ import { platformApiRoutes } from "./routes/api/platform.js";
 import { settingsApiRoutes } from "./routes/api/settings.js";
 import { providersApiRoutes } from "./routes/api/providers.js";
 import { validationApiRoutes } from "./routes/api/validation.js";
+import { notificationApiRoutes } from "./routes/api/notification.js";
+import { adminSentTemplatesRoutes } from "./routes/api/admin-sent-templates.js";
 import { ratesApiRoutes } from "./routes/api/rates.js";
 import { cryptoTransactionsApiRoutes } from "./routes/api/crypto-transactions.js";
 import { logsApiRoutes } from "./routes/api/logs.js";
@@ -65,12 +67,14 @@ app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, 
 app.addHook("preValidation", onRequestLog);
 app.addHook("onResponse", onResponseLog);
 
-// Auth: only /api/health, /api/ready, /api/auth, and /webhook/paystack are public. Paystack webhook is protected by x-paystack-signature (HMAC); no API key from Paystack.
+// Auth: only /api/health, /api/ready, /api/auth, /api/requests/by-link/:linkId (GET), and /webhook/paystack are public.
 app.addHook("preHandler", async (request, reply) => {
   const path = (request.url ?? "").split("?")[0];
+  const method = (request.method ?? "").toUpperCase();
   if (path === "/api/health" || path === "/api/ready") return;
   if (path.startsWith("/api/auth")) return;
   if (path === "/webhook/paystack") return; // Paystack does not send x-api-key; we verify x-paystack-signature instead
+  if (method === "GET" && path.startsWith("/api/requests/by-link/")) return; // Public pay link for request
   await resolveApiKeyIfPresent(request);
   await resolveAdminSessionIfPresent(request);
   requireApiKeyOrSession(request, reply);
@@ -113,6 +117,8 @@ await app.register(platformApiRoutes, { prefix: "" });
 await app.register(settingsApiRoutes, { prefix: "" });
 await app.register(providersApiRoutes, { prefix: "" });
 await app.register(validationApiRoutes, { prefix: "" });
+await app.register(notificationApiRoutes, { prefix: "" });
+await app.register(adminSentTemplatesRoutes, { prefix: "" });
 await app.register(ratesApiRoutes, { prefix: "" });
 await app.register(cryptoTransactionsApiRoutes, { prefix: "" });
 await app.register(logsApiRoutes, { prefix: "" });

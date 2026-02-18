@@ -63,6 +63,23 @@ const envSchema = z.object({
   BASE_RPC_URL: z.string().url().optional(),
   /** RPC URL for Base Sepolia (chainId 84532). Defaults to https://sepolia.base.org when not set. */
   BASE_SEPOLIA_RPC_URL: z.string().url().optional(),
+
+  /** Resend: API key for transactional email. Optional; if missing, email service no-ops or logs. */
+  RESEND_API_KEY: z.string().min(1).optional(),
+  /** Resend: from address (e.g. "Klyra <payments@yourdomain.com>"). Defaults to onboarding@resend.dev when unset. */
+  RESEND_FROM_EMAIL: z.string().min(1).optional(),
+
+  /** Sent.dm: API key for SMS/WhatsApp. Optional; if missing, messaging service no-ops. */
+  SENT_DM_API_KEY: z.string().min(1).optional(),
+  /** Sent.dm: sender/customer identifier (x-sender-id header). */
+  SENT_DM_SENDER_ID: z.string().min(1).optional(),
+  /** Sent.dm: template UUID for payment-request message (SMS/WhatsApp). Variables: link, amount, currency, receiveSummary. */
+  SENT_DM_TEMPLATE_PAYMENT_REQUEST: z.string().uuid().optional(),
+  /** Sent.dm: template UUID for claim-notification message. Variables: claimCode, otp, link, amount, currency. */
+  SENT_DM_TEMPLATE_CLAIM_NOTIFICATION: z.string().uuid().optional(),
+
+  /** Frontend app base URL for payment/claim links (e.g. https://app.example.com). Used in email/SMS templates. */
+  FRONTEND_APP_URL: z.string().url().optional().default("http://localhost:3000"),
 });
 
 export type Env = z.infer<typeof envSchema>;

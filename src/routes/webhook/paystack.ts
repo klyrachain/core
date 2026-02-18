@@ -13,6 +13,7 @@ import { sendToAdminDashboard } from "../../services/admin-dashboard.service.js"
 import { triggerTransactionStatusChange } from "../../services/pusher.service.js";
 import { computeTransactionFee } from "../../services/fee.service.js";
 import { executeOnrampSend } from "../../services/onramp-execution.service.js";
+import { onRequestPaymentConfirmed } from "../../services/request-claim-notify.service.js";
 
 type PaystackWebhookEvent = {
   event: string;
@@ -111,6 +112,13 @@ export async function paystackWebhookRoutes(app: FastifyInstance): Promise<void>
                     req.log.error({ err, transactionId: ourTransactionId }, "Onramp send error");
                     console.error("[onramp] Send error:", err);
                   });
+                });
+              }
+              if (newStatus === "COMPLETED" && tx.type === "REQUEST") {
+                setImmediate(() => {
+                  onRequestPaymentConfirmed({ transactionId: ourTransactionId }).then((r) => {
+                    if (!r.ok) req.log.warn({ err: r.error, transactionId: ourTransactionId }, "Request claim notify failed");
+                  }).catch((err) => req.log.error({ err, transactionId: ourTransactionId }, "Request claim notify error"));
                 });
               }
             }

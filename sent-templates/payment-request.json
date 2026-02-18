@@ -1,0 +1,27 @@
+{
+  "displayName": "Klyra Payment Request",
+  "category": "UTILITY",
+  "language": "en_US",
+  "submitForReview": false,
+  "definition": {
+    "header": null,
+    "body": {
+      "multiChannel": {
+        "type": null,
+        "template": "Payment request: Please pay {{1:variable}} {{2:variable}}. The recipient will receive: {{3:variable}}. Complete your payment securely here: {{4:variable}}",
+        "variables": [
+          { "id": 1, "name": "amount", "type": "variable", "props": { "variableType": "text", "sample": "50", "url": null, "shortUrl": null, "alt": null, "mediaType": null } },
+          { "id": 2, "name": "currency", "type": "variable", "props": { "variableType": "text", "sample": "USDC", "url": null, "shortUrl": null, "alt": null, "mediaType": null } },
+          { "id": 3, "name": "receiveSummary", "type": "variable", "props": { "variableType": "text", "sample": "25 USDC on Base", "url": null, "shortUrl": null, "alt": null, "mediaType": null } },
+          { "id": 4, "name": "link", "type": "variable", "props": { "variableType": "text", "sample": "https://app.klyra.com/pay/request/abc123", "url": null, "shortUrl": null, "alt": null, "mediaType": null } }
+        ]
+      },
+      "sms": null,
+      "whatsapp": null
+    },
+    "footer": null,
+    "buttons": null,
+    "definitionVersion": "1.0",
+    "authenticationConfig": null
+  }
+}

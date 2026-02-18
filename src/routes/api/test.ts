@@ -9,8 +9,9 @@ import { z } from "zod";
 import { PaymentProvider, IdentityType, TransactionType } from "../../../prisma/generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { addPollJob } from "../../lib/queue.js";
-import { getStoredQuote } from "../../lib/redis.js";
+import { getStoredQuote, getClaimOtp } from "../../lib/redis.js";
 import { getFeeForOrder } from "../../services/fee.service.js";
+import { onRequestPaymentConfirmed } from "../../services/request-claim-notify.service.js";
 import { deriveTransactionPrices, derivePricesFromAmounts } from "../../services/transaction-price.service.js";
 import { sendToAdminDashboard } from "../../services/admin-dashboard.service.js";
 import { validateOrderForTestnet } from "../../services/order-validation-test.service.js";
@@ -235,5 +236,69 @@ export async function testApiRoutes(app: FastifyInstance): Promise<void> {
       });
     }
     return createTestOrder(req, reply, parse.data, "buy");
+  });
+
+  /** POST /api/test/request/simulate-payment — mark REQUEST transaction COMPLETED and run claim notification (E2E only). Returns claimCode and otp for CLI. */
+  const SimulatePaymentBodySchema = z.object({
+    transaction_id: z.string().uuid(),
+  });
+  app.post<{ Body: unknown }>("/api/test/request/simulate-payment", async (req, reply) => {
+    const parse = SimulatePaymentBodySchema.safeParse(req.body);
+    if (!parse.success) {
+      return reply.status(400).send({
+        success: false,
+        error: "Validation failed",
+        details: parse.error.flatten(),
+      });
+    }
+    const { transaction_id } = parse.data;
+    const tx = await prisma.transaction.findUnique({
+      where: { id: transaction_id },
+      select: { id: true, type: true, status: true, requestId: true },
+    });
+    if (!tx) {
+      return reply.status(404).send({ success: false, error: "Transaction not found" });
+    }
+    if (tx.type !== "REQUEST") {
+      return reply.status(400).send({ success: false, error: "Transaction is not a REQUEST" });
+    }
+    if (tx.status === "COMPLETED") {
+      const claim = await prisma.claim.findFirst({
+        where: { requestId: tx.requestId },
+        select: { code: true, id: true },
+      });
+      const otp = claim ? await getClaimOtp(claim.id) : null;
+      return reply.send({
+        success: true,
+        data: {
+          already_completed: true,
+          claimCode: claim?.code ?? null,
+          otp: otp ?? null,
+        },
+      });
+    }
+    if (tx.status !== "PENDING") {
+      return reply.status(400).send({ success: false, error: "Transaction is not PENDING" });
+    }
+    await prisma.transaction.update({
+      where: { id: transaction_id },
+      data: { status: "COMPLETED" },
+    });
+    const result = await onRequestPaymentConfirmed({ transactionId: transaction_id });
+    if (!result.ok) {
+      return reply.status(500).send({ success: false, error: result.error });
+    }
+    const claim = await prisma.claim.findUnique({
+      where: { id: result.claimId },
+      select: { code: true },
+    });
+    const otp = await getClaimOtp(result.claimId);
+    return reply.send({
+      success: true,
+      data: {
+        claimCode: claim?.code ?? null,
+        otp: otp ?? null,
+      },
+    });
   });
 }
