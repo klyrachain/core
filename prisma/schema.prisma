@@ -186,6 +186,8 @@ model Transaction {
   t_provider PaymentProvider @default(NONE)
 
   providerSessionId String? // External provider session (e.g. PayStack); link for session-based providers
+  /// Onramp BUY: set when Paystack charge.success received; COMPLETED is set only after crypto send.
+  paymentConfirmedAt DateTime?
 
   businessId String? // Optional: if this tx was initiated via API by a merchant
   business   Business? @relation("BusinessTransactions", fields: [businessId], references: [id], onDelete: SetNull)
@@ -295,6 +297,12 @@ model Request {
 
   transactionId String      @unique
   transaction   Transaction @relation(fields: [transactionId], references: [id])
+
+  /// When set, payment is auto-settled to this address (crypto: 0x...). Requester does not claim.
+  payoutTarget String?
+
+  /// Verified fiat payout: { type: "nuban"|"mobile_money", account_name, account_number, bank_code?, currency }. Set when requester wants fiat; verified via Paystack resolve/validate before create.
+  payoutFiat   Json?
 
   claim Claim?
 }

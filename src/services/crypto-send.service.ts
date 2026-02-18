@@ -59,6 +59,60 @@ export type SendTestnetBaseSepoliaUsdcResult =
   | { ok: true; txHash: string }
   | { ok: false; error: string };
 
+export type SendTestnetBaseSepoliaEthResult =
+  | { ok: true; txHash: string }
+  | { ok: false; error: string };
+
+/**
+ * Executes a real on-chain transfer: native ETH on Base Sepolia from TESTNET_SEND_PRIVATE_KEY wallet to recipient.
+ * amountEthHuman is in ETH (e.g. 0.01). For "amount in USD" the caller should convert using TESTNET_ETH_USD_RATE before calling.
+ */
+export async function sendTestnetBaseSepoliaEth(
+  toAddress: string,
+  amountEthHuman: string | number,
+  _transactionId: string
+): Promise<SendTestnetBaseSepoliaEthResult> {
+  const env = getEnv();
+  const raw = env.TESTNET_SEND_PRIVATE_KEY?.trim();
+  const rpcUrl = env.BASE_SEPOLIA_RPC_URL?.trim() || "https://sepolia.base.org";
+  if (!raw) {
+    return { ok: false, error: "TESTNET_SEND_PRIVATE_KEY not set in .env (restart the server after adding it)" };
+  }
+  const hexPart = raw.toLowerCase().startsWith("0x") ? raw.slice(2).trim() : raw;
+  if (!/^[0-9a-f]{64}$/i.test(hexPart)) {
+    return { ok: false, error: "TESTNET_SEND_PRIVATE_KEY must be 64 hex characters (with or without 0x prefix)" };
+  }
+  const pk: `0x${string}` = `0x${hexPart}` as `0x${string}`;
+  const valueWei = parseUnits(String(amountEthHuman), 18);
+  if (valueWei <= 0n) {
+    return { ok: false, error: "Amount must be positive" };
+  }
+  let to: `0x${string}`;
+  try {
+    to = getAddress(toAddress.trim());
+  } catch {
+    return { ok: false, error: "Invalid recipient address" };
+  }
+  try {
+    const account = privateKeyToAccount(pk);
+    const transport = http(rpcUrl);
+    const walletClient = createWalletClient({
+      account,
+      chain: baseSepolia,
+      transport,
+    });
+    const hash = await walletClient.sendTransaction({
+      to,
+      value: valueWei,
+    });
+    if (!hash) return { ok: false, error: "No tx hash returned" };
+    return { ok: true, txHash: hash };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `Base Sepolia ETH send failed: ${msg}` };
+  }
+}
+
 /**
  * Executes a real on-chain transfer: Base Sepolia USDC from TESTNET_SEND_PRIVATE_KEY wallet to recipient.
  * Called after payment when ONRAMP_TESTNET_SEND is set (any non-empty value except "0" or "false").

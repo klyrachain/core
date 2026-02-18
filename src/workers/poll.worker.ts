@@ -8,7 +8,7 @@ import { computeTransactionFee, getFeeForOrder } from "../services/fee.service.j
 import { feeInUsdFromAmount } from "../services/transaction-price.service.js";
 import { sendToAdminDashboard } from "../services/admin-dashboard.service.js";
 import { executeOnrampSend } from "../services/onramp-execution.service.js";
-import { onRequestPaymentConfirmed } from "../services/request-claim-notify.service.js";
+import { onRequestPaymentSettled } from "../services/request-settlement.service.js";
 import type { TransactionStatus } from "../../prisma/generated/prisma/client.js";
 
 function toNum(v: { toString(): string } | number | null | undefined): number {
@@ -40,10 +40,11 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
   const sellingPriceFromPerTo = exchangeRateNum > 0 ? 1 / exchangeRateNum : 0;
 
   const isOnrampBuy = tx.type === "BUY" && (fChain === "MOMO" || fChain === "BANK");
+  // Onramp BUY: payment is confirmed only by Paystack webhook; we do not set COMPLETED here. Webhook sets paymentConfirmedAt and triggers executeOnrampSend; COMPLETED is set only after crypto is sent.
+  if (isOnrampBuy) return;
   try {
     // BUY: user gives f_token on f_chain, receives t_token on t_chain. We deduct t_token (give to user), add f_token (receive).
-    // For onramp (fiat -> crypto), skip t_token deduct here; executeOnrampSend will handle deduct + send (or testnet send only).
-    if (tx.type === "BUY" && !isOnrampBuy) {
+    if (tx.type === "BUY") {
       const tAsset = await prisma.inventoryAsset.findFirst({
         where: { symbol: tx.t_token, chain: tChain },
       });
@@ -222,9 +223,9 @@ export async function processPollJob(job: Job<PollJobData>): Promise<void> {
     }
     if (tx.type === "REQUEST") {
       setImmediate(() => {
-        onRequestPaymentConfirmed({ transactionId }).then((r) => {
-          if (!r.ok) console.warn("[request] Claim notify failed (poll path):", r.error);
-        }).catch((err) => console.error("[request] Claim notify error (poll path):", err));
+        onRequestPaymentSettled({ transactionId }).then((r) => {
+          if (!r.ok) console.warn("[request] Settlement failed (poll path):", r.error);
+        }).catch((err) => console.error("[request] Settlement error (poll path):", err));
       });
     }
   } catch (err) {

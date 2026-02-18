@@ -11,6 +11,7 @@ import {
 import { requirePermission } from "../../lib/admin-auth.guard.js";
 import { PERMISSION_CONNECT_TRANSACTIONS } from "../../lib/permissions.js";
 import { getClaimOtp, deleteClaimOtp } from "../../lib/redis.js";
+import { executeRequestSettlementSend } from "../../services/onramp-execution.service.js";
 
 export async function claimsApiRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/claims", async (req: FastifyRequest<{ Querystring: { page?: string; limit?: string; status?: string } }>, reply) => {
@@ -198,14 +199,25 @@ export async function claimsApiRoutes(app: FastifyInstance): Promise<void> {
       data: { status: "COMPLETED" },
     });
 
+    let sendResult: { ok: boolean; error?: string } = { ok: true };
+    if (payout_type === "crypto" && parse.data.payout_target.trim().startsWith("0x")) {
+      sendResult = await executeRequestSettlementSend(tx.id, parse.data.payout_target.trim());
+      if (!sendResult.ok) {
+        req.log.warn({ err: sendResult.error, transactionId: tx.id }, "Claim crypto send failed");
+      }
+    }
+
     return successEnvelope(reply, {
       claimed: true,
       claim_id: claim.id,
       transaction_id: tx.id,
       payout_type,
+      sent: payout_type === "crypto" ? sendResult.ok : undefined,
       message:
         payout_type === "crypto"
-          ? "Settlement will send crypto to payout_target (check receiving token/chain)."
+          ? sendResult.ok
+            ? "Crypto sent to payout_target. Check receiving wallet."
+            : `Claim recorded but send failed: ${sendResult.error}. Retry or contact support.`
           : "Settlement will initiate fiat payout to payout_target.",
     });
   });

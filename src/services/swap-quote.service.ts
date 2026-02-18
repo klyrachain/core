@@ -155,3 +155,33 @@ export async function getBestQuotes(
   const data: BestQuoteResponse = alternative ? { best, alternative } : { best };
   return { ok: true, data };
 }
+
+/** Request same as getBestQuotes; returns all provider quotes (for tests / multi-provider picker). */
+export type AllQuotesRequest = BestQuoteRequest;
+export type AllQuotesResponse = { quotes: Array<{ provider: SwapQuoteResponse["provider"]; quote: SwapQuoteResponse }> };
+
+export async function getAllQuotes(
+  params: AllQuotesRequest
+): Promise<{ ok: true; data: AllQuotesResponse } | { ok: false; error: string }> {
+  const sameChain = params.from_chain === params.to_chain;
+  const providers: ("0x" | "squid" | "lifi")[] = sameChain ? ["0x", "squid", "lifi"] : ["squid", "lifi"];
+
+  const results = await Promise.allSettled(
+    providers.map((provider) =>
+      getSwapQuote({
+        ...params,
+        provider,
+      })
+    )
+  );
+
+  const quotes: Array<{ provider: SwapQuoteResponse["provider"]; quote: SwapQuoteResponse }> = [];
+  providers.forEach((provider, i) => {
+    const r = results[i];
+    if (r?.status === "fulfilled" && r.value.ok) {
+      quotes.push({ provider, quote: r.value.quote });
+    }
+  });
+
+  return { ok: true, data: { quotes } };
+}

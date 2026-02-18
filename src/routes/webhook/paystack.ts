@@ -13,7 +13,7 @@ import { sendToAdminDashboard } from "../../services/admin-dashboard.service.js"
 import { triggerTransactionStatusChange } from "../../services/pusher.service.js";
 import { computeTransactionFee } from "../../services/fee.service.js";
 import { executeOnrampSend } from "../../services/onramp-execution.service.js";
-import { onRequestPaymentConfirmed } from "../../services/request-claim-notify.service.js";
+import { onRequestPaymentSettled } from "../../services/request-settlement.service.js";
 
 type PaystackWebhookEvent = {
   event: string;
@@ -67,9 +67,18 @@ export async function paystackWebhookRoutes(app: FastifyInstance): Promise<void>
               where: { id: ourTransactionId },
             });
             if (tx && tx.providerSessionId === reference) {
-              const newStatus = event === "charge.success" ? ("COMPLETED" as const) : ("FAILED" as const);
-              const updateData: { status: "COMPLETED" | "FAILED"; fee?: number; platformFee?: number } = { status: newStatus };
-              if (newStatus === "COMPLETED") {
+              const isSuccess = event === "charge.success";
+              // BUY (onramp): COMPLETED only after crypto is sent; here we only set paymentConfirmedAt.
+              const isOnrampBuy = tx.type === "BUY";
+              const updateData: {
+                status?: "COMPLETED" | "FAILED";
+                paymentConfirmedAt?: Date;
+                fee?: number;
+                platformFee?: number;
+              } = isSuccess && isOnrampBuy
+                ? { paymentConfirmedAt: new Date() }
+                : { status: isSuccess ? ("COMPLETED" as const) : ("FAILED" as const) };
+              if (isSuccess) {
                 const feeAmount = computeTransactionFee(tx);
                 if (Number.isFinite(feeAmount)) {
                   updateData.fee = feeAmount;
@@ -80,45 +89,65 @@ export async function paystackWebhookRoutes(app: FastifyInstance): Promise<void>
                 where: { id: ourTransactionId },
                 data: updateData,
               });
+
+              // --- Step 1: Paystack payment confirmed (BUY onramp) — log so we know payment went through
+              if (isSuccess && isOnrampBuy) {
+                req.log.info(
+                  { transactionId: ourTransactionId, reference, type: tx.type },
+                  "[onramp] Step 1: Paystack payment CONFIRMED. Fiat received. Transaction still PENDING until crypto is sent."
+                );
+                console.log(
+                  `[onramp] Step 1: Paystack payment CONFIRMED for transaction ${ourTransactionId} (reference ${reference}). Proceeding to Step 2: send crypto.`
+                );
+              }
+
               try {
                 const verifyData = await verifyTransaction(reference);
                 await upsertPaystackPaymentRecord(verifyData, ourTransactionId);
               } catch (verifyErr) {
                 req.log.warn({ err: verifyErr, reference }, "Paystack webhook: verify/upsert record failed");
               }
+              const statusForDashboard = isSuccess && isOnrampBuy ? "PENDING" : (isSuccess ? "COMPLETED" : "FAILED");
               await sendToAdminDashboard({
                 event: "paystack.charge." + (event === "charge.success" ? "success" : "failed"),
                 data: {
                   transactionId: ourTransactionId,
                   reference,
-                  status: newStatus,
+                  status: statusForDashboard,
                   paystackEvent: event,
                 },
               }).catch((err) => req.log.warn({ err }, "Admin webhook failed"));
-              await triggerTransactionStatusChange({
-                transactionId: ourTransactionId,
-                status: newStatus,
-                type: tx.type,
-              }).catch(() => {});
+              if (!isOnrampBuy || !isSuccess) {
+                await triggerTransactionStatusChange({
+                  transactionId: ourTransactionId,
+                  status: (updateData.status ?? statusForDashboard) as "COMPLETED" | "FAILED" | "PENDING",
+                  type: tx.type,
+                }).catch(() => {});
+              }
 
-              if (newStatus === "COMPLETED" && tx.type === "BUY") {
+              if (isSuccess && tx.type === "BUY") {
                 setImmediate(() => {
                   executeOnrampSend(ourTransactionId).then((r) => {
                     if (!r.ok) {
-                      req.log.warn({ err: r.error, code: r.code, transactionId: ourTransactionId }, "Onramp send failed");
-                      console.warn("[onramp] Send failed:", r.error, "code:", r.code);
+                      req.log.warn(
+                        { err: r.error, code: r.code, transactionId: ourTransactionId },
+                        "[onramp] Step 2 FAILED: crypto send failed. Transaction remains PENDING."
+                      );
+                      console.warn(
+                        `[onramp] Step 2 FAILED: crypto send failed for ${ourTransactionId}. Error: ${r.error} (code: ${r.code ?? "—"}). Transaction remains PENDING.`
+                      );
                     }
                   }).catch((err) => {
-                    req.log.error({ err, transactionId: ourTransactionId }, "Onramp send error");
-                    console.error("[onramp] Send error:", err);
+                    req.log.error({ err, transactionId: ourTransactionId }, "[onramp] Step 2 error (exception)");
+                    console.error(`[onramp] Step 2 error for ${ourTransactionId}:`, err);
                   });
                 });
               }
-              if (newStatus === "COMPLETED" && tx.type === "REQUEST") {
+              if (isSuccess && tx.type === "REQUEST") {
                 setImmediate(() => {
-                  onRequestPaymentConfirmed({ transactionId: ourTransactionId }).then((r) => {
-                    if (!r.ok) req.log.warn({ err: r.error, transactionId: ourTransactionId }, "Request claim notify failed");
-                  }).catch((err) => req.log.error({ err, transactionId: ourTransactionId }, "Request claim notify error"));
+                  onRequestPaymentSettled({ transactionId: ourTransactionId }).then((r) => {
+                    if (!r.ok) req.log.warn({ err: r.error, transactionId: ourTransactionId }, "Request settlement failed");
+                  }).catch((err) => req.log.error({ err, transactionId: ourTransactionId }, "Request settlement error"));
                 });
               }
             }

@@ -19,6 +19,16 @@ import {
   claimNotificationText,
   type ClaimNotificationTemplateVars,
 } from "../email/templates/claim-notification.js";
+import {
+  requestPaymentReceivedSubject,
+  requestPaymentReceivedHtml,
+  requestPaymentReceivedText,
+  requestSettledToRequesterSubject,
+  requestSettledToRequesterHtml,
+  requestSettledToRequesterText,
+  type RequestPaymentReceivedTemplateVars,
+  type RequestSettledToRequesterTemplateVars,
+} from "../email/templates/request-settled.js";
 
 export type PaymentRequestNotificationPayload = {
   channels: NotificationChannel[];
@@ -130,6 +140,42 @@ export async function sendClaimNotification(
 }
 
 export type SendResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Send "We received your payment" to payer (after request is settled to requester).
+ */
+export async function sendRequestPaymentReceivedToPayer(
+  toEmail: string,
+  vars: RequestPaymentReceivedTemplateVars,
+  entityRefId: string
+): Promise<SendResult> {
+  const r = await sendEmail({
+    to: toEmail,
+    subject: requestPaymentReceivedSubject(vars),
+    html: requestPaymentReceivedHtml(vars),
+    text: requestPaymentReceivedText(vars),
+    entityRefId,
+  });
+  return r.ok ? { ok: true } : { ok: false, error: r.error };
+}
+
+/**
+ * Send "You've been paid" to requester (after request is settled).
+ */
+export async function sendRequestSettledToRequester(
+  toEmail: string,
+  vars: RequestSettledToRequesterTemplateVars,
+  entityRefId: string
+): Promise<SendResult> {
+  const r = await sendEmail({
+    to: toEmail,
+    subject: requestSettledToRequesterSubject(vars),
+    html: requestSettledToRequesterHtml(vars),
+    text: requestSettledToRequesterText(vars),
+    entityRefId,
+  });
+  return r.ok ? { ok: true } : { ok: false, error: r.error };
+}
 
 /** Build frontend URL for payment request (payer pays here). */
 export function buildPaymentRequestLink(linkId: string): string {

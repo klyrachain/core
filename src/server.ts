@@ -44,6 +44,7 @@ import { onRequestLog, onResponseLog } from "./lib/request-log-hooks.js";
 import { requireApiKeyOrSession, resolveApiKeyIfPresent } from "./lib/auth.guard.js";
 import { resolveAdminSessionIfPresent } from "./lib/admin-auth.guard.js";
 import { ensureValidationCache, loadValidationCache } from "./services/validation-cache.service.js";
+import { processPendingEmails } from "./services/email.service.js";
 
 loadEnv();
 
@@ -157,6 +158,7 @@ app.listen({ port, host: "0.0.0.0" }, async (err, address) => {
   }
   console.log(`Server listening at ${address}`);
   await ensureValidationCache().catch((e) => console.warn("Validation cache initial load failed:", e));
+  await processPendingEmails().catch((e) => console.warn("Pending emails processing failed:", e));
   validationCacheInterval = setInterval(() => {
     loadValidationCache().catch((e) => console.warn("Validation cache refresh failed:", e));
   }, VALIDATION_CACHE_REFRESH_MS);

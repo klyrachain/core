@@ -5,6 +5,7 @@
 
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
+import { prisma } from "../../lib/prisma.js";
 import {
   verifyTransaction,
   getTransactionById,
@@ -13,6 +14,9 @@ import {
   sanitizeTransactionData,
 } from "../../services/paystack.service.js";
 import { upsertPaystackPaymentRecord } from "../../services/paystack-payment-record.service.js";
+import { computeTransactionFee } from "../../services/fee.service.js";
+import { executeOnrampSend } from "../../services/onramp-execution.service.js";
+import { onRequestPaymentSettled } from "../../services/request-settlement.service.js";
 import { successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
 import { requirePermission } from "../../lib/admin-auth.guard.js";
 import { PERMISSION_CONNECT_TRANSACTIONS } from "../../lib/permissions.js";
@@ -50,6 +54,83 @@ export async function paystackTransactionsApiRoutes(app: FastifyInstance): Promi
         const data = await verifyTransaction(reference);
         const ourTransactionId = (data.metadata?.transaction_id as string) ?? null;
         await upsertPaystackPaymentRecord(data, ourTransactionId);
+
+        // When webhook is not reachable (e.g. no ngrok): if verify shows success and we have a BUY order still PENDING, treat as payment confirmed and trigger crypto send.
+        const paymentSuccess = String(data.status).toLowerCase() === "success";
+        if (paymentSuccess && ourTransactionId) {
+          const tx = await prisma.transaction.findUnique({
+            where: { id: ourTransactionId },
+          });
+          if (
+            tx?.type === "BUY" &&
+            tx.status === "PENDING" &&
+            tx.paymentConfirmedAt == null
+          ) {
+            req.log.info(
+              { transactionId: ourTransactionId, reference },
+              "[onramp] Verify: payment confirmed (webhook not used). Triggering crypto send."
+            );
+            console.log(
+              `[onramp] Step 1 (via verify): Paystack payment CONFIRMED for transaction ${ourTransactionId} (reference ${reference}). Webhook was not used. Proceeding to Step 2: send crypto.`
+            );
+            const feeAmount = computeTransactionFee(tx);
+            await prisma.transaction.update({
+              where: { id: ourTransactionId },
+              data: {
+                paymentConfirmedAt: new Date(),
+                ...(Number.isFinite(feeAmount) ? { fee: feeAmount, platformFee: feeAmount } : {}),
+              },
+            });
+            setImmediate(() => {
+              executeOnrampSend(ourTransactionId).then((r) => {
+                if (!r.ok) {
+                  req.log.warn(
+                    { err: r.error, code: r.code, transactionId: ourTransactionId },
+                    "[onramp] Step 2 FAILED (verify path): crypto send failed."
+                  );
+                  console.warn(
+                    `[onramp] Step 2 FAILED: crypto send failed for ${ourTransactionId}. Error: ${r.error} (code: ${r.code ?? "—"}).`
+                  );
+                }
+              }).catch((err) => {
+                req.log.error({ err, transactionId: ourTransactionId }, "[onramp] Step 2 error (verify path)");
+                console.error(`[onramp] Step 2 error for ${ourTransactionId}:`, err);
+              });
+            });
+          }
+          // When webhook is not reachable: REQUEST — set COMPLETED and trigger claim notification.
+          if (
+            tx?.type === "REQUEST" &&
+            tx.status === "PENDING"
+          ) {
+            req.log.info(
+              { transactionId: ourTransactionId, reference },
+              "[request] Verify: payment confirmed (webhook not used). Marking COMPLETED and sending claim notification."
+            );
+            const feeAmount = computeTransactionFee(tx);
+            await prisma.transaction.update({
+              where: { id: ourTransactionId },
+              data: {
+                status: "COMPLETED",
+                paymentConfirmedAt: new Date(),
+                ...(Number.isFinite(feeAmount) ? { fee: feeAmount, platformFee: feeAmount } : {}),
+              },
+            });
+            setImmediate(() => {
+              onRequestPaymentSettled({ transactionId: ourTransactionId }).then((r) => {
+                if (!r.ok) {
+                  req.log.warn(
+                    { err: r.error, transactionId: ourTransactionId },
+                    "[request] Verify path: settlement failed."
+                  );
+                }
+              }).catch((err) => {
+                req.log.error({ err, transactionId: ourTransactionId }, "[request] Verify path: settlement error");
+              });
+            });
+          }
+        }
+
         return successEnvelope(reply, sanitizeTransactionData(data));
       } catch (err) {
         req.log.error({ err, reference }, "GET /api/paystack/transactions/verify/:reference");

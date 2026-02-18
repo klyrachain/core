@@ -167,6 +167,43 @@ export async function listBalanceKeys(limit = 100): Promise<BalanceKeyEntry[]> {
   return result;
 }
 
+/** Pending emails (failed sends) to retry on next server startup. List of JSON payloads. */
+export const PENDING_EMAILS_LIST_KEY = "pending_emails";
+export const PENDING_EMAIL_TTL_DAYS = 7;
+
+export type PendingEmailPayload = {
+  to: string | string[];
+  subject: string;
+  html: string;
+  text?: string;
+  entityRefId: string;
+  idempotencyKey?: string;
+  replyTo?: string;
+  _attempts?: number;
+};
+
+export async function pushPendingEmail(payload: PendingEmailPayload): Promise<void> {
+  const r = getRedis();
+  const raw = JSON.stringify(payload);
+  await r.lpush(PENDING_EMAILS_LIST_KEY, raw);
+}
+
+export async function getNextPendingEmail(): Promise<PendingEmailPayload | null> {
+  const r = getRedis();
+  const raw = await r.rpop(PENDING_EMAILS_LIST_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as PendingEmailPayload;
+  } catch {
+    return null;
+  }
+}
+
+export async function getPendingEmailCount(): Promise<number> {
+  const r = getRedis();
+  return r.llen(PENDING_EMAILS_LIST_KEY);
+}
+
 export async function disconnectRedis(): Promise<void> {
   if (redis) {
     await redis.quit();

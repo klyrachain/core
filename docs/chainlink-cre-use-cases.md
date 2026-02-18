@@ -81,3 +81,13 @@ This doc lists only the cases where **adopting CRE would make the system depende
 | Cross-chain automation         | N/A (single chain today)               | Decentralized rebalance/bridge when you add it    |
 
 Only adopt CRE where you want the system to **rely on** that decentralized behavior; otherwise the existing backend is sufficient.
+
+---
+
+## Why not CRE for routine inventory/balance updates?
+
+**Question:** Use CRE to get the “proper” balance for the onramp/offramp wallet and update inventory accordingly?
+
+**Answer:** The **current system can sustain itself**. Inventory is stored in the DB; balances are synced to Redis for validation (e.g. `syncAllInventoryBalancesToRedis`). You can refresh balances from chain (or from your own DB) on a schedule or on demand. That’s enough for quote validation and “do we have enough to send?” checks. CRE does **not** become a necessary dependency for that.
+
+CRE **does** help when you want **verifiable** balance reporting: see **Proof-of-reserve** (section 3). There, CRE fetches balances (from chain or your API), signs a proof, and publishes it so others can verify reserves without trusting your backend. That’s a separate use case from “update our internal inventory so we can process orders.” So: use the current DB + Redis + optional balance-refresh for day-to-day inventory; consider CRE only when you want **attestable, trustless** reserve proofs (section 3).

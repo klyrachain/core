@@ -63,10 +63,12 @@ const envSchema = z.object({
   BASE_RPC_URL: z.string().url().optional(),
   /** RPC URL for Base Sepolia (chainId 84532). Defaults to https://sepolia.base.org when not set. */
   BASE_SEPOLIA_RPC_URL: z.string().url().optional(),
+  /** For testnet: when user enters "amount in USD" for ETH, convert using this rate (e.g. 3000 = 1 ETH = 3000 USD). If unset, t_amount is treated as ETH amount. */
+  TESTNET_ETH_USD_RATE: z.coerce.number().positive().optional(),
 
   /** Resend: API key for transactional email. Optional; if missing, email service no-ops or logs. */
   RESEND_API_KEY: z.string().min(1).optional(),
-  /** Resend: from address (e.g. "Klyra <payments@yourdomain.com>"). Defaults to onboarding@resend.dev when unset. */
+  /** Resend: from address (e.g. noreply@mail.yourdomain.com). Use a verified domain at resend.com/domains to send to any recipient. When unset, uses Resend testing sender (onboarding@resend.dev), which can only send to your own email. */
   RESEND_FROM_EMAIL: z.string().min(1).optional(),
 
   /** Sent.dm: API key for SMS/WhatsApp. Optional; if missing, messaging service no-ops. */

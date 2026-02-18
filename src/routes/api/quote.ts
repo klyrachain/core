@@ -7,7 +7,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { buildPublicQuote } from "../../services/public-quote.service.js";
 import { setStoredQuote, QUOTE_TTL_SECONDS } from "../../lib/redis.js";
-import { getSwapQuote, getBestQuotes } from "../../services/swap-quote.service.js";
+import { getSwapQuote, getBestQuotes, getAllQuotes } from "../../services/swap-quote.service.js";
 import { getOnrampQuote } from "../../services/onramp-quote.service.js";
 import { isFonbnkConfigured } from "../../services/fonbnk.service.js";
 import { successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
@@ -140,6 +140,37 @@ export async function quoteApiRoutes(app: FastifyInstance): Promise<void> {
           success: false,
           error: result.error,
         });
+      }
+      return successEnvelope(reply, result.data);
+    }
+  );
+
+  /**
+   * All swap quotes: same body as POST /api/quote/best but returns every provider quote (0x, squid, lifi).
+   * Use in tests or UI to show multiple options (best rate vs speed, etc.).
+   */
+  app.post<{ Body: unknown }>(
+    "/api/quote/swap/all",
+    async (req: FastifyRequest<{ Body: unknown }>, reply) => {
+      const parse = BestQuoteBodySchema.safeParse(req.body);
+      if (!parse.success) {
+        return reply.status(400).send({
+          success: false,
+          error: "Validation failed",
+          details: parse.error.flatten(),
+        });
+      }
+      const params = parse.data;
+      if (params.from_chain === params.to_chain && params.from_token.toLowerCase().trim() === params.to_token.toLowerCase().trim()) {
+        return reply.status(400).send({
+          success: false,
+          error: "Same token on same chain is not allowed",
+          code: "SAME_TOKEN_SAME_CHAIN",
+        });
+      }
+      const result = await getAllQuotes(params);
+      if (!result.ok) {
+        return reply.status(502).send({ success: false, error: result.error });
       }
       return successEnvelope(reply, result.data);
     }
