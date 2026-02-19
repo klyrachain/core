@@ -9,7 +9,7 @@
 import { Resend } from "resend";
 import { getEnv } from "../config/env.js";
 import { createIdempotencyKey, emailHeaders } from "../lib/email.utils.js";
-import { pushPendingEmail, getNextPendingEmail, type PendingEmailPayload } from "../lib/redis.js";
+import { pushPendingEmail, getNextPendingEmail } from "../lib/redis.js";
 
 /** Fallback when RESEND_FROM_EMAIL is unset (Resend testing; only sends to your own email). */
 const DEFAULT_FROM = "Klyra No-Reply <onboarding@resend.dev>";

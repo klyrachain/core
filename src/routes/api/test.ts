@@ -9,7 +9,7 @@ import { z } from "zod";
 import { PaymentProvider, IdentityType, TransactionType } from "../../../prisma/generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { addPollJob } from "../../lib/queue.js";
-import { getStoredQuote, getClaimOtp } from "../../lib/redis.js";
+import { getStoredQuote } from "../../lib/redis.js";
 import { getFeeForOrder } from "../../services/fee.service.js";
 import { onRequestPaymentSettled } from "../../services/request-settlement.service.js";
 import { deriveTransactionPrices, derivePricesFromAmounts } from "../../services/transaction-price.service.js";
