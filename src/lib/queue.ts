@@ -1,4 +1,5 @@
 import { Queue, Worker, Job } from "bullmq";
+import type { ConnectionOptions } from "bullmq";
 import { getRedis, getRedisConnectionForWorker } from "./redis.js";
 
 const POLL_QUEUE_NAME = "poll";
@@ -12,7 +13,7 @@ let pollQueue: Queue<PollJobData> | null = null;
 export function getPollQueue(): Queue<PollJobData> {
   if (!pollQueue) {
     pollQueue = new Queue<PollJobData>(POLL_QUEUE_NAME, {
-      connection: getRedis(),
+      connection: getRedis() as ConnectionOptions,
       defaultJobOptions: {
         attempts: 3,
         backoff: { type: "exponential", delay: 1000 },
@@ -20,7 +21,7 @@ export function getPollQueue(): Queue<PollJobData> {
       },
     });
   }
-  return pollQueue;
+  return pollQueue as Queue<PollJobData>;
 }
 
 export async function addPollJob(transactionId: string): Promise<Job<PollJobData>> {
@@ -37,7 +38,7 @@ export function createPollWorker(
       await processor(job);
     },
     {
-      connection: getRedisConnectionForWorker(),
+      connection: getRedisConnectionForWorker() as ConnectionOptions,
       concurrency: 5,
     }
   );

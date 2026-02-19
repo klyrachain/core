@@ -203,7 +203,7 @@ export async function requestsApiRoutes(app: FastifyInstance): Promise<void> {
 
       const payoutFiatJson =
         body.payoutFiat != null
-          ? (body.payoutFiat as Record<string, unknown>)
+          ? JSON.parse(JSON.stringify(body.payoutFiat)) as object
           : undefined;
 
       const request = await prisma.request.create({
