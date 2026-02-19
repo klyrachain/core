@@ -3,6 +3,7 @@ import { PrismaClient } from "./generated/prisma/client.js";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { WalletManager } from "../src/utils/wallet-manager.js";
 import { loadEnv } from "../src/config/env.js";
+import { hashPassword } from "../src/services/admin-auth.service.js";
 
 try {
   loadEnv();
@@ -486,6 +487,32 @@ async function main() {
     });
   }
 
+  console.log("Seeding platform admin...");
+  const adminPasswordHash = await hashPassword("password");
+  await prisma.platformAdmin.upsert({
+    where: { email: "kaleel@gmail.com" },
+    create: {
+      email: "kaleel@gmail.com",
+      name: "Kaleel",
+      role: "super_admin",
+      passwordHash: adminPasswordHash,
+      emailVerifiedAt: new Date(),
+    },
+    update: {},
+  });
+
+  console.log("Seeding admin invite (optional setup for kaleel@gmail.com)...");
+  await prisma.adminInvite.upsert({
+    where: { token: "seed-invite-token-do-not-use-in-production" },
+    create: {
+      email: "kaleel@gmail.com",
+      role: "super_admin",
+      token: "seed-invite-token-do-not-use-in-production",
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    },
+    update: {},
+  });
+
   console.log("Seeding inventory ledger...");
   await Promise.all([
     prisma.inventoryLedger.upsert({
@@ -535,6 +562,8 @@ async function main() {
     payouts: 1,
     platformSettings: platformSettingDefaults.length,
     providerRouting: providerCodes.length,
+    platformAdmin: 1,
+    adminInvite: 1,
   });
 }
 
