@@ -14,6 +14,7 @@
  *
  * Usage: pnpm run e2e:cli
  * Env: CORE_URL (default http://localhost:4000), CORE_API_KEY (required for Paystack init + transactions read).
+ *       E2E_NETWORK=testnet | mainnet — testnet: only Base Sepolia etc.; mainnet: only Base, Ethereum, etc. Default: testnet.
  *
  * Note: For onramp completion, Paystack must be able to reach your webhook (e.g. ngrok). Otherwise transaction won't move to COMPLETED and executeOnrampSend won't run.
  */
@@ -23,8 +24,12 @@ import * as readline from "readline";
 
 const CORE_URL = (process.env.CORE_URL ?? "http://localhost:4000").replace(/\/$/, "");
 const CORE_API_KEY = process.env.CORE_API_KEY ?? "";
+const E2E_NETWORK = (process.env.E2E_NETWORK ?? "testnet").toLowerCase();
+const IS_TESTNET = E2E_NETWORK === "testnet";
+/** Chain IDs considered testnet (e.g. Base Sepolia). E2E_NETWORK=testnet filters to these. */
+const TESTNET_CHAIN_IDS = new Set([84532]);
 
-type SupportedPair = { chainCode: string; chainId: number; symbol: string };
+type SupportedPair = { chainCode: string; chainId: number; symbol: string; displaySymbol: string };
 let onchainPairs: SupportedPair[] = [];
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
@@ -78,17 +83,33 @@ async function loadChainsAndTokens(): Promise<void> {
     fetchJson("/api/chains"),
     fetchJson("/api/tokens"),
   ]);
-  const chains = (chainsRes.data as { chains?: Array<{ chainId: number; name: string }> })?.chains ?? [];
-  const tokens = (tokensRes.data as { tokens?: Array<{ chainId: number; symbol: string }> })?.tokens ?? [];
-  const chainIdToCode = new Map(chains.map((c) => [c.chainId, c.name.toUpperCase()]));
+  const chains = (chainsRes.data as { chains?: Array<{ chainId: string | number; name: string }> })?.chains ?? [];
+  const tokens = (tokensRes.data as {
+    tokens?: Array<{ chainId: string | number; symbol: string; networkName?: string; displaySymbol?: string }>;
+  })?.tokens ?? [];
+  const chainIdToCode = new Map(chains.map((c) => [String(c.chainId), c.name.toUpperCase()]));
   const fiatCodes = ["MOMO", "BANK", "CARD"];
-  onchainPairs = (tokens as Array<{ chainId: number; symbol: string }>)
-    .map((t) => ({
-      chainCode: chainIdToCode.get(t.chainId) ?? "",
-      chainId: t.chainId,
-      symbol: t.symbol,
-    }))
+  let pairs: SupportedPair[] = (tokens as Array<{ chainId: string | number; symbol: string; networkName?: string; displaySymbol?: string }>)
+    .map((t) => {
+      const chainIdStr = String(t.chainId);
+      const chainIdNum = Number(t.chainId);
+      const chainCode = chainIdToCode.get(chainIdStr) ?? "";
+      const displaySymbol =
+        (t.displaySymbol ?? (t.networkName ? `${t.networkName} ${t.symbol}`.trim() : `${chainCode} ${t.symbol}`.trim())) || t.symbol;
+      return {
+        chainCode,
+        chainId: chainIdNum,
+        symbol: t.symbol,
+        displaySymbol,
+      };
+    })
     .filter((p) => p.chainCode && !fiatCodes.includes(p.chainCode));
+  if (IS_TESTNET) {
+    pairs = pairs.filter((p) => TESTNET_CHAIN_IDS.has(p.chainId));
+  } else {
+    pairs = pairs.filter((p) => !TESTNET_CHAIN_IDS.has(p.chainId));
+  }
+  onchainPairs = pairs;
 }
 
 type QuoteData = {
@@ -222,17 +243,30 @@ async function main(): Promise<void> {
   }
   await loadChainsAndTokens();
   if (onchainPairs.length === 0) {
-    console.error("No onchain token pairs. Seed chains/tokens (pnpm db:seed) and ensure /api/chains and /api/tokens return data.");
+    console.error(
+      `No onchain token pairs for E2E_NETWORK=${E2E_NETWORK}. Seed chains/tokens (e.g. SEED_ALL=1 pnpm run db:seed-chains-tokens) and ensure /api/chains and /api/tokens return data for this network.`
+    );
     process.exit(1);
   }
+  console.log(`E2E network: ${E2E_NETWORK} (${onchainPairs.length} pairs)`);
 
   const flow = await question("Select flow: (1) Onramp  (2) Offramp  [1]: ") || "1";
   const isOnramp = flow !== "2";
 
-  console.log("\nSupported chain + token:");
-  onchainPairs.forEach((p, i) => console.log(`  ${i + 1}. ${p.chainCode} / ${p.symbol}`));
-  const pairIdx = parseInt(await question(`Choose (1-${onchainPairs.length}) [1]: `) || "1", 10);
-  const pair = onchainPairs[Math.max(0, pairIdx - 1)] ?? onchainPairs[0]!;
+  console.log("\nSupported chain + token (or type display symbol e.g. BASE USDC):");
+  onchainPairs.forEach((p, i) => console.log(`  ${i + 1}. ${p.displaySymbol}`));
+  const choice = await question(`Choose (1-${onchainPairs.length}) or type symbol [1]: `) || "1";
+  const pairIdx = parseInt(choice, 10);
+  const pairByIndex = Number.isFinite(pairIdx) && pairIdx >= 1 && pairIdx <= onchainPairs.length
+    ? onchainPairs[pairIdx - 1]
+    : null;
+  const pairBySymbol = !pairByIndex
+    ? onchainPairs.find((p) => p.displaySymbol.toUpperCase() === choice.trim().toUpperCase())
+    : null;
+  const pair = pairByIndex ?? pairBySymbol ?? onchainPairs[0]!;
+  if (!pairByIndex && pairBySymbol) {
+    console.log(`  Using: ${pair.displaySymbol}`);
+  }
 
   // API supports only inputSide "from": Onramp = amount in fiat, Offramp = amount in crypto.
   const amountPrompt = isOnramp
@@ -251,9 +285,9 @@ async function main(): Promise<void> {
   const outputCurrency = isOnramp ? pair.symbol : "GHS";
   const inputSide = "from" as const;
 
-  // For BASE SEPOLIA (testnet), fetch quote using BASE so we get real market rates; execution still uses Base Sepolia.
-  const quoteChain = pair.chainCode === "BASE SEPOLIA" ? "BASE" : pair.chainCode;
-  if (pair.chainCode === "BASE SEPOLIA") {
+  // For testnet (e.g. Base Sepolia), fetch quote using mainnet chain name so we get real market rates; execution still uses testnet.
+  const quoteChain = IS_TESTNET && pair.chainCode === "BASE SEPOLIA" ? "BASE" : pair.chainCode;
+  if (IS_TESTNET && pair.chainCode === "BASE SEPOLIA") {
     console.log("(Quoting with BASE for real rates; you will send on Base Sepolia.)");
   }
 
@@ -334,7 +368,7 @@ async function main(): Promise<void> {
       toIdentifier,
       fromType: "EMAIL",
       toType: "ADDRESS",
-      isTestnet: pair.chainCode === "BASE SEPOLIA",
+      isTestnet: IS_TESTNET,
     });
 
     if (!orderRes.ok) {
@@ -437,7 +471,7 @@ async function main(): Promise<void> {
       toIdentifier,
       fromType: "ADDRESS",
       toType: "NUMBER",
-      isTestnet: pair.chainCode === "BASE SEPOLIA",
+      isTestnet: IS_TESTNET,
     });
 
     if (!orderRes.ok) {

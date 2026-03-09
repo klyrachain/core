@@ -9,9 +9,9 @@ import { isFonbnkSupportedPayoutCode } from "./fonbnk.service.js";
 
 const CHAIN_ID_BASE = 8453;
 
-/** Shape of supported token row from DB (select used in findMany/findFirst). */
+/** Shape of supported token row from DB (chainId is BigInt in DB; we use number in PoolToken for quote/pool). */
 interface SupportedTokenRow {
-  chainId: number;
+  chainId: bigint;
   tokenAddress: string;
   symbol: string;
   fonbnkCode: string | null;
@@ -19,8 +19,9 @@ interface SupportedTokenRow {
 }
 
 function rowToPoolToken(r: SupportedTokenRow): PoolToken {
+  const chainIdNum = Number(r.chainId);
   return {
-    chainId: r.chainId,
+    chainId: chainIdNum,
     symbol: r.symbol,
     address: r.tokenAddress,
     fonbnkCode: r.fonbnkCode ?? `${r.chainId}_${r.symbol}`,
@@ -44,7 +45,7 @@ export async function findPoolTokenFromDb(chainId: number, token: string): Promi
   const t = token.trim();
   const lower = t.toLowerCase();
   const rows = await prisma.supportedToken.findMany({
-    where: { chainId },
+    where: { chainId: BigInt(chainId) },
     select: { chainId: true, tokenAddress: true, symbol: true, fonbnkCode: true, decimals: true },
   }) as SupportedTokenRow[];
   for (const r of rows) {

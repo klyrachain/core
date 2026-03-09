@@ -70,7 +70,8 @@ export async function executeOnrampSend(transactionId: string): Promise<ExecuteO
     typeof v === "string" && v.trim() !== "" && v.trim().toLowerCase() !== "0" && v.trim().toLowerCase() !== "false";
   const tChainUpper = tx.t_chain?.toUpperCase() ?? "";
   const tTokenUpper = tx.t_token?.toUpperCase() ?? "";
-  const isTestnetChain = tChainUpper === "BASE" || tChainUpper === "BASE SEPOLIA";
+  // Only BASE SEPOLIA (testnet) uses testnet send. BASE (mainnet 8453) must always use mainnet path.
+  const isTestnetChain = tChainUpper === "BASE SEPOLIA";
   const isTestnetToken = tTokenUpper === "USDC" || tTokenUpper === "ETH";
   const useTestnetSend =
     testnetSendEnabled(env.ONRAMP_TESTNET_SEND) &&
@@ -236,7 +237,8 @@ export async function executeRequestSettlementSend(
     typeof v === "string" && v.trim() !== "" && v.trim().toLowerCase() !== "0" && v.trim().toLowerCase() !== "false";
   const tChainUpper = tx.t_chain?.toUpperCase() ?? "";
   const tTokenUpper = tx.t_token?.toUpperCase() ?? "";
-  const isTestnetChain = tChainUpper === "BASE" || tChainUpper === "BASE SEPOLIA";
+  // Only BASE SEPOLIA uses testnet send. Mainnet (BASE) must never use testnet path.
+  const isTestnetChain = tChainUpper === "BASE SEPOLIA";
   const isTestnetToken = tTokenUpper === "USDC" || tTokenUpper === "ETH";
   const useTestnetSend =
     testnetSendEnabled(env.ONRAMP_TESTNET_SEND) &&

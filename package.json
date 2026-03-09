@@ -13,6 +13,7 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
+    "db:seed-chains-tokens": "tsx scripts/seed-chains-tokens-from-backend.ts",
     "db:studio": "prisma studio",
     "db:export": "tsx scripts/db-export.ts",
     "db:import": "tsx scripts/db-import.ts",

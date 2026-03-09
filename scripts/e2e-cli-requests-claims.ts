@@ -13,6 +13,7 @@
  *
  * Usage: pnpm run e2e:cli:requests-claims
  * Env: CORE_URL (default http://localhost:4000), CORE_API_KEY (required for create, pay init, simulate).
+ *       E2E_NETWORK=testnet | mainnet — filter chain/token pairs (default: testnet).
  */
 
 import "dotenv/config";
@@ -20,6 +21,9 @@ import * as readline from "readline";
 
 const CORE_URL = (process.env.CORE_URL ?? "http://localhost:4000").replace(/\/$/, "");
 const CORE_API_KEY = process.env.CORE_API_KEY ?? "";
+const E2E_NETWORK = (process.env.E2E_NETWORK ?? "testnet").toLowerCase();
+const IS_TESTNET = E2E_NETWORK === "testnet";
+const TESTNET_CHAIN_IDS = new Set([84532]);
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
@@ -66,7 +70,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 // --- Chains/tokens (for crypto receive and pay flows) ---
-type SupportedPair = { chainCode: string; chainId: number; symbol: string };
+type SupportedPair = { chainCode: string; chainId: number; symbol: string; displaySymbol: string };
 let onchainPairs: SupportedPair[] = [];
 
 async function loadChainsAndTokens(): Promise<void> {
@@ -74,17 +78,45 @@ async function loadChainsAndTokens(): Promise<void> {
     fetchJson("/api/chains"),
     fetchJson("/api/tokens"),
   ]);
-  const chains = (chainsRes.data as { chains?: Array<{ chainId: number; name: string }> })?.chains ?? [];
-  const tokens = (tokensRes.data as { tokens?: Array<{ chainId: number; symbol: string }> })?.tokens ?? [];
-  const chainIdToCode = new Map(chains.map((c) => [c.chainId, c.name.toUpperCase()]));
+  const chains = (chainsRes.data as { chains?: Array<{ chainId: string | number; name: string }> })?.chains ?? [];
+  const tokens = (tokensRes.data as {
+    tokens?: Array<{ chainId: string | number; symbol: string; networkName?: string; displaySymbol?: string }>;
+  })?.tokens ?? [];
+  const chainIdToCode = new Map(chains.map((c) => [String(c.chainId), c.name.toUpperCase()]));
   const fiatCodes = ["MOMO", "BANK", "CARD"];
-  onchainPairs = (tokens as Array<{ chainId: number; symbol: string }>)
-    .map((t) => ({
-      chainCode: chainIdToCode.get(t.chainId) ?? "",
-      chainId: t.chainId,
-      symbol: t.symbol,
-    }))
+  let pairs: SupportedPair[] = (
+    tokens as Array<{ chainId: string | number; symbol: string; networkName?: string; displaySymbol?: string }>
+  )
+    .map((t) => {
+      const chainIdStr = String(t.chainId);
+      const chainIdNum = Number(t.chainId);
+      const chainCode = chainIdToCode.get(chainIdStr) ?? "";
+      const displaySymbol =
+        (t.displaySymbol ?? (t.networkName ? `${t.networkName} ${t.symbol}`.trim() : `${chainCode} ${t.symbol}`.trim())) || t.symbol;
+      return { chainCode, chainId: chainIdNum, symbol: t.symbol, displaySymbol };
+    })
     .filter((p) => p.chainCode && !fiatCodes.includes(p.chainCode));
+  const totalPairs = pairs.length;
+  if (IS_TESTNET) pairs = pairs.filter((p) => TESTNET_CHAIN_IDS.has(p.chainId));
+  else pairs = pairs.filter((p) => !TESTNET_CHAIN_IDS.has(p.chainId));
+  onchainPairs = pairs;
+  if (onchainPairs.length === 0 && totalPairs > 0) {
+    console.warn(
+      `No pairs for E2E_NETWORK=${E2E_NETWORK} (${IS_TESTNET ? "testnet = Base Sepolia 84532 only" : "mainnet only"}). You have ${totalPairs} chain+token pair(s) total. Try: E2E_NETWORK=${IS_TESTNET ? "mainnet" : "testnet"}`
+    );
+  }
+}
+
+async function choosePair(promptPrefix: string): Promise<SupportedPair | null> {
+  if (onchainPairs.length === 0) return null;
+  console.log(promptPrefix);
+  onchainPairs.forEach((p, i) => console.log(`  ${i + 1}. ${p.displaySymbol}`));
+  const choice = (await question(`Choose (1-${onchainPairs.length}) or type symbol [1]: `)) || "1";
+  const trimmed = choice.trim();
+  const idx = parseInt(trimmed, 10);
+  const byIndex = Number.isFinite(idx) && idx >= 1 && idx <= onchainPairs.length ? onchainPairs[idx - 1]! : null;
+  const bySymbol = !byIndex ? onchainPairs.find((p) => p.displaySymbol.toUpperCase() === trimmed.toUpperCase()) : null;
+  return byIndex ?? bySymbol ?? onchainPairs[0]!;
 }
 
 type QuoteData = {
@@ -141,13 +173,20 @@ async function runMakeRequest(): Promise<void> {
 
   if (wantsCrypto) {
     if (onchainPairs.length === 0) {
-      console.error("No crypto pairs. Seed chains/tokens (pnpm db:seed).");
+      await loadChainsAndTokens();
+      if (onchainPairs.length === 0) {
+        console.error(
+          "No crypto pairs. Default is E2E_NETWORK=testnet (Base Sepolia only). Try: E2E_NETWORK=mainnet pnpm run e2e:cli:requests-claims"
+        );
+        console.error("Or seed testnet: SEED_ALL=1 pnpm run db:seed-chains-tokens. Ensure CORE_URL points to the running API.");
+        return;
+      }
+    }
+    const pair = await choosePair("\nSupported chain + token:");
+    if (!pair) {
+      console.error("No crypto pairs. Seed chains/tokens and set E2E_NETWORK if needed.");
       return;
     }
-    console.log("\nSupported chain + token:");
-    onchainPairs.forEach((p, i) => console.log(`  ${i + 1}. ${p.chainCode} / ${p.symbol}`));
-    const pairIdx = parseInt(await question(`Choose (1-${onchainPairs.length}) [1]: `) || "1", 10);
-    const pair = onchainPairs[Math.max(0, pairIdx - 1)] ?? onchainPairs[0]!;
     t_chain = pair.chainCode;
     t_token = pair.symbol;
     const amountStr = await question(`Amount (${t_token}) to receive [25]: `) || "25";
@@ -290,10 +329,11 @@ async function runPayRequest(): Promise<void> {
       console.error("No crypto pairs. Cannot get quote.");
       return;
     }
-    console.log("Supported chain + token:");
-    onchainPairs.forEach((p, i) => console.log(`  ${i + 1}. ${p.chainCode} / ${p.symbol}`));
-    const pairIdx = parseInt(await question(`Choose chain/token to pay (1-${onchainPairs.length}) [1]: `) || "1", 10);
-    const pair = onchainPairs[Math.max(0, pairIdx - 1)] ?? onchainPairs[0]!;
+    const pair = await choosePair("Supported chain + token (pay with):");
+    if (!pair) {
+      console.error("No crypto pairs.");
+      return;
+    }
     const quoteChain = pair.chainCode === "BASE SEPOLIA" ? "BASE" : pair.chainCode;
     const quoteRes = await getQuote({
       action: "OFFRAMP",
@@ -441,10 +481,11 @@ async function runMakePayment(): Promise<void> {
       console.error("No crypto pairs for quote.");
       return;
     }
-    console.log("What should the recipient receive (crypto)?");
-    onchainPairs.forEach((p, i) => console.log(`  ${i + 1}. ${p.chainCode} / ${p.symbol}`));
-    const pairIdx = parseInt(await question(`Choose (1-${onchainPairs.length}) [1]: `) || "1", 10);
-    const pair = onchainPairs[Math.max(0, pairIdx - 1)] ?? onchainPairs[0]!;
+    const pair = await choosePair("What should the recipient receive (crypto)?");
+    if (!pair) {
+      console.error("No crypto pairs.");
+      return;
+    }
     const recipientWallet = await question("Recipient wallet for immediate send (0x... or Enter to let them claim later): ");
     const quoteChain = pair.chainCode === "BASE SEPOLIA" ? "BASE" : pair.chainCode;
     const quoteRes = await getQuote({
@@ -556,20 +597,22 @@ async function runMakePayment(): Promise<void> {
     console.error("No crypto pairs.");
     return;
   }
-  console.log("What are you sending (chain + token)?");
-  onchainPairs.forEach((p, i) => console.log(`  ${i + 1}. ${p.chainCode} / ${p.symbol}`));
-  const fromIdx = parseInt(await question(`Choose (1-${onchainPairs.length}) [1]: `) || "1", 10);
-  const fromPair = onchainPairs[Math.max(0, fromIdx - 1)] ?? onchainPairs[0]!;
+  const fromPair = await choosePair("What are you sending (chain + token)?");
+  if (!fromPair) {
+    console.error("No crypto pairs.");
+    return;
+  }
   const sendAmountStr = await question(`Amount (${fromPair.symbol}) to send [25]: `) || "25";
   const f_amount = parseFloat(sendAmountStr);
   if (!Number.isFinite(f_amount) || f_amount <= 0) {
     console.error("Invalid amount.");
     return;
   }
-  console.log("What should the recipient receive? (can be same or different token)");
-  onchainPairs.forEach((p, i) => console.log(`  ${i + 1}. ${p.chainCode} / ${p.symbol}`));
-  const toIdx = parseInt(await question(`Choose (1-${onchainPairs.length}) [1]: `) || "1", 10);
-  const toPair = onchainPairs[Math.max(0, toIdx - 1)] ?? onchainPairs[0]!;
+  const toPair = await choosePair("What should the recipient receive? (can be same or different token)");
+  if (!toPair) {
+    console.error("No crypto pairs.");
+    return;
+  }
   const payoutTarget = await question("Recipient wallet for immediate send (0x... or Enter to let them claim later): ");
   const receiveSummary = `${f_amount} ${fromPair.symbol} on ${fromPair.chainCode} → recipient gets ${toPair.chainCode} ${toPair.symbol}`;
   const createBody: Record<string, unknown> = {

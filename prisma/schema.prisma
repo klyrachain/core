@@ -452,9 +452,11 @@ model Chain {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  chainId   Int     @unique // e.g. 8453 (Base), 1 (Ethereum)
+  chainId   BigInt  @unique // numeric (1, 8453) or stable hash of string ID (e.g. "agoric-3")
   name      String  // e.g. Base, Ethereum
-  iconUri   String? // optional chain icon URL
+  iconUri   String? // optional chain icon URL (logo)
+  rpcUrl    String? // primary RPC (first in list)
+  rpcUrls   Json?   // array of RPC URLs from chain + tokens, deduped (string[])
 
   @@index([chainId])
   @@map("Chain")
@@ -465,17 +467,20 @@ model SupportedToken {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  chainId       Int     // chain ID (e.g. 8453, 1); match Chain.chainId
+  chainId       BigInt  // chain ID; match Chain.chainId
   tokenAddress  String  // contract address or native sentinel (e.g. 0xEee...)
   symbol        String  // e.g. USDC, ETH
   decimals      Int     @default(18)
   name          String? // e.g. USD Coin
-  logoUri       String? // optional token icon URL
+  logoUri       String? // optional token icon URL (logo)
   fonbnkCode    String? // Fonbnk NETWORK_ASSET e.g. BASE_USDC, ETHEREUM_NATIVE
+  /// Composite symbol for display and lookup: "BASE USDC", "ETHEREUM MANA". Resolve to chainId+address without extra services.
+  displaySymbol String?
 
   @@unique([chainId, tokenAddress])
   @@index([chainId])
   @@index([symbol])
+  @@index([displaySymbol])
 }
 
 // --------------------------------------

@@ -99,13 +99,13 @@ export async function loadValidationCache(): Promise<void> {
   }
 
   const cachedChains: CachedChain[] = chains.map((c) => ({
-    chainId: c.chainId,
+    chainId: Number(c.chainId),
     name: c.name,
     code: c.name.toUpperCase(),
   }));
 
   const cachedTokens: CachedToken[] = tokens.map((t) => ({
-    chainId: t.chainId,
+    chainId: Number(t.chainId),
     symbol: t.symbol,
     tokenAddress: t.tokenAddress,
     decimals: t.decimals ?? 18,

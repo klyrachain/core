@@ -8,8 +8,10 @@ import { validateProviderPayload, type ProviderPayload } from "./provider.server
 import { prisma } from "../lib/prisma.js";
 import type { OrderValidationInput, OrderValidationResult } from "./order-validation.service.js";
 
-/** Testnet chains allowed for test endpoints only. */
+/** Testnet chains allowed for test endpoints only (by display name). */
 const TESTNET_CHAIN_CODES = new Set(["BASE SEPOLIA"]);
+/** Testnet chain IDs (e.g. Base Sepolia 84532). Token validation only accepts tokens on these chains when running test endpoints. */
+const TESTNET_CHAIN_IDS = new Set([84532n]);
 /** Fiat/offchain chains for payout (offramp) or pay-in (onramp). */
 const FIAT_CHAIN_CODES = new Set(["MOMO", "BANK", "CARD"]);
 
@@ -95,11 +97,18 @@ export async function validateOrderForTestnet(input: OrderValidationInput): Prom
     return { valid: false, error: `Chain not found in DB: ${input.t_chain}`, code: "UNSUPPORTED_T_CHAIN" };
   }
 
+  if (input.action === "sell" && fChainId != null && !TESTNET_CHAIN_IDS.has(fChainId)) {
+    return { valid: false, error: `Test offramp only allows testnet f_chain (chainId in ${[...TESTNET_CHAIN_IDS].join(", ")}). Got: ${input.f_chain}`, code: "UNSUPPORTED_F_CHAIN" };
+  }
+  if (input.action === "buy" && tChainId != null && !TESTNET_CHAIN_IDS.has(tChainId)) {
+    return { valid: false, error: `Test onramp only allows testnet t_chain (chainId in ${[...TESTNET_CHAIN_IDS].join(", ")}). Got: ${input.t_chain}`, code: "UNSUPPORTED_T_CHAIN" };
+  }
+
   const tokens = await prisma.supportedToken.findMany({
     select: { chainId: true, symbol: true },
   });
 
-  const tokenExists = (chainId: number | undefined, symbol: string): boolean => {
+  const tokenExists = (chainId: bigint | undefined, symbol: string): boolean => {
     if (chainId == null) return true;
     const sym = symbol.trim().toUpperCase();
     return tokens.some((t) => t.chainId === chainId && t.symbol.toUpperCase() === sym);

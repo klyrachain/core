@@ -1,7 +1,12 @@
 /**
  * Email templates: payment request settled (payer and requester).
- * Used when we have received payment for a request and settled to the requester; no claim step.
+ * Payer: "We received your payment" — thumbs-up hero. Requester: "You've been paid" — dollar-sign hero.
+ * Responsive, no header/footer.
  */
+
+const THUMBS_UP_IMG = "https://d1oco4z2z1fhwp.cloudfront.net/templates/default/1346/Img62x.jpg";
+const DOLLAR_IMG = "https://d1oco4z2z1fhwp.cloudfront.net/templates/default/1366/Img5_2x.jpg";
+const TEAL = "#0d9488";
 
 /** Build block explorer tx URL from chain name and tx hash. */
 export function getExplorerTxUrl(chain: string, txHash: string): string {
@@ -28,9 +33,7 @@ export type RequestPaymentReceivedTemplateVars = {
   requesterIdentifier: string;
   amount: string;
   currency: string;
-  /** Crypto send tx hash */
   txHash?: string;
-  /** Block explorer URL for the tx (so recipient can view on-chain) */
   txExplorerUrl?: string;
 };
 
@@ -42,19 +45,37 @@ export function requestPaymentReceivedHtml(vars: RequestPaymentReceivedTemplateV
   const { requesterIdentifier, amount, currency, txHash, txExplorerUrl } = vars;
   const txLine =
     txHash && txExplorerUrl
-      ? `<p>Transaction: <a href="${txExplorerUrl}" style="color: #2563eb; word-break: break-all;">${txHash}</a></p>`
+      ? `<p style="margin:12px 0 0; font-size:14px;"><a href="${txExplorerUrl}" style="color:${TEAL}; word-break:break-all;">View transaction</a></p>`
       : txHash
-        ? `<p>Transaction: <code style="font-size: 11px; word-break: break-all;">${txHash}</code></p>`
+        ? `<p style="margin:12px 0 0; font-size:12px; word-break:break-all; color:#64748b;">${txHash}</p>`
         : "";
   return `
 <!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>Payment received</title></head>
-<body style="font-family: sans-serif; max-width: 560px;">
-  <h2>We received your payment</h2>
-  <p>Your payment of <strong>${amount} ${currency}</strong> has been received and sent to <strong>${requesterIdentifier}</strong>.</p>
-  ${txLine}
-  <p style="color: #666; font-size: 12px;">Thank you for using our service.</p>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment received</title>
+</head>
+<body style="margin:0; padding:0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background:#f1f5f9;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 4px 6px rgba(0,0,0,0.05);">
+    <tr>
+      <td style="padding:32px 24px 24px; text-align:center;">
+        <img src="${THUMBS_UP_IMG}" alt="" width="160" height="160" style="max-width:100%; height:auto; display:block; margin:0 auto 24px; border-radius:12px;" />
+        <h1 style="margin:0 0 8px; font-size:22px; font-weight:600; color:#1e293b;">We received your payment</h1>
+        <div style="height:3px; width:48px; background:${TEAL}; margin:0 auto 24px; border-radius:2px;"></div>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:0 24px 24px;">
+        <div style="background:#f0fdfa; border-radius:10px; padding:20px; border-left:4px solid ${TEAL};">
+          <p style="margin:0; font-size:15px; color:#334155;">Your payment of <strong>${amount} ${currency}</strong> has been received and sent to <strong>${requesterIdentifier}</strong>.</p>
+          ${txLine}
+        </div>
+        <p style="margin:20px 0 0; color:#94a3b8; font-size:12px; text-align:center;">Thank you for using our service.</p>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>
   `.trim();
@@ -82,19 +103,37 @@ export function requestSettledToRequesterHtml(vars: RequestSettledToRequesterTem
   const { amount, currency, txHash, txExplorerUrl } = vars;
   const txLine =
     txHash && txExplorerUrl
-      ? `<p>Transaction: <a href="${txExplorerUrl}" style="color: #2563eb; word-break: break-all;">${txHash}</a></p>`
+      ? `<p style="margin:12px 0 0; font-size:14px;"><a href="${txExplorerUrl}" style="color:${TEAL}; word-break:break-all;">View transaction</a></p>`
       : txHash
-        ? `<p>Transaction: <code style="font-size: 11px; word-break: break-all;">${txHash}</code></p>`
+        ? `<p style="margin:12px 0 0; font-size:12px; word-break:break-all; color:#64748b;">${txHash}</p>`
         : "";
   return `
 <!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>Payment sent</title></head>
-<body style="font-family: sans-serif; max-width: 560px;">
-  <h2>You've been paid</h2>
-  <p>We have sent you <strong>${amount} ${currency}</strong> to your wallet.</p>
-  ${txLine}
-  <p style="color: #666; font-size: 12px;">Thank you for using our service.</p>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>You've been paid</title>
+</head>
+<body style="margin:0; padding:0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background:#f1f5f9;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 4px 6px rgba(0,0,0,0.05);">
+    <tr>
+      <td style="padding:32px 24px 24px; text-align:center;">
+        <img src="${DOLLAR_IMG}" alt="" width="160" height="160" style="max-width:100%; height:auto; display:block; margin:0 auto 24px; border-radius:12px;" />
+        <h1 style="margin:0 0 8px; font-size:22px; font-weight:600; color:#1e293b;">Thank you for the payment</h1>
+        <div style="height:3px; width:48px; background:${TEAL}; margin:0 auto 24px; border-radius:2px;"></div>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:0 24px 24px;">
+        <div style="background:#f0fdfa; border-radius:10px; padding:20px; border-left:4px solid ${TEAL};">
+          <p style="margin:0; font-size:15px; color:#334155;">We have sent you <strong>${amount} ${currency}</strong> to your wallet.</p>
+          ${txLine}
+        </div>
+        <p style="margin:20px 0 0; color:#94a3b8; font-size:12px; text-align:center;">Thank you for using our service.</p>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>
   `.trim();

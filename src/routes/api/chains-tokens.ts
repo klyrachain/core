@@ -10,31 +10,34 @@ import { successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
 import { requirePermission } from "../../lib/admin-auth.guard.js";
 import { PERMISSION_PROVIDERS_READ, PERMISSION_PROVIDERS_WRITE } from "../../lib/permissions.js";
 
-/** Shape of chain row from prisma.chain findMany select. */
+/** Shape of chain row from prisma.chain findMany select. chainId is BigInt in DB; we serialize as string in JSON. */
 interface ChainRow {
   id: string;
-  chainId: number;
+  chainId: bigint;
   name: string;
   iconUri: string | null;
+  rpcUrl?: string | null;
+  rpcUrls?: unknown;
 }
 
-/** Shape of token row from prisma.supportedToken findMany select. */
+/** Shape of token row from prisma.supportedToken findMany select. chainId is BigInt in DB; we serialize as string in JSON. */
 interface TokenRow {
   id: string;
-  chainId: number;
+  chainId: bigint;
   tokenAddress: string;
   symbol: string;
   decimals: number;
   name: string | null;
   logoUri: string | null;
   fonbnkCode: string | null;
+  displaySymbol: string | null;
 }
 
 const ChainIdParamSchema = z.object({ id: z.string().uuid() });
 const TokenIdParamSchema = z.object({ id: z.string().uuid() });
 
 const CreateChainBodySchema = z.object({
-  chain_id: z.coerce.number().int().positive(),
+  chain_id: z.union([z.coerce.number(), z.string()]).transform((v) => BigInt(v)).refine((b) => b > 0n),
   name: z.string().min(1),
   icon_uri: z.string().url().optional().nullable(),
 });
@@ -45,13 +48,14 @@ const UpdateChainBodySchema = z.object({
 });
 
 const CreateTokenBodySchema = z.object({
-  chain_id: z.coerce.number().int().positive(),
+  chain_id: z.union([z.coerce.number(), z.string()]).transform((v) => BigInt(v)).refine((b) => b > 0n),
   token_address: z.string().min(1),
   symbol: z.string().min(1),
   decimals: z.coerce.number().int().min(0).max(24).optional().default(18),
   name: z.string().optional().nullable(),
   logo_uri: z.string().url().optional().nullable(),
   fonbnk_code: z.string().min(1).optional().nullable(),
+  display_symbol: z.string().min(1).optional().nullable(),
 });
 
 const UpdateTokenBodySchema = z.object({
@@ -60,6 +64,7 @@ const UpdateTokenBodySchema = z.object({
   name: z.string().optional().nullable(),
   logo_uri: z.string().url().optional().nullable(),
   fonbnk_code: z.string().min(1).optional().nullable(),
+  display_symbol: z.string().min(1).optional().nullable(),
 });
 
 export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void> {
@@ -70,15 +75,58 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
   app.get("/api/chains", async (_, reply) => {
     const chains = await prisma.chain.findMany({
       orderBy: [{ chainId: "asc" }],
-      select: { id: true, chainId: true, name: true, iconUri: true },
+      select: { id: true, chainId: true, name: true, iconUri: true, rpcUrl: true, rpcUrls: true },
     }) as ChainRow[];
     const data = chains.map((c: ChainRow) => ({
       id: c.id,
-      chainId: c.chainId,
+      chainId: String(c.chainId),
       name: c.name,
       chainIconURI: c.iconUri ?? undefined,
+      rpc: c.rpcUrl ?? undefined,
+      rpcUrls: Array.isArray(c.rpcUrls) ? c.rpcUrls : undefined,
     }));
     return successEnvelope(reply, { chains: data });
+  });
+
+  /**
+   * GET /api/tokens/list
+   * List tokens for UI: displaySymbol (e.g. BASE USDC), logoUri, tokenAddress. Query: ?chainId=8453 to filter by chain. Safe (parameterized).
+   */
+  app.get<{ Querystring: unknown }>("/api/tokens/list", async (req: FastifyRequest<{ Querystring: unknown }>, reply) => {
+    const query = z
+      .object({ chainId: z.union([z.coerce.number(), z.string().min(1)]).optional() })
+      .safeParse(req.query);
+    const chainIdRaw = query.success ? query.data.chainId : undefined;
+    const chainIdFilter =
+      chainIdRaw !== undefined && chainIdRaw !== ""
+        ? BigInt(typeof chainIdRaw === "string" && /^\d+$/.test(chainIdRaw) ? chainIdRaw : Number(chainIdRaw))
+        : undefined;
+
+    const tokens = await prisma.supportedToken.findMany({
+      where: chainIdFilter != null ? { chainId: chainIdFilter } : undefined,
+      orderBy: [{ chainId: "asc" }, { symbol: "asc" }],
+      select: { chainId: true, tokenAddress: true, symbol: true, displaySymbol: true, logoUri: true },
+    });
+
+    const chainIds = [...new Set(tokens.map((t) => t.chainId))];
+    const chains =
+      chainIds.length > 0
+        ? await prisma.chain.findMany({
+            where: { chainId: { in: chainIds } },
+            select: { chainId: true, name: true },
+          })
+        : [];
+    const chainMap = new Map(chains.map((c) => [c.chainId, c.name]));
+
+    const data = tokens.map((t) => ({
+      chainId: String(t.chainId),
+      displaySymbol:
+        t.displaySymbol ?? (`${chainMap.get(t.chainId) ?? ""} ${t.symbol}`.trim() || t.symbol),
+      logoUri: t.logoUri ?? undefined,
+      tokenAddress: t.tokenAddress,
+      symbol: t.symbol,
+    }));
+    return successEnvelope(reply, { tokens: data });
   });
 
   /**
@@ -86,11 +134,17 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
    * Return supported tokens with chain info. Query: ?chain_id=8453 to filter by chain. Public.
    */
   app.get<{ Querystring: unknown }>("/api/tokens", async (req: FastifyRequest<{ Querystring: unknown }>, reply) => {
-    const query = z.object({ chain_id: z.coerce.number().int().positive().optional() }).safeParse(req.query);
-    const chainId = query.success ? query.data.chain_id : undefined;
+    const query = z
+      .object({ chain_id: z.union([z.coerce.number(), z.string()]).optional() })
+      .safeParse(req.query);
+    const chainIdRaw = query.success ? query.data.chain_id : undefined;
+    const chainIdFilter =
+      chainIdRaw !== undefined && chainIdRaw !== ""
+        ? BigInt(chainIdRaw)
+        : undefined;
 
     const tokens = await prisma.supportedToken.findMany({
-      where: chainId != null ? { chainId } : undefined,
+      where: chainIdFilter != null ? { chainId: chainIdFilter } : undefined,
       orderBy: [{ chainId: "asc" }, { symbol: "asc" }],
       select: {
         id: true,
@@ -101,6 +155,7 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
         name: true,
         logoUri: true,
         fonbnkCode: true,
+        displaySymbol: true,
       },
     }) as TokenRow[];
 
@@ -115,7 +170,7 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
       const chain = chainMap.get(t.chainId);
       return {
         id: t.id,
-        chainId: t.chainId,
+        chainId: String(t.chainId),
         networkName: chain?.name,
         chainIconURI: chain?.iconUri ?? undefined,
         address: t.tokenAddress,
@@ -124,6 +179,7 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
         name: t.name ?? undefined,
         logoURI: t.logoUri ?? undefined,
         fonbnkCode: t.fonbnkCode ?? undefined,
+        displaySymbol: t.displaySymbol ?? undefined,
       };
     });
     return successEnvelope(reply, { tokens: data });
@@ -134,9 +190,11 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
     if (!requirePermission(req, reply, PERMISSION_PROVIDERS_READ)) return;
     const chains = await prisma.chain.findMany({
       orderBy: [{ chainId: "asc" }],
-      select: { id: true, chainId: true, name: true, iconUri: true, createdAt: true, updatedAt: true },
+      select: { id: true, chainId: true, name: true, iconUri: true, rpcUrl: true, rpcUrls: true, createdAt: true, updatedAt: true },
     });
-    return successEnvelope(reply, { chains });
+    return successEnvelope(reply, {
+      chains: chains.map((c) => ({ ...c, chainId: String(c.chainId) })),
+    });
   });
 
   app.post<{ Body: unknown }>("/api/admin/chains", async (req: FastifyRequest<{ Body: unknown }>, reply) => {
@@ -154,7 +212,7 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
       const chain = await prisma.chain.create({
         data: { chainId: chain_id, name, iconUri: icon_uri ?? undefined },
       });
-      return successEnvelope(reply, { chain: { id: chain.id, chainId: chain.chainId, name: chain.name, iconUri: chain.iconUri } }, 201);
+      return successEnvelope(reply, { chain: { id: chain.id, chainId: String(chain.chainId), name: chain.name, iconUri: chain.iconUri } }, 201);
     } catch (e: unknown) {
       const msg = e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002"
         ? "Chain with this chain_id already exists."
@@ -189,7 +247,7 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
             ...(body.icon_uri !== undefined && { iconUri: body.icon_uri }),
           },
         });
-        return successEnvelope(reply, { chain: { id: chain.id, chainId: chain.chainId, name: chain.name, iconUri: chain.iconUri } });
+        return successEnvelope(reply, { chain: { id: chain.id, chainId: String(chain.chainId), name: chain.name, iconUri: chain.iconUri } });
       } catch (e: unknown) {
         if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2025") {
           return reply.status(404).send({ success: false, error: "Chain not found." });
@@ -227,9 +285,11 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
     if (!requirePermission(req, reply, PERMISSION_PROVIDERS_READ)) return;
     const tokens = await prisma.supportedToken.findMany({
       orderBy: [{ chainId: "asc" }, { symbol: "asc" }],
-      select: { id: true, chainId: true, tokenAddress: true, symbol: true, decimals: true, name: true, logoUri: true, fonbnkCode: true, createdAt: true, updatedAt: true },
+      select: { id: true, chainId: true, tokenAddress: true, symbol: true, decimals: true, name: true, logoUri: true, fonbnkCode: true, displaySymbol: true, createdAt: true, updatedAt: true },
     });
-    return successEnvelope(reply, { tokens });
+    return successEnvelope(reply, {
+      tokens: tokens.map((t) => ({ ...t, chainId: String(t.chainId) })),
+    });
   });
 
   app.post<{ Body: unknown }>("/api/admin/tokens", async (req: FastifyRequest<{ Body: unknown }>, reply) => {
@@ -242,7 +302,7 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
         details: parse.error.flatten(),
       });
     }
-    const { chain_id, token_address, symbol, decimals, name, logo_uri, fonbnk_code } = parse.data;
+    const { chain_id, token_address, symbol, decimals, name, logo_uri, fonbnk_code, display_symbol } = parse.data;
     try {
       const token = await prisma.supportedToken.create({
         data: {
@@ -253,6 +313,7 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
           name: name ?? undefined,
           logoUri: logo_uri ?? undefined,
           fonbnkCode: fonbnk_code ?? undefined,
+          displaySymbol: display_symbol ?? undefined,
         },
       });
       return successEnvelope(
@@ -260,13 +321,14 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
         {
           token: {
             id: token.id,
-            chainId: token.chainId,
+            chainId: String(token.chainId),
             tokenAddress: token.tokenAddress,
             symbol: token.symbol,
             decimals: token.decimals,
             name: token.name,
             logoUri: token.logoUri,
             fonbnkCode: token.fonbnkCode,
+            displaySymbol: token.displaySymbol,
           },
         },
         201
@@ -307,18 +369,20 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
             ...(body.name !== undefined && { name: body.name }),
             ...(body.logo_uri !== undefined && { logoUri: body.logo_uri }),
             ...(body.fonbnk_code !== undefined && { fonbnkCode: body.fonbnk_code }),
+            ...(body.display_symbol !== undefined && { displaySymbol: body.display_symbol }),
           },
         });
         return successEnvelope(reply, {
           token: {
             id: token.id,
-            chainId: token.chainId,
+            chainId: String(token.chainId),
             tokenAddress: token.tokenAddress,
             symbol: token.symbol,
             decimals: token.decimals,
             name: token.name,
             logoUri: token.logoUri,
             fonbnkCode: token.fonbnkCode,
+            displaySymbol: token.displaySymbol,
           },
         });
       } catch (e: unknown) {
