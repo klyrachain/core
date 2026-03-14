@@ -10,5 +10,5 @@ prisma/generated
 *paystack*.md
 
 # DB backup (shared manually; do not commit)
-prisma/backup.sql
+# prisma/backup.sql
 sub0.json
