@@ -1,6 +1,7 @@
 /**
  * Payment request settlement: when we receive payment for a REQUEST, we auto-settle to the requester
- * (no claim step). Send crypto to payoutTarget or fiat via Paystack transfer using verified payoutFiat.
+ * (no claim step). Send crypto to payoutTarget (onramp-for-others) or fiat via Paystack transfer using verified payoutFiat.
+ * For crypto: payoutTarget must be set on the Request when created (0x...). For fiat: payoutFiat (account_name, etc.) required.
  */
 
 import { prisma } from "../lib/prisma.js";

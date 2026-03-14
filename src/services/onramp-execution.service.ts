@@ -59,6 +59,7 @@ export async function executeOnrampSend(transactionId: string): Promise<ExecuteO
     return { ok: false, error: "Payment not confirmed yet", code: "INVALID_STATUS" };
   }
 
+  // toIdentifier must be set when the order is created (e.g. webhook/order or test/onramp/order) so we know where to send crypto.
   const toAddress = (tx.toIdentifier ?? "").trim();
   if (!toAddress || !toAddress.startsWith("0x")) {
     console.warn(`[onramp] Step 2 FAILED: missing or invalid toIdentifier (wallet) for ${transactionId}.`);

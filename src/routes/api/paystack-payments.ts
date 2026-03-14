@@ -1,5 +1,9 @@
 /**
  * Paystack payment initialization (onramp). Returns authorization URL for frontend redirect.
+ * For onramp (fiat → crypto): pass transaction_id from an order (webhook/order or test/onramp/order)
+ * that has toIdentifier set to the recipient wallet; otherwise executeOnrampSend will fail (no destination).
+ * Creating a transaction here when transaction_id is omitted is for ad-hoc payments only and lacks
+ * toIdentifier/f_chain/t_chain — use order-first flow for full onramp.
  */
 
 import type { FastifyInstance, FastifyRequest } from "fastify";

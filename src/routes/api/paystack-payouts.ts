@@ -2,6 +2,8 @@
  * Paystack payouts (offramp): request payout link after confirming crypto tx, then execute transfer.
  * Test vs live: Paystack uses the same API; test/live is determined by PAYSTACK_SECRET_KEY (sk_test_* vs sk_live_*).
  * No separate test payout endpoint — use test key for sandbox, live key when you fund live balance.
+ * Note: Paystack Transfer API is used (create recipient + initiate transfer). Availability/limits depend on
+ * region, currency, and account balance; logic here is correct but provider may not support all payout types.
  */
 
 import { randomBytes } from "node:crypto";

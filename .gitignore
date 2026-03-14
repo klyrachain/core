@@ -11,3 +11,4 @@ prisma/generated
 
 # DB backup (shared manually; do not commit)
 prisma/backup.sql
+sub0.json
