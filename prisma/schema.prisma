@@ -102,6 +102,20 @@ enum SettlementSchedule {
   MANUAL
 }
 
+enum MerchantSignupRole {
+  DEVELOPER
+  FOUNDER_EXECUTIVE
+  FINANCE_OPS
+  PRODUCT
+}
+
+enum MerchantPrimaryGoal {
+  ACCEPT_PAYMENTS
+  SEND_PAYOUTS
+  INTEGRATE_SDK
+  EXPLORING
+}
+
 enum PayoutMethodType {
   BANK_ACCOUNT
   CRYPTO_WALLET
@@ -141,11 +155,53 @@ model User {
   number   String? // e.g. 233...
   username String?
 
+  /// Business portal: email/password signup (null if Google- or magic-link-only).
+  passwordHash String?
+  /// Google OAuth subject; links account when email matches or sub is unique.
+  googleSub    String? @unique
+  /// Business portal profile name (shown after onboarding).
+  portalDisplayName String?
+  portalPasskeys    UserPortalPasskey[]
+
   transactionsFrom Transaction[] @relation("FromUser")
   transactionsTo   Transaction[] @relation("ToUser")
   members          BusinessMember[]
+  merchantOnboarding MerchantOnboarding?
 
   @@index([email, address, username])
+}
+
+/// Progressive business signup (Typeform steps 2–3) before Business is created.
+model MerchantOnboarding {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  companyName String?
+  website     String?
+  signupRole  MerchantSignupRole?
+  primaryGoal MerchantPrimaryGoal?
+
+  @@index([userId])
+}
+
+/// WebAuthn passkey for business portal (User), distinct from admin passkeys.
+model UserPortalPasskey {
+  id           String   @id @default(uuid())
+  createdAt    DateTime @default(now())
+
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialId String   @unique
+  publicKey    Bytes
+  counter      Int      @default(0)
+  name         String?
+
+  @@index([userId])
+  @@index([credentialId])
 }
 
 model Transaction {

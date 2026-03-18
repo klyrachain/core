@@ -72,7 +72,7 @@ export const PLATFORM_PERMISSIONS = [
   PERMISSION_ACCESS_READ,
 ] as const;
 
-/** Permissions granted implicitly to a merchant (business) API key for their own business. */
+/** Permissions for tenant context (merchant API key or business portal JWT). No connect:* — platform Connect is separate. */
 export const MERCHANT_IMPLICIT_PERMISSIONS = [
   PERMISSION_BUSINESS_READ,
   PERMISSION_BUSINESS_WRITE,
@@ -81,7 +81,6 @@ export const MERCHANT_IMPLICIT_PERMISSIONS = [
   PERMISSION_TRANSACTIONS_READ,
   PERMISSION_PAYOUTS_READ,
   PERMISSION_PAYOUTS_WRITE,
-  PERMISSION_CONNECT_OVERVIEW,
   PERMISSION_ACCESS_READ,
 ] as const;
 
@@ -178,6 +177,9 @@ export function getPermissionsForRequest(req: FastifyRequest): string[] {
   if (req.apiKey) {
     return getPermissionsForApiKey(req.apiKey);
   }
+  if (req.businessPortalTenant) {
+    return [...MERCHANT_IMPLICIT_PERMISSIONS];
+  }
   return [];
 }
 
@@ -198,6 +200,10 @@ export function requestHasPermission(
       return permissionListIncludes(perms, permission);
     }
     return permissionListIncludes(req.apiKey.permissions, permission);
+  }
+  if (req.businessPortalTenant) {
+    if (!options?.allowMerchant) return false;
+    return permissionListIncludes([...MERCHANT_IMPLICIT_PERMISSIONS], permission);
   }
   return false;
 }

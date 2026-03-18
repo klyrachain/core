@@ -39,10 +39,13 @@ import { offrampApiRoutes } from "./routes/api/offramp.js";
 import { testApiRoutes } from "./routes/api/test.js";
 import { v1QuotesRoutes } from "./routes/api/v1/quotes.js";
 import { adminAuthRoutes } from "./routes/api/admin-auth.js";
+import { businessAuthRoutes } from "./routes/api/business-auth.js";
 import { paystackWebhookRoutes } from "./routes/webhook/paystack.js";
 import { onRequestLog, onResponseLog } from "./lib/request-log-hooks.js";
 import { requireApiKeyOrSession, resolveApiKeyIfPresent } from "./lib/auth.guard.js";
 import { resolveAdminSessionIfPresent } from "./lib/admin-auth.guard.js";
+import { handleMerchantV1Auth } from "./lib/business-portal-tenant.guard.js";
+import { merchantV1Routes } from "./routes/api/v1/merchant.js";
 import { ensureValidationCache, loadValidationCache } from "./services/validation-cache.service.js";
 import { processPendingEmails } from "./services/email.service.js";
 
@@ -74,10 +77,21 @@ app.addHook("preHandler", async (request, reply) => {
   const method = (request.method ?? "").toUpperCase();
   if (path === "/api/health" || path === "/api/ready") return;
   if (path.startsWith("/api/auth")) return;
+  if (path.startsWith("/api/business-auth")) return;
+  if (path === "/signup/business") return;
   if (path === "/webhook/paystack") return; // Paystack does not send x-api-key; we verify x-paystack-signature instead
   if (method === "GET" && path.startsWith("/api/requests/by-link/")) return; // Public pay link for request
+  if (method === "OPTIONS") return;
+
   await resolveApiKeyIfPresent(request);
   await resolveAdminSessionIfPresent(request);
+
+  if (path.startsWith("/api/v1/merchant")) {
+    const merchantOk = await handleMerchantV1Auth(request, reply);
+    if (!merchantOk) return;
+    return;
+  }
+
   requireApiKeyOrSession(request, reply);
 });
 
@@ -108,7 +122,9 @@ await app.register(cacheApiRoutes, { prefix: "" });
 await app.register(queueApiRoutes, { prefix: "" });
 await app.register(quoteApiRoutes, { prefix: "" });
 await app.register(v1QuotesRoutes, { prefix: "/api/v1" });
+await app.register(merchantV1Routes, { prefix: "/api/v1/merchant" });
 await app.register(adminAuthRoutes, { prefix: "" });
+await app.register(businessAuthRoutes, { prefix: "" });
 await app.register(countriesApiRoutes, { prefix: "" });
 await app.register(chainsTokensApiRoutes, { prefix: "" });
 await app.register(invoicesApiRoutes, { prefix: "" });

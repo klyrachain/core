@@ -145,6 +145,7 @@ export function requireApiKeyOrSession(
 ): boolean {
   if (request.apiKey) return true;
   if ((request as { adminSession?: unknown }).adminSession) return true;
+  if (request.businessPortalTenant) return true;
   reply.status(401).send({
     success: false,
     error: "Not authenticated. Provide x-api-key or Authorization: Bearer <session>.",

@@ -3,7 +3,7 @@
  * Platform keys / session see all data; merchant keys see only their own business/settlements.
  */
 
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requirePermission } from "../../lib/admin-auth.guard.js";
 import {
   PERMISSION_CONNECT_OVERVIEW,
@@ -24,6 +24,19 @@ import {
 
 const COMPLETED_STATUS = "COMPLETED";
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+
+/** Connect aggregate routes are platform-only (defense in depth). */
+function rejectTenantConnectAccess(req: FastifyRequest, reply: FastifyReply): boolean {
+  if (req.apiKey?.businessId) {
+    reply.status(403).send({
+      success: false,
+      error: "This Connect endpoint is for platform use only. Use /api/v1/merchant/* for tenant data.",
+      code: "TENANT_FORBIDDEN",
+    });
+    return true;
+  }
+  return false;
+}
 
 function toNum(v: { toString(): string } | number | null | undefined): number {
   if (v == null) return 0;
@@ -92,6 +105,7 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
   // --- GET /api/connect/overview ---
   app.get("/api/connect/overview", async (req: FastifyRequest, reply) => {
     try {
+      if (rejectTenantConnectAccess(req, reply)) return;
       if (!requirePermission(req, reply, PERMISSION_CONNECT_OVERVIEW)) return;
 
       const now = new Date();
@@ -216,6 +230,7 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
+        if (rejectTenantConnectAccess(req, reply)) return;
         if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
 
         const days = Math.min(Math.max(parseInt(req.query.days ?? "0", 10) || 0, 0), 365);
@@ -255,6 +270,7 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
+        if (rejectTenantConnectAccess(req, reply)) return;
         if (!requirePermission(req, reply, PERMISSION_CONNECT_BUSINESSES)) return;
 
         const { page, limit, skip } = parsePagination(req.query);

@@ -30,6 +30,8 @@ export type GenerateKeyOptions = {
   domains: string[];
   permissions?: string[];
   expiresAt?: Date | null;
+  /** When set, key is scoped to this business (merchant key). */
+  businessId?: string | null;
 };
 
 /**
@@ -38,7 +40,7 @@ export type GenerateKeyOptions = {
  * Uses raw SQL because prisma.apiKey delegate can be undefined with Prisma 7 + driver adapter.
  */
 export async function generateKey(options: GenerateKeyOptions): Promise<string> {
-  const { name, domains, permissions = [], expiresAt = null } = options;
+  const { name, domains, permissions = [], expiresAt = null, businessId = null } = options;
 
   const secretPart = randomHex32();
   const rawKey = `${KEY_PREFIX}${secretPart}`;
@@ -48,12 +50,38 @@ export async function generateKey(options: GenerateKeyOptions): Promise<string> 
 
   const id = randomUUID();
   const now = new Date();
-  await prisma.$executeRaw`
-    INSERT INTO "ApiKey" ("id", "createdAt", "updatedAt", "keyHash", "keyPrefix", "name", "domains", "permissions", "isActive", "expiresAt")
-    VALUES (${id}, ${now}, ${now}, ${keyHash}, ${keyPrefix}, ${name}, ${domains}, ${permissions}, true, ${expiresAt})
-  `;
+  if (businessId) {
+    await prisma.$executeRaw`
+      INSERT INTO "ApiKey" ("id", "createdAt", "updatedAt", "keyHash", "keyPrefix", "name", "domains", "permissions", "isActive", "expiresAt", "businessId")
+      VALUES (${id}, ${now}, ${now}, ${keyHash}, ${keyPrefix}, ${name}, ${domains}, ${permissions}, true, ${expiresAt}, ${businessId})
+    `;
+  } else {
+    await prisma.$executeRaw`
+      INSERT INTO "ApiKey" ("id", "createdAt", "updatedAt", "keyHash", "keyPrefix", "name", "domains", "permissions", "isActive", "expiresAt")
+      VALUES (${id}, ${now}, ${now}, ${keyHash}, ${keyPrefix}, ${name}, ${domains}, ${permissions}, true, ${expiresAt})
+    `;
+  }
 
   return rawKey;
+}
+
+export async function listApiKeysForBusiness(businessId: string): Promise<
+  {
+    id: string;
+    name: string;
+    domains: string[];
+    keyPrefix: string;
+    isActive: boolean;
+    lastUsedAt: Date | null;
+    expiresAt: Date | null;
+  }[]
+> {
+  return prisma.$queryRaw`
+    SELECT id, name, domains, "keyPrefix", "isActive", "lastUsedAt", "expiresAt"
+    FROM "ApiKey"
+    WHERE "businessId" = ${businessId}
+    ORDER BY "createdAt" DESC
+  `;
 }
 
 /**

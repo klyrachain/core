@@ -82,6 +82,26 @@ const envSchema = z.object({
 
   /** Frontend app base URL for payment/claim links (e.g. https://app.example.com). Used in email/SMS templates. */
   FRONTEND_APP_URL: z.string().url().optional().default("http://localhost:3000"),
+
+  /** HMAC secret for business portal JWT (signup / dashboard session). Defaults to ENCRYPTION_KEY. */
+  BUSINESS_PORTAL_JWT_SECRET: z.string().min(32).optional(),
+
+  /** Google OAuth for business signup (optional; omit to disable “Continue with Google”). */
+  GOOGLE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+  GOOGLE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+  /**
+   * Must match Google Cloud console redirect URI exactly, e.g.
+   * https://api.example.com/api/business-auth/google/callback
+   */
+  GOOGLE_OAUTH_REDIRECT_URI: z.string().url().optional(),
+
+  /** After Google OAuth, redirect here with ?portal_token= (e.g. https://app.example.com/business/signup). If unset, uses same host as the API + /signup/business. */
+  BUSINESS_SIGNUP_LANDING_URL: z.string().url().optional(),
+
+  /** WebAuthn RP ID for business portal passkeys (hostname only, e.g. localhost or app.example.com). */
+  BUSINESS_WEBAUTHN_RP_ID: z.string().min(1).optional(),
+  /** Comma-separated origins allowed for business portal WebAuthn (e.g. http://localhost:3000). */
+  BUSINESS_WEBAUTHN_ORIGINS: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

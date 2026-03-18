@@ -80,6 +80,13 @@ export const ADMIN_AUTH_REG_CHALLENGE_TTL = 300;
 export const ADMIN_AUTH_AUTH_CHALLENGE_PREFIX = "admin-auth:auth:";
 export const ADMIN_AUTH_AUTH_CHALLENGE_TTL = 300;
 
+/** Business portal WebAuthn: registration challenge by userId. */
+export const PORTAL_PASSKEY_REG_PREFIX = "portal-passkey:reg:";
+export const PORTAL_PASSKEY_REG_TTL = 300;
+/** Business portal WebAuthn: authentication challenge by normalized email hash. */
+export const PORTAL_PASSKEY_AUTH_PREFIX = "portal-passkey:auth:";
+export const PORTAL_PASSKEY_AUTH_TTL = 300;
+
 export type BalanceEntry = {
   amount: string;
   status: string;
