@@ -1,0 +1,6 @@
+{"sessionId":"bac22c","hypothesisId":"H3,H4","location":"business-auth.service.ts:storeMagicLinkToken","message":"magic_stored","data":{"tokenLen":43,"ttlSec":900},"timestamp":1773807937111}
+{"sessionId":"bac22c","hypothesisId":"H3,H4","location":"business-auth.service.ts:storeMagicLinkToken","message":"magic_stored","data":{"tokenLen":43,"ttlSec":900},"timestamp":1773807937112}
+{"sessionId":"bac22c","hypothesisId":"H1,H2,H5","location":"business-auth.service.ts:consumeMagicLinkToken","message":"consume_enter","data":{"attempt":1,"tokenLen":43,"tokenLenRaw":43},"timestamp":1773807950234}
+{"sessionId":"bac22c","hypothesisId":"H1","location":"business-auth.service.ts:consumeMagicLinkToken","message":"consume_redis_hit","data":{"attempt":1,"tokenLen":43,"runId":"post-fix-v2"},"timestamp":1773807950235}
+{"sessionId":"bac22c","hypothesisId":"H1,H2,H5","location":"business-auth.service.ts:consumeMagicLinkToken","message":"consume_enter","data":{"attempt":1,"tokenLen":43,"tokenLenRaw":43},"timestamp":1773807950234}
+{"sessionId":"bac22c","hypothesisId":"H1","location":"business-auth.service.ts:consumeMagicLinkToken","message":"consume_redis_hit","data":{"attempt":1,"tokenLen":43,"runId":"post-fix-v2"},"timestamp":1773807950235}
