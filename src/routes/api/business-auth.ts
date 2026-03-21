@@ -44,11 +44,34 @@ import {
   PORTAL_LOGIN_CODE_TTL_SECONDS,
 } from "../../services/business-auth.service.js";
 import { signupBusinessPageHtml } from "../web/signup-business-html.js";
+import { isLikelyDatabaseUnavailableError } from "../../lib/db-errors.js";
+import { acceptBusinessMemberInvite } from "../../services/business-member-invite.service.js";
 
 function portalSignupLanding(req: FastifyRequest): string {
   const env = getEnv();
   if (env.BUSINESS_SIGNUP_LANDING_URL) {
     return env.BUSINESS_SIGNUP_LANDING_URL.replace(/\/$/, "");
+  }
+  const forwarded = req.headers["x-forwarded-proto"];
+  const proto =
+    typeof forwarded === "string" ? forwarded.split(",")[0]!.trim() : "http";
+  const host = req.headers.host ?? `localhost:${env.PORT}`;
+  return `${proto}://${host}/signup/business`;
+}
+
+/**
+ * Base URL for magic-link emails (?magic=...).
+ * Uses BUSINESS_SIGNUP_LANDING_URL when set (e.g. http://localhost:3001/business/signup) so links match Google OAuth landing.
+ * If unset, uses BUSINESS_MAGIC_LINK_BASE_URL + /signup/business, else Core host + /signup/business.
+ */
+function businessMagicLinkLandingUrl(req: FastifyRequest): string {
+  const env = getEnv();
+  if (env.BUSINESS_SIGNUP_LANDING_URL?.trim()) {
+    return env.BUSINESS_SIGNUP_LANDING_URL.replace(/\/$/, "");
+  }
+  const forceCore = env.BUSINESS_MAGIC_LINK_BASE_URL?.trim();
+  if (forceCore) {
+    return `${forceCore.replace(/\/$/, "")}/signup/business`;
   }
   const forwarded = req.headers["x-forwarded-proto"];
   const proto =
@@ -228,6 +251,15 @@ export async function businessAuthRoutes(app: FastifyInstance): Promise<void> {
       );
       return successEnvelope(reply, { userId, accessToken });
     } catch (e) {
+      if (isLikelyDatabaseUnavailableError(e)) {
+        req.log.error({ err: e }, "POST /api/business-auth/register database unavailable");
+        return reply.status(503).send({
+          success: false,
+          error:
+            "Database unreachable or misconfigured. Verify DATABASE_URL (host, password, db name, ?sslmode=require for cloud).",
+          code: "DATABASE_UNAVAILABLE",
+        });
+      }
       const msg = e instanceof Error ? e.message : "Registration failed.";
       return reply.status(400).send({ success: false, error: msg, code: "REGISTER_FAILED" });
     }
@@ -244,12 +276,37 @@ export async function businessAuthRoutes(app: FastifyInstance): Promise<void> {
         parsed.data.password
       );
       return successEnvelope(reply, { userId, accessToken });
-    } catch {
+    } catch (e) {
+      if (isLikelyDatabaseUnavailableError(e)) {
+        req.log.error({ err: e }, "POST /api/business-auth/login database unavailable");
+        return reply.status(503).send({
+          success: false,
+          error:
+            "Database unreachable or misconfigured. Verify DATABASE_URL (host, password, db name, ?sslmode=require for cloud).",
+          code: "DATABASE_UNAVAILABLE",
+        });
+      }
       return reply.status(401).send({
         success: false,
         error: "Invalid email or password.",
         code: "LOGIN_FAILED",
       });
+    }
+  });
+
+  app.post("/api/business-auth/team/accept-invite", async (req: FastifyRequest, reply: FastifyReply) => {
+    const userId = await requirePortalUser(req, reply);
+    if (!userId) return;
+    const parsed = z.object({ token: z.string().min(1) }).safeParse(req.body);
+    if (!parsed.success) {
+      return errorEnvelope(reply, "Invalid body.", 400);
+    }
+    try {
+      const { businessId } = await acceptBusinessMemberInvite(parsed.data.token, userId);
+      return successEnvelope(reply, { businessId, message: "You joined the team." });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Accept failed.";
+      return reply.status(400).send({ success: false, error: msg, code: "INVITE_ACCEPT_FAILED" });
     }
   });
 
@@ -306,8 +363,7 @@ export async function businessAuthRoutes(app: FastifyInstance): Promise<void> {
     }
     try {
       const token = await storeMagicLinkToken(parsed.data.email);
-      const base = portalSignupLanding(req);
-      const magicUrl = `${base}?magic=${encodeURIComponent(token)}`;
+      const magicUrl = `${businessMagicLinkLandingUrl(req)}?magic=${encodeURIComponent(token)}`;
       const emailResult = await sendBusinessMagicLinkEmail(parsed.data.email, magicUrl);
       return successEnvelope(reply, {
         message: emailResult.message,

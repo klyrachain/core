@@ -26,7 +26,8 @@
     "e2e:cli": "tsx scripts/e2e-cli.ts",
     "e2e:cli:requests-claims": "tsx scripts/e2e-cli-requests-claims.ts",
     "key:generate": "tsx scripts/generate-backend-key.ts",
-    "sent:push-templates": "tsx scripts/push-sent-templates.ts"
+    "sent:push-templates": "tsx scripts/push-sent-templates.ts",
+    "seed:merchant-dashboard-mock": "tsx scripts/seed-merchant-dashboard-mock.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",

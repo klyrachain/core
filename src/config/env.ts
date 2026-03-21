@@ -95,8 +95,18 @@ const envSchema = z.object({
    */
   GOOGLE_OAUTH_REDIRECT_URI: z.string().url().optional(),
 
-  /** After Google OAuth, redirect here with ?portal_token= (e.g. https://app.example.com/business/signup). If unset, uses same host as the API + /signup/business. */
+  /**
+   * After Google OAuth, redirect here with ?portal_token= (dashboard route).
+   * Production: set explicitly (e.g. https://app.example.com/business/signup).
+   * Development: defaults to http://localhost:3001/business/signup when unset.
+   */
   BUSINESS_SIGNUP_LANDING_URL: z.string().url().optional(),
+
+  /**
+   * Optional: force magic-link emails to Core’s /signup/business (e.g. http://127.0.0.1:4003).
+   * Only used when BUSINESS_SIGNUP_LANDING_URL is unset. If landing URL is set, magic links use that instead.
+   */
+  BUSINESS_MAGIC_LINK_BASE_URL: z.string().url().optional(),
 
   /** WebAuthn RP ID for business portal passkeys (hostname only, e.g. localhost or app.example.com). */
   BUSINESS_WEBAUTHN_RP_ID: z.string().min(1).optional(),
@@ -114,7 +124,13 @@ export function loadEnv(): Env {
     const msg = parsed.error.errors.map((e) => `${e.path.join(".")}: ${e.message}`).join("; ");
     throw new Error(`Invalid environment: ${msg}`);
   }
-  env = parsed.data;
+  const d = parsed.data;
+  env = {
+    ...d,
+    BUSINESS_SIGNUP_LANDING_URL:
+      d.BUSINESS_SIGNUP_LANDING_URL ??
+      (d.NODE_ENV === "development" ? "http://localhost:3001/business/signup" : undefined),
+  };
   return env;
 }
 

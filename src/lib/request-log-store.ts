@@ -16,6 +16,8 @@ export type RequestLogEntry = {
   /** Set by onResponse hook */
   statusCode?: number;
   responseTimeMs?: number;
+  /** Set after merchant auth for GET /api/v1/merchant/logs filtering */
+  tenantBusinessId?: string;
 };
 
 const store: RequestLogEntry[] = [];
@@ -68,15 +70,27 @@ export function updateRequestLog(
   }
 }
 
+export function tagRequestLogWithTenant(id: string, tenantBusinessId: string): void {
+  const entry = store.find((e) => e.id === id);
+  if (entry) {
+    entry.tenantBusinessId = tenantBusinessId;
+  }
+}
+
 export function getRequestLogs(filters: {
   method?: string;
   path?: string;
   since?: string;
   limit?: number;
   offset?: number;
+  tenantBusinessId?: string;
 }): { entries: RequestLogEntry[]; total: number } {
   let list = [...store].reverse(); // newest first
 
+  if (filters.tenantBusinessId) {
+    const bid = filters.tenantBusinessId;
+    list = list.filter((e) => e.tenantBusinessId === bid);
+  }
   if (filters.method) {
     const m = filters.method.toUpperCase();
     list = list.filter((e) => e.method === m);
