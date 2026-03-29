@@ -23,7 +23,21 @@ const BASE_ETH = {
   fonbnkCode: "BASE_ETH",
   decimals: 18,
 };
-const POOL_TOKENS = [BASE_USDC, BASE_ETH, { chainId: 1, symbol: "USDC", address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", fonbnkCode: "ETHEREUM_USDC", decimals: 6 }, { chainId: 1, symbol: "ETH", address: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", fonbnkCode: "ETHEREUM_NATIVE", decimals: 18 }];
+/** In-DB token with no direct Fonbnk path (uses intermediate + swap path in tests). */
+const BASE_MANA = {
+  chainId: 8453,
+  symbol: "MANA",
+  address: "0xMANA",
+  fonbnkCode: "8453_MANA",
+  decimals: 18,
+};
+const POOL_TOKENS = [
+  BASE_USDC,
+  BASE_ETH,
+  BASE_MANA,
+  { chainId: 1, symbol: "USDC", address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", fonbnkCode: "ETHEREUM_USDC", decimals: 6 },
+  { chainId: 1, symbol: "ETH", address: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", fonbnkCode: "ETHEREUM_NATIVE", decimals: 18 },
+];
 
 vi.mock("../../src/services/fonbnk.service.js", () => ({
   getFonbnkQuote: (req: unknown) => mockGetFonbnkQuote(req),

@@ -57,7 +57,7 @@ export function generateTotpSecret(): string {
   return generateSecret();
 }
 
-export function getTotpUri(secret: string, email: string, issuer = "Klyra Admin"): string {
+export function getTotpUri(secret: string, email: string, issuer = "Morapay Admin"): string {
   return generateURI({ issuer, label: email, secret });
 }
 
@@ -279,12 +279,17 @@ export async function getRegistrationOptionsForSetup(inviteToken: string): Promi
   if (!invite) return null;
   const { rpID } = getRpConfig();
   const options = await generateRegistrationOptions({
-    rpName: "Klyra Admin",
+    rpName: "Morapay Admin",
     rpID,
     userName: invite.email,
     userDisplayName: invite.email,
     attestationType: "none",
     excludeCredentials: [],
+    authenticatorSelection: {
+      residentKey: "preferred",
+      userVerification: "preferred",
+    },
+    supportedAlgorithmIDs: [-8, -7, -257],
   });
   return { options, inviteEmail: invite.email };
 }
@@ -298,12 +303,17 @@ export async function getRegistrationOptionsForAdmin(adminId: string): Promise<A
   if (!admin) return null;
   const { rpID } = getRpConfig();
   const options = await generateRegistrationOptions({
-    rpName: "Klyra Admin",
+    rpName: "Morapay Admin",
     rpID,
     userName: admin.email,
     userDisplayName: admin.name ?? admin.email,
     attestationType: "none",
     excludeCredentials: admin.passkeys.map((p) => ({ id: p.credentialId })),
+    authenticatorSelection: {
+      residentKey: "preferred",
+      userVerification: "preferred",
+    },
+    supportedAlgorithmIDs: [-8, -7, -257],
   });
   return options;
 }
@@ -347,11 +357,13 @@ export async function getAuthenticationOptionsForEmail(email: string): Promise<{
     where: { email: normalizedEmail },
     include: { passkeys: true },
   });
-  if (!admin || admin.passkeys.length === 0) return null;
+  if (!admin || !admin.twoFaEnabled || admin.passkeys.length === 0) return null;
   const { rpID } = getRpConfig();
   const options = await generateAuthenticationOptions({
     rpID,
     allowCredentials: admin.passkeys.map((p) => ({ id: p.credentialId })),
+    userVerification: "preferred",
+    timeout: 60_000,
   });
   return {
     options,
@@ -370,7 +382,7 @@ export async function verifyPasskeyAssertion(
     where: { email: normalizedEmail },
     include: { passkeys: true },
   });
-  if (!admin) return null;
+  if (!admin || !admin.twoFaEnabled) return null;
   const passkey = admin.passkeys.find((p) => p.credentialId === response.id);
   if (!passkey) return null;
   const { rpID } = getRpConfig();

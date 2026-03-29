@@ -4,7 +4,9 @@
 
 import type { OnrampQuoteRequest, OnrampQuoteResponse } from "../lib/onramp-quote.types.js";
 import {
+  CHAIN_ID_BASE,
   findPoolTokenFromDb,
+  getBaseUsdcPoolTokenFromDb,
   getIntermediatePoolTokenFromDb,
   getPoolTokenDecimalsFromDb,
   useDirectFonbnkForPoolToken,
@@ -13,6 +15,7 @@ import {
   getFonbnkQuote,
   getCurrencyForCountry,
 } from "./fonbnk.service.js";
+import type { FonbnkQuoteResponse } from "../lib/onramp-quote.types.js";
 import { getBestQuotes } from "./swap-quote.service.js";
 
 function humanToWei(amount: number, decimals: number): string {
@@ -25,6 +28,25 @@ function weiToHuman(wei: string, decimals: number): number {
   const remainder = BigInt(wei) % BigInt(10 ** decimals);
   const frac = Number(remainder) / 10 ** decimals;
   return n + frac;
+}
+
+async function getFonbnkQuoteSafe(
+  args: Parameters<typeof getFonbnkQuote>[0]
+): Promise<
+  | { ok: true; quote: FonbnkQuoteResponse }
+  | { ok: false; error: string }
+> {
+  try {
+    const quote = await getFonbnkQuote(args);
+    if (!quote) {
+      return { ok: false, error: "No Fonbnk quote returned for this request." };
+    }
+    return { ok: true, quote };
+  } catch (e) {
+    const raw = e instanceof Error ? e.message : String(e);
+    const msg = raw.replace(/^Fonbnk API error:\s*/i, "").trim() || raw;
+    return { ok: false, error: msg };
+  }
 }
 
 /**
@@ -54,6 +76,7 @@ export async function getOnrampQuote(
 
   const pool = await findPoolTokenFromDb(chain_id, token);
   const useDirectFonbnk = pool != null && useDirectFonbnkForPoolToken(pool);
+  const effectiveDecimals = pool?.decimals ?? token_decimals;
   // For swap path we need the requested token's contract address (getBestQuotes expects addresses, not symbols).
   if (!useDirectFonbnk && !pool) {
     return { ok: false, error: "Token not supported for this chain; add it in SupportedToken to get swap-based quotes.", status: 400 };
@@ -66,16 +89,17 @@ export async function getOnrampQuote(
     const quoteAmount = isSellFiatTarget ? 1 : amount;
     const quoteAmountIn = isSellFiatTarget ? "crypto" : amount_in;
 
-    const fonbnk = await getFonbnkQuote({
+    const fonbnkRes = await getFonbnkQuoteSafe({
       country: countryCode,
       token: pool.fonbnkCode,
       purchaseMethod: isSell ? "sell" : "buy",
       amount: quoteAmount,
       amountIn: quoteAmountIn,
     });
-    if (!fonbnk) {
-      return { ok: false, error: "No Fonbnk quote for this pool token.", status: 404 };
+    if (!fonbnkRes.ok) {
+      return { ok: false, error: fonbnkRes.error, status: 502 };
     }
+    const fonbnk = fonbnkRes.quote;
     let totalCrypto: string;
     let totalFiat: number;
     if (isSellFiatTarget) {
@@ -117,16 +141,17 @@ export async function getOnrampQuote(
     const quoteAmount = isSellFiatTarget ? 1 : amount;
     const quoteAmountIn = isSellFiatTarget ? "crypto" : "fiat";
 
-    const fonbnk = await getFonbnkQuote({
+    const fonbnkRes = await getFonbnkQuoteSafe({
       country: countryCode,
       token: intermediate.fonbnkCode,
       purchaseMethod: isSell ? "sell" : "buy",
       amount: quoteAmount,
       amountIn: quoteAmountIn,
     });
-    if (!fonbnk) {
-      return { ok: false, error: "No Fonbnk quote for intermediate pool token.", status: 404 };
+    if (!fonbnkRes.ok) {
+      return { ok: false, error: fonbnkRes.error, status: 502 };
     }
+    const fonbnk = fonbnkRes.quote;
     const poolAmountHuman = isSellFiatTarget ? amount / (fonbnk.rate > 0 ? fonbnk.rate : fonbnk.total) : fonbnk.total;
     const poolAmountWei = humanToWei(poolAmountHuman, poolDecimals);
     if (isSell) {
@@ -219,31 +244,57 @@ export async function getOnrampQuote(
   }
 
   // amount_in === "crypto"
-  const requestedWei = humanToWei(amount, token_decimals);
+  const requestedWei = humanToWei(amount, effectiveDecimals);
   if (isSell) {
-    const swapResult = await getBestQuotes({
+    const swapAddr = from_address ?? "0x0000000000000000000000000000000000000000";
+    let swapResult = await getBestQuotes({
       from_token: requestedTokenAddress,
       to_token: intermediate.address,
       amount: requestedWei,
       from_chain: chain_id,
       to_chain: intermediate.chainId,
-      from_address: from_address ?? "0x0000000000000000000000000000000000000000",
+      from_address: swapAddr,
     });
+    let settleIntermediate = intermediate;
+    let settlePoolDecimals = poolDecimals;
+    if (
+      !swapResult.ok &&
+      chain_id !== CHAIN_ID_BASE &&
+      intermediate.chainId === chain_id
+    ) {
+      const baseUsdc = await getBaseUsdcPoolTokenFromDb();
+      if (baseUsdc != null && useDirectFonbnkForPoolToken(baseUsdc)) {
+        const cross = await getBestQuotes({
+          from_token: requestedTokenAddress,
+          to_token: baseUsdc.address,
+          amount: requestedWei,
+          from_chain: chain_id,
+          to_chain: CHAIN_ID_BASE,
+          from_address: swapAddr,
+        });
+        if (cross.ok) {
+          swapResult = cross;
+          settleIntermediate = baseUsdc;
+          settlePoolDecimals = baseUsdc.decimals ?? (await getPoolTokenDecimalsFromDb("USDC"));
+        }
+      }
+    }
     if (!swapResult.ok) {
       return { ok: false, error: swapResult.error, status: 502 };
     }
     const best = swapResult.data.best;
-    const poolAmountHuman = weiToHuman(best.to_amount, poolDecimals);
-    const fonbnk = await getFonbnkQuote({
+    const poolAmountHuman = weiToHuman(best.to_amount, settlePoolDecimals);
+    const fonbnkRes = await getFonbnkQuoteSafe({
       country: countryCode,
-      token: intermediate.fonbnkCode,
+      token: settleIntermediate.fonbnkCode,
       purchaseMethod: "sell",
       amount: poolAmountHuman,
       amountIn: "crypto",
     });
-    if (!fonbnk) {
-      return { ok: false, error: "No Fonbnk quote for intermediate pool amount.", status: 404 };
+    if (!fonbnkRes.ok) {
+      return { ok: false, error: fonbnkRes.error, status: 502 };
     }
+    const fonbnk = fonbnkRes.quote;
     const data: OnrampQuoteResponse = {
       country: countryCode,
       currency,
@@ -259,7 +310,7 @@ export async function getOnrampQuote(
         from_chain_id: best.from_chain_id,
         from_token: token,
         to_chain_id: best.to_chain_id,
-        to_token: intermediate.address,
+        to_token: settleIntermediate.address,
         from_amount: best.from_amount,
         to_amount: best.to_amount,
         provider: best.provider,
@@ -301,16 +352,17 @@ export async function getOnrampQuote(
   }
   const best2 = swapResult2.data.best;
   const poolAmountHuman = weiToHuman(best2.from_amount, poolDecimals);
-  const fonbnk = await getFonbnkQuote({
+  const fonbnkRes2 = await getFonbnkQuoteSafe({
     country: countryCode,
     token: intermediate.fonbnkCode,
     purchaseMethod: "buy",
     amount: poolAmountHuman,
     amountIn: "crypto",
   });
-  if (!fonbnk) {
-    return { ok: false, error: "No Fonbnk quote for intermediate pool amount.", status: 404 };
+  if (!fonbnkRes2.ok) {
+    return { ok: false, error: fonbnkRes2.error, status: 502 };
   }
+  const fonbnk = fonbnkRes2.quote;
   const data: OnrampQuoteResponse = {
     country: countryCode,
     currency,

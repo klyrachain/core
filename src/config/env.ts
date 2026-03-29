@@ -83,6 +83,9 @@ const envSchema = z.object({
   /** Frontend app base URL for payment/claim links (e.g. https://app.example.com). Used in email/SMS templates. */
   FRONTEND_APP_URL: z.string().url().optional().default("http://localhost:3000"),
 
+  /** Payer checkout app origin (no trailing slash), e.g. https://pay.example.com. Exposed read-only via GET /api/meta/checkout-base-url. */
+  CHECKOUT_BASE_URL: z.string().url().optional(),
+
   /** HMAC secret for business portal JWT (signup / dashboard session). Defaults to ENCRYPTION_KEY. */
   BUSINESS_PORTAL_JWT_SECRET: z.string().min(32).optional(),
 

@@ -12,7 +12,7 @@ import { createIdempotencyKey, emailHeaders } from "../lib/email.utils.js";
 import { pushPendingEmail, getNextPendingEmail } from "../lib/redis.js";
 
 /** Fallback when RESEND_FROM_EMAIL is unset (Resend testing; only sends to your own email). */
-const DEFAULT_FROM = "Klyra No-Reply <onboarding@resend.dev>";
+const DEFAULT_FROM = "Morapay No-Reply <onboarding@resend.dev>";
 
 export type SendEmailParams = {
   to: string | string[];

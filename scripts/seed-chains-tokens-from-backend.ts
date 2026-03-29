@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Seed Chain and SupportedToken from the external Klyra backend (Squid chains/tokens).
+ * Seed Chain and SupportedToken from the external Morapay backend (Squid chains/tokens).
  * Idempotent: run again to add new or update existing; chains/tokens with invalid data are skipped.
  * Stores chain logos (iconUri) and token logos (logoUri) from the API when provided.
  *

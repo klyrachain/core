@@ -16,6 +16,11 @@ import { getRedis, PORTAL_PASSKEY_AUTH_PREFIX, PORTAL_PASSKEY_AUTH_TTL } from ".
 import { signBusinessPortalToken } from "../lib/business-session.js";
 import { hashPassword, verifyPassword } from "./admin-auth.service.js";
 import { sendEmail } from "./email.service.js";
+import {
+  businessMagicLinkHtml,
+  businessMagicLinkSubject,
+  businessMagicLinkText,
+} from "../email/templates/business-magic-link.js";
 
 const MAGIC_LINK_PREFIX = "business_magic:";
 const MAGIC_SPENT_PREFIX = "business_magic_spent:";
@@ -282,13 +287,9 @@ export async function sendBusinessMagicLinkEmail(
 ): Promise<{ sent: boolean; message: string }> {
   const result = await sendEmail({
     to: email.trim().toLowerCase(),
-    subject: "Sign in to Klyra for Business",
-    html: `
-      <p>Click the link below to continue your business signup (magic link, expires in 15 minutes):</p>
-      <p><a href="${magicLinkUrl.replace(/"/g, "&quot;")}">Continue to Klyra</a></p>
-      <p>If you did not request this, you can ignore this email.</p>
-    `,
-    text: `Continue your signup: ${magicLinkUrl}`,
+    subject: businessMagicLinkSubject(),
+    html: businessMagicLinkHtml({ magicLinkUrl }),
+    text: businessMagicLinkText({ magicLinkUrl }),
     entityRefId: `business-magic-${email.slice(0, 20)}`,
   });
   if (!result.ok) {
@@ -591,7 +592,7 @@ export async function getPortalPasskeyRegistrationOptions(
   const display =
     user.portalDisplayName?.trim() || user.email.split("@")[0] || user.email;
   return generateRegistrationOptions({
-    rpName: "Klyra Business",
+    rpName: "Morapay Business",
     rpID,
     userName: user.email,
     userDisplayName: display,

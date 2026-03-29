@@ -140,6 +140,11 @@ enum PaymentLinkType {
   DONATION // Open amount, donation framing
 }
 
+enum PaymentLinkChargeKind {
+  FIAT
+  CRYPTO
+}
+
 enum ProductType {
   DIGITAL
   PHYSICAL
@@ -693,6 +698,8 @@ model PaymentLink {
   title       String
   description String?
   slug        String @unique
+  /// Opaque segment for /checkout/:code (not derived from title).
+  publicCode  String @unique
 
   type PaymentLinkType @default(STANDARD)
 
@@ -702,6 +709,8 @@ model PaymentLink {
   amount   Decimal? @db.Decimal(18, 2)
   currency String   @default("USD")
 
+  chargeKind PaymentLinkChargeKind @default(FIAT)
+
   isActive Boolean @default(true)
   views    Int     @default(0)
 
@@ -710,6 +719,7 @@ model PaymentLink {
   @@index([businessId])
   @@index([businessId, environment])
   @@index([slug])
+  @@index([publicCode])
 }
 
 /// Merchant-scoped CRM: one row per business × contact (email/phone/user).

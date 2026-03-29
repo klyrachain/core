@@ -35,6 +35,7 @@ import {
   ADMIN_AUTH_AUTH_CHALLENGE_PREFIX,
   ADMIN_AUTH_AUTH_CHALLENGE_TTL,
 } from "../../lib/redis.js";
+import { assertAdminPasskeyOptionsRateLimit } from "../../lib/admin-passkey-rate-limit.js";
 
 const bodyInvite = z.object({ email: z.string().email().transform((s) => s.trim().toLowerCase()), role: z.enum(["super_admin", "support", "developer", "viewer"]) });
 const bodySetup = z.object({ inviteToken: z.string().min(1), password: z.string().min(8) });
@@ -52,6 +53,7 @@ const bodyPasskeyVerify = z.object({
 const bodyLoginPasskeyVerify = z.object({
   email: z.string().email().transform((s) => s.trim().toLowerCase()),
   response: z.record(z.unknown()),
+  sessionTtlMinutes: z.union([z.literal(15), z.literal(30)]).optional(),
 });
 const bodyLoginPasskeyOptions = z.object({
   email: z.string().email().transform((s) => s.trim().toLowerCase()),
@@ -179,13 +181,23 @@ export async function adminAuthRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) {
       return errorEnvelope(reply, parsed.error.message, 400);
     }
-    const result = await getAuthenticationOptionsForEmail(parsed.data.email);
+    const normalizedEmail = parsed.data.email;
+    const rate = await assertAdminPasskeyOptionsRateLimit(req, normalizedEmail);
+    if (!rate.ok) {
+      reply.header("Retry-After", String(rate.retryAfterSec));
+      return reply.status(429).send({
+        success: false,
+        error: "Too many passkey sign-in attempts. Try again shortly.",
+        code: "RATE_LIMITED",
+      });
+    }
+    const result = await getAuthenticationOptionsForEmail(normalizedEmail);
     if (!result) {
       return reply.status(400).send({ success: false, error: "No passkey found for this email.", code: "NO_PASSKEY" });
     }
     const redis = getRedis();
     await redis.set(
-      `${ADMIN_AUTH_AUTH_CHALLENGE_PREFIX}${parsed.data.email}`,
+      `${ADMIN_AUTH_AUTH_CHALLENGE_PREFIX}${normalizedEmail}`,
       result.challenge,
       "EX",
       ADMIN_AUTH_AUTH_CHALLENGE_TTL
@@ -217,7 +229,7 @@ export async function adminAuthRoutes(app: FastifyInstance): Promise<void> {
     if (!admin) {
       return reply.status(401).send({ success: false, error: "Passkey verification failed.", code: "VERIFY_FAILED" });
     }
-    const sessionTtlMinutes = (req.body as { sessionTtlMinutes?: 15 | 30 })?.sessionTtlMinutes ?? 15;
+    const sessionTtlMinutes = (parsed.data.sessionTtlMinutes ?? 15) as SessionTtlMinutes;
     const { token, expiresAt } = await createSession(admin.adminId, sessionTtlMinutes);
     return successEnvelope(reply, {
       token,

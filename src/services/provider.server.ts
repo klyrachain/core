@@ -3,10 +3,10 @@
  *
  * Use validation before creating a poll or adding a transaction to Redis/DB.
  * Session-based providers (e.g. PayStack) are linked via providerSessionId on Transaction;
- * on payment success we trigger the next process (e.g. send USDC from Klyra to user).
+ * on payment success we trigger the next process (e.g. send USDC from Morapay to user).
  *
  * Flows:
- * - Buy USDC (base) with momo (PayStack): PayStack session → on success → Klyra sends USDC to user.
+ * - Buy USDC (base) with momo (PayStack): PayStack session → on success → Morapay sends USDC to user.
  * - Request to be paid: f_provider = ANY (payer pays by any means), t_provider = KLYRA (we send on-chain to requestor).
  *   If payer pays via Squid (USDT on Arbitrum), Squid transacts from payer wallet to requestor destination.
  */
@@ -178,7 +178,7 @@ export function validateProviderPayload(payload: ProviderPayload): ValidationRes
     if (!toIdentifier?.trim()) {
       return {
         valid: false,
-        error: `t_provider ${t_provider} requires toIdentifier (e.g. wallet address for Klyra, phone for PayStack)`,
+        error: `t_provider ${t_provider} requires toIdentifier (e.g. wallet address for Morapay, phone for PayStack)`,
         code: "MISSING_TO_IDENTIFIER",
       };
     }
@@ -228,7 +228,7 @@ export async function initiatePayment(
     };
   }
   if (_input.provider === "KLYRA") {
-    // Klyra is our own balance; no external session
+    // Morapay is our own balance; no external session
     return { ok: true, sessionId: "" };
   }
   return {
@@ -250,7 +250,7 @@ export type CheckSessionStatusResult =
 
 /**
  * Mock: check external provider session status (e.g. PayStack transaction status).
- * When status === "success", trigger next process (e.g. send USDC from Klyra to user).
+ * When status === "success", trigger next process (e.g. send USDC from Morapay to user).
  */
 export async function checkSessionStatus(
   _input: CheckSessionStatusInput
@@ -263,7 +263,7 @@ export async function checkSessionStatus(
 }
 
 /**
- * Mock: execute Klyra on-chain send (same-chain; we have balance → send token to user address).
+ * Mock: execute Morapay on-chain send (same-chain; we have balance → send token to user address).
  * Call this after session-based provider confirms payment (e.g. PayStack success).
  */
 export type KlyraSendInput = {

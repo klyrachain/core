@@ -165,7 +165,7 @@ async function seedKalcorpDemoData(
       businessId: kalcorpId,
       environment: "LIVE",
       name: "Starter Template Pack",
-      description: "Next.js dashboard + Klyra merchant SDK examples (TypeScript).",
+      description: "Next.js dashboard + Morapay merchant SDK examples (TypeScript).",
       type: "DIGITAL",
       price: new Prisma.Decimal("29.0"),
       currency: "USD",
@@ -221,6 +221,7 @@ async function seedKalcorpDemoData(
       title: "Pay — API Course",
       description: "Checkout for API Integration Course",
       slug: "kalcorp-live-api-course",
+      publicCode: "seed0001pay1",
       type: "PRODUCT",
       productId: prodLive1.id,
       amount: new Prisma.Decimal("149.0"),
@@ -228,7 +229,7 @@ async function seedKalcorpDemoData(
       isActive: true,
       views: 128,
     },
-    update: {},
+    update: { publicCode: "seed0001pay1" },
   });
 
   const payLive2 = await prismaClient.paymentLink.upsert({
@@ -239,6 +240,7 @@ async function seedKalcorpDemoData(
       environment: "LIVE",
       title: "Enterprise support checkout",
       slug: "kalcorp-live-enterprise",
+      publicCode: "seed0002pay2",
       type: "PRODUCT",
       productId: prodLive2.id,
       amount: new Prisma.Decimal("4999.0"),
@@ -246,7 +248,7 @@ async function seedKalcorpDemoData(
       isActive: true,
       views: 42,
     },
-    update: {},
+    update: { publicCode: "seed0002pay2" },
   });
 
   await prismaClient.paymentLink.upsert({
@@ -258,13 +260,14 @@ async function seedKalcorpDemoData(
       title: "Support kalcorp",
       description: "Open amount donation",
       slug: "kalcorp-live-donation",
+      publicCode: "seed0003pay3",
       type: "DONATION",
       amount: null,
       currency: "USD",
       isActive: true,
       views: 256,
     },
-    update: {},
+    update: { publicCode: "seed0003pay3" },
   });
 
   await prismaClient.paymentLink.upsert({
@@ -275,6 +278,7 @@ async function seedKalcorpDemoData(
       environment: "LIVE",
       title: "Starter template",
       slug: "kalcorp-live-starter",
+      publicCode: "seed0004pay4",
       type: "PRODUCT",
       productId: prodLive4.id,
       amount: new Prisma.Decimal("29.0"),
@@ -282,7 +286,7 @@ async function seedKalcorpDemoData(
       isActive: true,
       views: 89,
     },
-    update: {},
+    update: { publicCode: "seed0004pay4" },
   });
 
   await prismaClient.paymentLink.upsert({
@@ -293,13 +297,14 @@ async function seedKalcorpDemoData(
       environment: "TEST",
       title: "[TEST] Sandbox pay link A",
       slug: "kalcorp-test-sandbox-a",
+      publicCode: "seed0005pay5",
       type: "STANDARD",
       amount: new Prisma.Decimal("1.0"),
       currency: "USD",
       isActive: true,
       views: 3,
     },
-    update: {},
+    update: { publicCode: "seed0005pay5" },
   });
 
   await prismaClient.paymentLink.upsert({
@@ -310,6 +315,7 @@ async function seedKalcorpDemoData(
       environment: "TEST",
       title: "[TEST] Sandbox pay link B",
       slug: "kalcorp-test-sandbox-b",
+      publicCode: "seed0006pay6",
       type: "PRODUCT",
       productId: "f1b00001-0000-4000-8000-000000000001",
       amount: new Prisma.Decimal("1.0"),
@@ -317,7 +323,7 @@ async function seedKalcorpDemoData(
       isActive: true,
       views: 1,
     },
-    update: {},
+    update: { publicCode: "seed0006pay6" },
   });
 
   const txKalCompleted1 = await prismaClient.transaction.upsert({
@@ -1280,6 +1286,25 @@ async function main() {
     update: { name: "BANK", iconUri: undefined },
   });
 
+  const CHAIN_ID_BNB = 56;
+  const CHAIN_ID_SOLANA = 101;
+  const BSC_USDC = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
+  const ETHEREUM_WXRP = "0x39fBBABf11738317a448031930706cd3e612e1B9";
+  const SOLANA_USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  /** Wrapped SOL — standard mint for native SOL balance / quotes on Solana. */
+  const SOLANA_NATIVE_MINT = "So11111111111111111111111111111111111111112";
+
+  await prisma.chain.upsert({
+    where: { chainId: CHAIN_ID_BNB },
+    create: { chainId: CHAIN_ID_BNB, name: "BNB", iconUri: null },
+    update: { name: "BNB", iconUri: undefined },
+  });
+  await prisma.chain.upsert({
+    where: { chainId: CHAIN_ID_SOLANA },
+    create: { chainId: CHAIN_ID_SOLANA, name: "SOLANA", iconUri: null },
+    update: { name: "SOLANA", iconUri: undefined },
+  });
+
   const tokenData: Array<{ chainId: number; tokenAddress: string; symbol: string; decimals: number; name: string | null; logoUri: string | null; fonbnkCode: string | null }> = [
     { chainId: CHAIN_ID_BASE, tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", symbol: "USDC", decimals: 6, name: "USD Coin", logoUri: null, fonbnkCode: "BASE_USDC" },
     { chainId: CHAIN_ID_BASE, tokenAddress: NATIVE, symbol: "ETH", decimals: 18, name: "Ether", logoUri: null, fonbnkCode: "BASE_ETH" },
@@ -1288,6 +1313,35 @@ async function main() {
     { chainId: CHAIN_ID_BASE_SEPOLIA, tokenAddress: NATIVE, symbol: "ETH", decimals: 18, name: "Ether", logoUri: null, fonbnkCode: "BASE_SEPOLIA_ETH" },
     { chainId: CHAIN_ID_ETHEREUM, tokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", symbol: "USDC", decimals: 6, name: "USD Coin", logoUri: null, fonbnkCode: "ETHEREUM_USDC" },
     { chainId: CHAIN_ID_ETHEREUM, tokenAddress: NATIVE, symbol: "ETH", decimals: 18, name: "Ether", logoUri: null, fonbnkCode: "ETHEREUM_NATIVE" },
+    {
+      chainId: CHAIN_ID_ETHEREUM,
+      tokenAddress: ETHEREUM_WXRP,
+      symbol: "WXRP",
+      decimals: 18,
+      name: "Wrapped XRP",
+      logoUri: null,
+      fonbnkCode: null,
+    },
+    { chainId: CHAIN_ID_BNB, tokenAddress: BSC_USDC, symbol: "USDC", decimals: 18, name: "USD Coin (BNB)", logoUri: null, fonbnkCode: "BNB_USDC" },
+    { chainId: CHAIN_ID_BNB, tokenAddress: NATIVE, symbol: "BNB", decimals: 18, name: "BNB", logoUri: null, fonbnkCode: "BNB_NATIVE" },
+    {
+      chainId: CHAIN_ID_SOLANA,
+      tokenAddress: SOLANA_USDC,
+      symbol: "USDC",
+      decimals: 6,
+      name: "USD Coin (Solana)",
+      logoUri: null,
+      fonbnkCode: "SOLANA_USDC",
+    },
+    {
+      chainId: CHAIN_ID_SOLANA,
+      tokenAddress: SOLANA_NATIVE_MINT,
+      symbol: "SOL",
+      decimals: 9,
+      name: "Solana",
+      logoUri: null,
+      fonbnkCode: "SOLANA_NATIVE",
+    },
     { chainId: CHAIN_ID_MOMO, tokenAddress: FIAT_SENTINEL, symbol: "GHS", decimals: 2, name: "Ghana Cedi", logoUri: null, fonbnkCode: "MOMO_GHS" },
     { chainId: CHAIN_ID_MOMO, tokenAddress: "0x0000000000000000000000000000000000000001", symbol: "USD", decimals: 2, name: "US Dollar", logoUri: null, fonbnkCode: "MOMO_USD" },
     { chainId: CHAIN_ID_BANK, tokenAddress: FIAT_SENTINEL, symbol: "USD", decimals: 2, name: "US Dollar", logoUri: null, fonbnkCode: "BANK_USD" },

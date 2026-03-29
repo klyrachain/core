@@ -5,9 +5,9 @@
 
 import { prisma } from "../lib/prisma.js";
 import type { PoolToken } from "../lib/onramp-quote.types.js";
-import { isFonbnkSupportedPayoutCode } from "./fonbnk.service.js";
+import { inferFonbnkCodeFromChainAndSymbol, isFonbnkSupportedPayoutCode } from "./fonbnk.service.js";
 
-const CHAIN_ID_BASE = 8453;
+export const CHAIN_ID_BASE = 8453;
 
 /** Shape of supported token row from DB (chainId is BigInt in DB; we use number in PoolToken for quote/pool). */
 interface SupportedTokenRow {
@@ -18,13 +18,21 @@ interface SupportedTokenRow {
   decimals: number;
 }
 
+function resolveFonbnkCodeForPool(r: SupportedTokenRow): string {
+  const explicit = r.fonbnkCode?.trim();
+  if (explicit) return explicit;
+  const inferred = inferFonbnkCodeFromChainAndSymbol(Number(r.chainId), r.symbol);
+  if (inferred) return inferred;
+  return `${r.chainId}_${r.symbol}`;
+}
+
 function rowToPoolToken(r: SupportedTokenRow): PoolToken {
   const chainIdNum = Number(r.chainId);
   return {
     chainId: chainIdNum,
     symbol: r.symbol,
     address: r.tokenAddress,
-    fonbnkCode: r.fonbnkCode ?? `${r.chainId}_${r.symbol}`,
+    fonbnkCode: resolveFonbnkCodeForPool(r),
     decimals: r.decimals,
   };
 }
@@ -66,6 +74,12 @@ export async function getIntermediatePoolTokenFromDb(requestChainId: number): Pr
   if (sameChainEth) return sameChainEth;
   const baseUsdc = tokens.find((p) => p.chainId === CHAIN_ID_BASE && p.symbol === "USDC");
   return baseUsdc ?? tokens[0];
+}
+
+/** Base mainnet USDC pool row (Fonbnk BASE_USDC when configured). Used as cross-chain swap leg fallback. */
+export async function getBaseUsdcPoolTokenFromDb(): Promise<PoolToken | null> {
+  const tokens = await getPoolTokensFromDb();
+  return tokens.find((p) => p.chainId === CHAIN_ID_BASE && p.symbol === "USDC") ?? null;
 }
 
 /**

@@ -6,7 +6,13 @@
 import { randomUUID } from "node:crypto";
 import { getOnrampQuote } from "./onramp-quote.service.js";
 import { getBestQuotes } from "./swap-quote.service.js";
-import { getCachedChains, getCachedCostBasis, getCachedTokens, ensureValidationCache } from "./validation-cache.service.js";
+import {
+  getCachedChains,
+  getCachedCostBasis,
+  getCachedTokens,
+  ensureValidationCache,
+  type CachedChain,
+} from "./validation-cache.service.js";
 import { quoteOnRamp, quoteOffRamp, calculateBaseProfit, volatilityToPremium } from "../lib/pricing-engine.js";
 
 export type QuoteAction = "ONRAMP" | "OFFRAMP" | "SWAP";
@@ -20,13 +26,21 @@ export type QuoteRequestDto = {
   inputCurrency: string;
   outputCurrency: string;
   chain?: string;
-  /** Which side the amount refers to. Default "from". "to" = e.g. "I want X crypto" (onramp) or "I want X fiat" (offramp). */
+  /**
+   * Which side `inputAmount` refers to. Default "from".
+   * ONRAMP "to": amount = **crypto to receive**; use `inputCurrency` = crypto, `outputCurrency` = fiat (or swap order — we normalize).
+   * OFFRAMP "to": amount = **fiat to receive**; use `inputCurrency` = fiat, `outputCurrency` = crypto (or swap order — we normalize).
+   */
   inputSide?: InputSide;
 };
 
 export type QuoteResponseDto = {
   quoteId: string;
   expiresAt: string;
+  /**
+   * ONRAMP/OFFRAMP: **fiat per 1 unit of crypto** (e.g. GHS per USDC). For ONRAMP inputSide "from":
+   * `crypto_received = fiat_paid / exchangeRate` (matches pricing engine selling price).
+   */
   exchangeRate: string;
   /** Provider quote (e.g. Fonbnk base price) — used for P&L and fee; always stored so order webhook can set Transaction.providerPrice from quote */
   basePrice?: string;
@@ -84,6 +98,72 @@ const DEFAULT_VOLATILITY = 0.01;
 /** EIP-55 / 0x + 40 hex: treat as token address. */
 const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
 
+/** Uppercase symbols; preserve EVM addresses as lowercase 0x… (avoid 0X breaking regex / DB match). */
+export function normalizeQuoteAssetForRequest(raw: string): string {
+  const t = raw.trim();
+  if (ADDRESS_REGEX.test(t)) return t.toLowerCase();
+  return t.toUpperCase();
+}
+
+function normalizeQuoteAssetField(raw: string): string {
+  return normalizeQuoteAssetForRequest(raw);
+}
+
+function isFiatCurrencyCode(code: string): boolean {
+  const c = code.trim().toUpperCase();
+  return Object.prototype.hasOwnProperty.call(CURRENCY_TO_COUNTRY, c);
+}
+
+function isFiatCurrencyField(raw: string): boolean {
+  return isFiatCurrencyCode(raw);
+}
+
+/**
+ * When inputSide is "to", the amount is always the **receive** asset.
+ * Clients often send fiat/crypto fields reversed; fix so canonical ONRAMP/OFFRAMP match Fonbnk + our math.
+ */
+function normalizeQuoteRequestCurrencies(
+  action: QuoteAction,
+  inputCurrency: string,
+  outputCurrency: string,
+  inputSide: InputSide
+): { inputCurrency: string; outputCurrency: string } {
+  let ic = normalizeQuoteAssetField(inputCurrency);
+  let oc = normalizeQuoteAssetField(outputCurrency);
+  if (inputSide !== "to") return { inputCurrency: ic, outputCurrency: oc };
+
+  if (action === "ONRAMP") {
+    if (isFiatCurrencyField(ic) && !isFiatCurrencyField(oc)) {
+      return { inputCurrency: oc, outputCurrency: ic };
+    }
+  }
+  if (action === "OFFRAMP") {
+    if (!isFiatCurrencyField(ic) && isFiatCurrencyField(oc)) {
+      return { inputCurrency: oc, outputCurrency: ic };
+    }
+  }
+  return { inputCurrency: ic, outputCurrency: oc };
+}
+
+/**
+ * Resolve chain from validation cache; BNB Smart Chain may be stored as code BNB or BSC (chainId 56).
+ */
+function resolveCachedChain(
+  chains: CachedChain[] | null | undefined,
+  chainCode: string | undefined
+): CachedChain | null {
+  if (!chainCode?.trim() || !chains?.length) return null;
+  const upper = chainCode.trim().toUpperCase();
+  const direct = chains.find((c) => c.code === upper) ?? null;
+  if (direct) return direct;
+  if (upper === "BNB" || upper === "BSC") {
+    const byId = chains.find((c) => c.chainId === 56);
+    if (byId) return byId;
+    return chains.find((c) => c.code === "BSC" || c.code === "BNB") ?? null;
+  }
+  return null;
+}
+
 type TokenRecordForSwap = { tokenAddress: string; decimals: number; symbol: string };
 
 /**
@@ -137,7 +217,7 @@ async function getRawRate(params: {
   const { action, inputCurrency, outputCurrency, chain, fromAmountHuman } = params;
   await ensureValidationCache();
   const chains = await getCachedChains();
-  const chainRecord = chain ? chains?.find((c) => c.code === chain.trim().toUpperCase()) : null;
+  const chainRecord = resolveCachedChain(chains, chain);
 
   if (action === "ONRAMP") {
     if (!chainRecord) return { ok: false, error: "chain is required for ONRAMP", status: 400 };
@@ -242,8 +322,14 @@ export async function buildPublicQuote(
   request: QuoteRequestDto,
   options?: { includeDebug?: boolean }
 ): Promise<PublicQuoteResult> {
-  const { action, inputAmount, inputCurrency, outputCurrency, chain, inputSide: inputSideRaw } = request;
+  const { action, inputAmount, chain, inputSide: inputSideRaw } = request;
   const inputSide: InputSide = inputSideRaw === "to" ? "to" : "from";
+  const { inputCurrency, outputCurrency } = normalizeQuoteRequestCurrencies(
+    action,
+    request.inputCurrency,
+    request.outputCurrency,
+    inputSide
+  );
   const inputAmountNum = parseFloat(inputAmount);
   if (!Number.isFinite(inputAmountNum) || inputAmountNum <= 0) {
     return { success: false, error: "inputAmount must be a positive number", code: "INVALID_INPUT_AMOUNT", status: 400 };
@@ -268,7 +354,13 @@ export async function buildPublicQuote(
   } else {
     raw = await getRawRate({ action, inputCurrency: fromCurrency, outputCurrency: toCurrency, chain });
   }
-  if (!raw.ok) return { success: false, error: raw.error, code: "RATE_UNAVAILABLE", status: raw.status ?? 502 };
+  if (!raw.ok) {
+    const code =
+      raw.error.includes("chain is required") || raw.error.includes("CHAIN_REQUIRED")
+        ? "CHAIN_REQUIRED"
+        : "RATE_UNAVAILABLE";
+    return { success: false, error: raw.error, code, status: raw.status ?? 502 };
+  }
 
   const basePrice = raw.basePrice;
 

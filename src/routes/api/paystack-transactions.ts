@@ -39,7 +39,12 @@ export async function paystackTransactionsApiRoutes(app: FastifyInstance): Promi
   app.get<{ Params: { reference: string } }>(
     "/api/paystack/transactions/verify/:reference",
     async (req: FastifyRequest<{ Params: { reference: string } }>, reply) => {
-      if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
+      if (
+        !requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS, {
+          allowMerchant: true,
+        })
+      )
+        return;
       if (!isPaystackConfigured()) {
         return reply.status(503).send({
           success: false,

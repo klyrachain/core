@@ -13,19 +13,34 @@ import { initializePayment, isPaystackConfigured } from "../../services/paystack
 import { successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
 import { requirePermission } from "../../lib/admin-auth.guard.js";
 import { PERMISSION_CONNECT_TRANSACTIONS } from "../../lib/permissions.js";
-import type { PaymentProvider, TransactionType } from "../../../prisma/generated/prisma/client.js";
+import type {
+  MerchantEnvironment,
+  PaymentProvider,
+  TransactionType,
+} from "../../../prisma/generated/prisma/client.js";
+import { paymentLinkAmountIsOpen } from "../../lib/payment-link-amount-open.js";
 
-const InitializeBodySchema = z.object({
-  email: z.string().email(),
-  amount: z.coerce.number().positive(), // in subunits (kobo/pesewas) or major – we send subunits to Paystack
-  currency: z.string().min(1).optional().default("NGN"),
-  callback_url: z.string().url().optional(),
-  channels: z.array(z.string()).optional(),
-  // Optional: link to an existing Transaction (e.g. from order webhook). If not provided, we create a PENDING Transaction.
-  transaction_id: z.string().uuid().optional(),
-  // If creating new: minimal context for our record (optional)
-  metadata: z.record(z.union([z.string(), z.number()])).optional(),
-});
+const InitializeBodySchema = z
+  .object({
+    email: z.string().email(),
+    amount: z.coerce.number().positive().optional(),
+    currency: z.string().min(1).optional().default("NGN"),
+    callback_url: z.string().url().optional(),
+    channels: z.array(z.string()).optional(),
+    transaction_id: z.string().uuid().optional(),
+    /** Commerce: server loads amount/currency from this PaymentLink (fixed) or validates open link + payer amount. */
+    payment_link_id: z.string().uuid().optional(),
+    metadata: z.record(z.union([z.string(), z.number()])).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.payment_link_id && !data.transaction_id && data.amount == null) {
+      ctx.addIssue({
+        code: "custom",
+        message: "amount is required unless payment_link_id or transaction_id is set.",
+        path: ["amount"],
+      });
+    }
+  });
 
 export async function paystackPaymentsApiRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: unknown }>(
@@ -46,9 +61,77 @@ export async function paystackPaymentsApiRoutes(app: FastifyInstance): Promise<v
           details: parse.error.flatten(),
         });
       }
-      const { email, amount, currency, callback_url, channels, transaction_id, metadata } = parse.data;
-      // Paystack expects amount in subunits (kobo for NGN, pesewas for GHS)
-      const amountSubunits = Number.isInteger(amount) && amount >= 100 ? amount : Math.round(amount * 100);
+      const {
+        email,
+        amount: bodyAmount,
+        currency: bodyCurrency,
+        callback_url,
+        channels,
+        transaction_id,
+        payment_link_id,
+        metadata,
+      } = parse.data;
+
+      let currency = (bodyCurrency ?? "NGN").trim().toUpperCase();
+      let majorAmount: number | undefined = bodyAmount;
+      let commerceLink: {
+        id: string;
+        businessId: string;
+        environment: MerchantEnvironment;
+        amount: unknown;
+        currency: string;
+      } | null = null;
+
+      if (payment_link_id) {
+        const link = await prisma.paymentLink.findFirst({
+          where: { id: payment_link_id.trim(), isActive: true },
+          select: {
+            id: true,
+            businessId: true,
+            environment: true,
+            amount: true,
+            currency: true,
+          },
+        });
+        if (!link) {
+          return reply.status(404).send({
+            success: false,
+            error: "Payment link not found or inactive.",
+          });
+        }
+        commerceLink = link;
+        const open = paymentLinkAmountIsOpen(link.amount);
+        currency = link.currency.trim().toUpperCase();
+        if (open) {
+          if (majorAmount == null) {
+            return reply.status(400).send({
+              success: false,
+              error: "amount is required for open-amount payment links.",
+            });
+          }
+        } else {
+          if (link.amount == null) {
+            return reply.status(400).send({
+              success: false,
+              error: "Invalid payment link amount.",
+            });
+          }
+          majorAmount = Number(link.amount);
+        }
+      }
+
+      if (majorAmount == null || !Number.isFinite(majorAmount) || majorAmount <= 0) {
+        return reply.status(400).send({
+          success: false,
+          error: "Invalid amount.",
+        });
+      }
+
+      const amountSubunits = payment_link_id
+        ? Math.round(majorAmount * 100)
+        : Number.isInteger(majorAmount) && majorAmount >= 100
+          ? majorAmount
+          : Math.round(majorAmount * 100);
       if (amountSubunits < 100) {
         return reply.status(400).send({
           success: false,
@@ -59,7 +142,6 @@ export async function paystackPaymentsApiRoutes(app: FastifyInstance): Promise<v
       let ourTransactionId = transaction_id;
       if (!ourTransactionId) {
         try {
-          // providerPrice not set here; for accurate fee at completion, set via metadata/quote when linking to a v1 quote.
           const tx = await prisma.transaction.create({
             data: {
               type: "BUY" as TransactionType,
@@ -71,13 +153,16 @@ export async function paystackPaymentsApiRoutes(app: FastifyInstance): Promise<v
               exchangeRate: 1,
               f_tokenPriceUsd: 1,
               t_tokenPriceUsd: 1,
-              f_chain: "ETHEREUM",
-              t_chain: "ETHEREUM",
+              f_chain: "MOMO",
+              t_chain: "BASE",
               f_token: currency,
               t_token: "USDC",
               f_provider: "PAYSTACK" as PaymentProvider,
               t_provider: "NONE",
               providerPrice: null,
+              businessId: commerceLink?.businessId ?? null,
+              environment: commerceLink?.environment ?? "LIVE",
+              paymentLinkId: commerceLink?.id ?? null,
             },
           });
           ourTransactionId = tx.id;

@@ -1,6 +1,9 @@
 node_modules
 /node_modules
 dist
+backups/
+.supabase/
+supabase/.temp/
 *.env
 *.env*
 .env*

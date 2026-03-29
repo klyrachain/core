@@ -5,7 +5,10 @@
 
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { buildPublicQuote } from "../../services/public-quote.service.js";
+import {
+  buildPublicQuote,
+  normalizeQuoteAssetForRequest,
+} from "../../services/public-quote.service.js";
 import { setStoredQuote, QUOTE_TTL_SECONDS } from "../../lib/redis.js";
 import { getSwapQuote, getBestQuotes, getAllQuotes } from "../../services/swap-quote.service.js";
 import { getOnrampQuote } from "../../services/onramp-quote.service.js";
@@ -243,8 +246,8 @@ export async function quoteApiRoutes(app: FastifyInstance): Promise<void> {
       const request = {
         action: actionMap[query.action],
         inputAmount: String(query.amount),
-        inputCurrency: query.f_token.trim().toUpperCase(),
-        outputCurrency: query.t_token.trim().toUpperCase(),
+        inputCurrency: normalizeQuoteAssetForRequest(query.f_token),
+        outputCurrency: normalizeQuoteAssetForRequest(query.t_token),
         chain: query.chain.trim(),
         inputSide: query.input_side === "to" ? ("to" as const) : ("from" as const),
       };

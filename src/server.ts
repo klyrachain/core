@@ -37,6 +37,9 @@ import { paystackTransactionsApiRoutes } from "./routes/api/paystack-transaction
 import { paystackTransfersApiRoutes } from "./routes/api/paystack-transfers.js";
 import { offrampApiRoutes } from "./routes/api/offramp.js";
 import { testApiRoutes } from "./routes/api/test.js";
+import { metaApiRoutes } from "./routes/api/meta.js";
+import { publicPaymentLinksApiRoutes } from "./routes/api/public-payment-links.js";
+import { publicCurrenciesApiRoutes } from "./routes/api/public-currencies.js";
 import { v1QuotesRoutes } from "./routes/api/v1/quotes.js";
 import { adminAuthRoutes } from "./routes/api/admin-auth.js";
 import { businessAuthRoutes } from "./routes/api/business-auth.js";
@@ -71,7 +74,7 @@ app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, 
 app.addHook("preValidation", onRequestLog);
 app.addHook("onResponse", onResponseLog);
 
-// Auth: only /api/health, /api/ready, /api/auth, /api/requests/by-link/:linkId (GET), and /webhook/paystack are public.
+// Auth: health/ready, auth routes, GET /api/requests/by-link/:linkId, GET /api/public/payment-links/:slug, GET /api/public/currencies, GET /api/meta/checkout-base-url, /webhook/paystack are public.
 app.addHook("preHandler", async (request, reply) => {
   const path = (request.url ?? "").split("?")[0];
   const method = (request.method ?? "").toUpperCase();
@@ -81,6 +84,15 @@ app.addHook("preHandler", async (request, reply) => {
   if (path === "/signup/business") return;
   if (path === "/webhook/paystack") return; // Paystack does not send x-api-key; we verify x-paystack-signature instead
   if (method === "GET" && path.startsWith("/api/requests/by-link/")) return; // Public pay link for request
+  if (method === "GET" && path === "/api/meta/checkout-base-url") return;
+  if (method === "GET" && path.startsWith("/api/public/")) return;
+  if (method === "GET" && path === "/api/chains") return;
+  if (
+    method === "GET" &&
+    (path === "/api/tokens" || path === "/api/tokens/list")
+  ) {
+    return;
+  }
   if (method === "OPTIONS") return;
 
   await resolveApiKeyIfPresent(request);
@@ -125,6 +137,9 @@ await app.register(v1QuotesRoutes, { prefix: "/api/v1" });
 await app.register(merchantV1Routes, { prefix: "/api/v1/merchant" });
 await app.register(adminAuthRoutes, { prefix: "" });
 await app.register(businessAuthRoutes, { prefix: "" });
+await app.register(metaApiRoutes, { prefix: "" });
+await app.register(publicPaymentLinksApiRoutes, { prefix: "" });
+await app.register(publicCurrenciesApiRoutes, { prefix: "" });
 await app.register(countriesApiRoutes, { prefix: "" });
 await app.register(chainsTokensApiRoutes, { prefix: "" });
 await app.register(invoicesApiRoutes, { prefix: "" });
@@ -153,7 +168,11 @@ const pollWorker = createPollWorker(processPollJob);
 
 let validationCacheInterval: ReturnType<typeof setInterval> | null = null;
 
+let shuttingDown = false;
 const shutdown = async () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
   if (validationCacheInterval) clearInterval(validationCacheInterval);
   await pollWorker.close();
   await closeQueue();
@@ -167,15 +186,26 @@ process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
 const port = getEnv().PORT;
-app.listen({ port, host: "0.0.0.0" }, async (err, address) => {
-  if (err) {
-    console.error(err);
+
+const startServer = async () => {
+  try {
+    const address = await app.listen({ port, host: "0.0.0.0" });
+    app.log.info(`Server listening at ${address}`);
+    await ensureValidationCache().catch((e) =>
+      app.log.warn("Validation cache initial load failed:", e)
+    );
+    processPendingEmails().catch((e) =>
+      app.log.warn("Pending emails processing failed:", e)
+    );
+    validationCacheInterval = setInterval(() => {
+      loadValidationCache().catch((e) =>
+        app.log.warn("Validation cache refresh failed:", e)
+      );
+    }, VALIDATION_CACHE_REFRESH_MS);
+  } catch (err) {
+    app.log.error(err, "Failed to start server");
     process.exit(1);
   }
-  console.log(`Server listening at ${address}`);
-  await ensureValidationCache().catch((e) => console.warn("Validation cache initial load failed:", e));
-  await processPendingEmails().catch((e) => console.warn("Pending emails processing failed:", e));
-  validationCacheInterval = setInterval(() => {
-    loadValidationCache().catch((e) => console.warn("Validation cache refresh failed:", e));
-  }, VALIDATION_CACHE_REFRESH_MS);
-});
+};
+
+startServer();

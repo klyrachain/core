@@ -48,6 +48,39 @@ export function isFonbnkSupportedPayoutCode(code: string): boolean {
   return FONBNK_SUPPORTED_PAYOUT_CODES.has(normalized);
 }
 
+/**
+ * When SupportedToken.fonbnkCode is null, infer Fonbnk NETWORK_ASSET from chain + symbol.
+ * Never use `${chainId}_${symbol}` for API calls — numeric prefixes are invalid for Fonbnk.
+ */
+const CHAIN_ID_SYMBOL_TO_FONBNK: Record<string, string> = {
+  "8453:USDC": "BASE_USDC",
+  "8453:ETH": "BASE_ETH",
+  "56:USDC": "BNB_USDC",
+  "56:USDT": "BNB_USDT",
+  "56:BNB": "BNB_NATIVE",
+  "1:USDC": "ETHEREUM_USDC",
+  "1:USDT": "ETHEREUM_USDT",
+  "1:ETH": "ETHEREUM_NATIVE",
+  "101:SOL": "SOLANA_NATIVE",
+  "101:USDC": "SOLANA_USDC",
+  "101:USDT": "SOLANA_USDT",
+  "42161:USDC": "ARBITRUM_USDC",
+  "42161:USDT": "ARBITRUM_USDT",
+  "43114:USDC": "AVALANCHE_USDC",
+  "43114:USDT": "AVALANCHE_USDT",
+  "10:USDC": "OPTIMISM_USDC",
+  "10:USDT": "OPTIMISM_USDT",
+  "137:USDC": "POLYGON_USDC",
+  "137:USDT": "POLYGON_USDT",
+};
+
+export function inferFonbnkCodeFromChainAndSymbol(chainId: number, symbol: string): string | null {
+  const key = `${chainId}:${symbol.trim().toUpperCase()}`;
+  const code = CHAIN_ID_SYMBOL_TO_FONBNK[key];
+  if (!code) return null;
+  return isFonbnkSupportedPayoutCode(code) ? code : null;
+}
+
 const COUNTRY_TO_CURRENCY: Record<string, string> = {
   GH: "GHS",
   NG: "NGN",
@@ -93,13 +126,16 @@ function signRequest(endpoint: string, timestamp: string, clientSecret: string):
 
 /**
  * Normalize token to Fonbnk payout currency code.
- * Fonbnk requires NETWORK_ASSET (chain + token, e.g. BASE_USDC, POLYGON_USDC, ETHEREUM_NATIVE).
- * Callers should pass the full code from pool-tokens (fonbnkCode). If token already contains "_", return as-is.
+ * Fonbnk requires NETWORK_ASSET (e.g. BASE_USDC, ETHEREUM_USDC). Never invent a network from a bare symbol.
  */
 export function toPayoutCurrencyCode(token: string): string {
   const normalized = token.trim().toUpperCase();
-  if (normalized.includes("_")) return normalized;
-  return `BASE_${normalized}`;
+  if (!normalized.includes("_")) {
+    throw new Error(
+      `Fonbnk requires NETWORK_ASSET (e.g. ETHEREUM_USDC), not a bare symbol: ${token}`
+    );
+  }
+  return normalized;
 }
 
 export function getCurrencyForCountry(countryCode: string): string {

@@ -8,7 +8,7 @@ export function signupBusinessPageHtml(): string {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Business signup — Klyra</title>
+  <title>Business signup — Morapay</title>
   <style>
     :root {
       --bg: #0c0c0f;

@@ -6,6 +6,11 @@ import type { BusinessRole } from "../../prisma/generated/prisma/client.js";
 import { prisma } from "../lib/prisma.js";
 import { getEnv } from "../config/env.js";
 import { sendEmail } from "./email.service.js";
+import {
+  businessTeamInviteHtml,
+  businessTeamInviteSubject,
+  businessTeamInviteText,
+} from "../email/templates/business-team-invite.js";
 
 const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
@@ -105,11 +110,13 @@ export async function createBusinessMemberInvite(opts: {
     where: { id: opts.businessId },
     select: { name: true },
   });
+  const businessName = business?.name ?? "a team";
+  const templateVars = { businessName, inviteUrl };
   await sendEmail({
     to: normalized,
-    subject: `You're invited to ${business?.name ?? "a team"} on Klyra`,
-    html: `<p>You've been invited to join <strong>${business?.name ?? "a business"}</strong>.</p><p><a href="${inviteUrl}">Accept invitation</a></p><p>If the link does not work, open your dashboard and use the invite token from your administrator.</p>`,
-    text: `You've been invited. Open: ${inviteUrl}`,
+    subject: businessTeamInviteSubject(templateVars),
+    html: businessTeamInviteHtml(templateVars),
+    text: businessTeamInviteText(templateVars),
     entityRefId: invite.id,
   }).catch(() => {});
   return { id: invite.id, inviteUrl };
