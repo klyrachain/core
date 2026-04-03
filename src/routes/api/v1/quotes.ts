@@ -23,6 +23,8 @@ const QuoteRequestBodySchema = z.object({
   chain: z.string().optional(),
   /** "from" = amount is paying side (default). "to" = amount is receiving side (e.g. "I want X crypto"). */
   inputSide: z.enum(["from", "to"]).optional().default("from"),
+  /** EVM address for swap legs in indirect onramp/offramp quotes. */
+  fromAddress: z.string().min(1).optional(),
 });
 
 const CheckoutOfframpRowSchema = z.object({
@@ -113,6 +115,7 @@ export async function v1QuotesRoutes(app: FastifyInstance): Promise<void> {
         outputCurrency: normalizeQuoteAssetForRequest(body.outputCurrency),
         chain: body.chain?.trim(),
         inputSide: body.inputSide === "to" ? "to" : "from",
+        fromAddress: body.fromAddress?.trim(),
       };
 
       const apiKey = (req as FastifyRequest & { apiKey?: { businessId?: string } }).apiKey;

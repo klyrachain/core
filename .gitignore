@@ -8,6 +8,8 @@ supabase/.temp/
 *.env*
 .env*
 .env.local
+.env.example
+*.env
 prisma/generated
 
 *paystack*.md

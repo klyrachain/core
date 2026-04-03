@@ -14,13 +14,16 @@ import { triggerTransactionStatusChange } from "../../services/pusher.service.js
 import { computeTransactionFee } from "../../services/fee.service.js";
 import { executeOnrampSend } from "../../services/onramp-execution.service.js";
 import { onRequestPaymentSettled } from "../../services/request-settlement.service.js";
+import { settleCommercePaystackTransaction } from "../../services/commerce-paystack-settlement.service.js";
+import { sendPaymentLinkPaystackSuccessEmails } from "../../services/notification.service.js";
+import { getEnv } from "../../config/env.js";
 
 type PaystackWebhookEvent = {
   event: string;
   data: {
     reference?: string;
     status?: string;
-    metadata?: { transaction_id?: string };
+    metadata?: { transaction_id?: string; payer_email?: string };
     [key: string]: unknown;
   };
 };
@@ -33,7 +36,7 @@ function getRawBody(request: FastifyRequest): string | undefined {
 export async function paystackWebhookRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: unknown }>(
     "/webhook/paystack",
-    async (req: FastifyRequest<{ Body: unknown }>, reply: FastifyReply) => {
+    async (req: FastifyRequest, reply: FastifyReply) => {
       const rawBody = getRawBody(req);
       const signature = req.headers["x-paystack-signature"];
       const sig = typeof signature === "string" ? signature : "";
@@ -55,10 +58,9 @@ export async function paystackWebhookRoutes(app: FastifyInstance): Promise<void>
         return reply.status(200).send({ ok: true });
       }
 
-      // Acknowledge immediately; process async if needed
       if (event === "charge.success" || event === "charge.failed") {
         const reference = data.reference ?? (data as { reference?: string }).reference;
-        const metadata = data.metadata as { transaction_id?: string } | undefined;
+        const metadata = data.metadata as { transaction_id?: string; payer_email?: string } | undefined;
         const ourTransactionId = metadata?.transaction_id;
 
         if (ourTransactionId && reference) {
@@ -68,29 +70,80 @@ export async function paystackWebhookRoutes(app: FastifyInstance): Promise<void>
             });
             if (tx && tx.providerSessionId === reference) {
               const isSuccess = event === "charge.success";
-              // BUY (onramp): COMPLETED only after crypto is sent; here we only set paymentConfirmedAt.
-              const isOnrampBuy = tx.type === "BUY";
-              const updateData: {
+
+              const paymentLink = tx.paymentLinkId
+                ? await prisma.paymentLink.findUnique({
+                    where: { id: tx.paymentLinkId },
+                    select: {
+                      id: true,
+                      chargeKind: true,
+                      title: true,
+                      publicCode: true,
+                      isOneTime: true,
+                    },
+                  })
+                : null;
+
+              const linkChargeKind = (paymentLink?.chargeKind ?? "FIAT").toString().toUpperCase();
+              /** Commerce payment links (FIAT or CRYPTO charge kind): Paystack-settled; no on-chain send to merchant. */
+              const isCommercePaystackSettlement =
+                tx.type === "BUY" &&
+                paymentLink != null &&
+                (linkChargeKind === "FIAT" || linkChargeKind === "CRYPTO");
+              /** Non–payment-link BUY (e.g. order/onramp): still uses on-chain send after Paystack. */
+              const needsOnrampCryptoSend = tx.type === "BUY" && !paymentLink;
+
+              const isOnrampBuy = tx.type === "BUY" && needsOnrampCryptoSend;
+
+              let updateData: {
                 status?: "COMPLETED" | "FAILED";
                 paymentConfirmedAt?: Date;
                 fee?: number;
                 platformFee?: number;
-              } = isSuccess && isOnrampBuy
-                ? { paymentConfirmedAt: new Date() }
-                : { status: isSuccess ? ("COMPLETED" as const) : ("FAILED" as const) };
-              if (isSuccess) {
+              };
+
+              let updateResult: { count: number } = { count: 0 };
+
+              if (isSuccess && isCommercePaystackSettlement) {
+                const settled = await settleCommercePaystackTransaction({
+                  transactionId: ourTransactionId,
+                  reference: reference!,
+                  payerEmail: metadata?.payer_email?.trim() ?? null,
+                });
+                updateResult = { count: settled.updatedCount };
+                updateData = { status: "COMPLETED", paymentConfirmedAt: new Date() };
+              } else if (isSuccess && isOnrampBuy) {
+                updateData = { paymentConfirmedAt: new Date() };
                 const feeAmount = computeTransactionFee(tx);
                 if (Number.isFinite(feeAmount)) {
                   updateData.fee = feeAmount;
                   updateData.platformFee = feeAmount;
                 }
+              } else {
+                updateData = {
+                  status: isSuccess ? ("COMPLETED" as const) : ("FAILED" as const),
+                };
+                if (isSuccess) {
+                  const feeAmount = computeTransactionFee(tx);
+                  if (Number.isFinite(feeAmount)) {
+                    updateData.fee = feeAmount;
+                    updateData.platformFee = feeAmount;
+                  }
+                }
               }
-              await prisma.transaction.update({
-                where: { id: ourTransactionId },
-                data: updateData,
-              });
 
-              // --- Step 1: Paystack payment confirmed (BUY onramp) — log so we know payment went through
+              if (!(isSuccess && isCommercePaystackSettlement)) {
+                const updateWhere =
+                  isSuccess && isOnrampBuy
+                    ? { id: ourTransactionId, status: "PENDING" as const, paymentConfirmedAt: null }
+                    : { id: ourTransactionId };
+
+                updateResult = await prisma.transaction.updateMany({
+                  where: updateWhere,
+                  data: updateData,
+                });
+              }
+
               if (isSuccess && isOnrampBuy) {
                 req.log.info(
                   { transactionId: ourTransactionId, reference, type: tx.type },
@@ -107,7 +160,9 @@ export async function paystackWebhookRoutes(app: FastifyInstance): Promise<void>
               } catch (verifyErr) {
                 req.log.warn({ err: verifyErr, reference }, "Paystack webhook: verify/upsert record failed");
               }
-              const statusForDashboard = isSuccess && isOnrampBuy ? "PENDING" : (isSuccess ? "COMPLETED" : "FAILED");
+
+              const statusForDashboard =
+                isSuccess && isOnrampBuy ? "PENDING" : isSuccess ? "COMPLETED" : "FAILED";
               await sendToAdminDashboard({
                 event: "paystack.charge." + (event === "charge.success" ? "success" : "failed"),
                 data: {
@@ -117,37 +172,77 @@ export async function paystackWebhookRoutes(app: FastifyInstance): Promise<void>
                   paystackEvent: event,
                 },
               }).catch((err) => req.log.warn({ err }, "Admin webhook failed"));
-              if (!isOnrampBuy || !isSuccess) {
+
+              if (
+                (!isOnrampBuy || !isSuccess) &&
+                !(isSuccess && isCommercePaystackSettlement)
+              ) {
                 await triggerTransactionStatusChange({
                   transactionId: ourTransactionId,
-                  status: (updateData.status ?? statusForDashboard) as "COMPLETED" | "FAILED" | "PENDING",
+                  status: (updateData?.status ?? statusForDashboard) as "COMPLETED" | "FAILED" | "PENDING",
                   type: tx.type,
                 }).catch(() => {});
               }
 
-              if (isSuccess && tx.type === "BUY") {
+              if (
+                isSuccess &&
+                paymentLink &&
+                updateResult.count > 0 &&
+                !isCommercePaystackSettlement
+              ) {
+                const business = tx.businessId
+                  ? await prisma.business.findUnique({
+                      where: { id: tx.businessId },
+                      select: { name: true, supportEmail: true },
+                    })
+                  : null;
+                const payerEmail =
+                  metadata?.payer_email?.trim() ||
+                  (tx.fromIdentifier?.includes("@") ? tx.fromIdentifier.trim() : null);
+                const fiatAmount = Number(tx.f_amount);
+                const fiatCurrency = (tx.f_token ?? "USD").toString();
+                const env = getEnv();
+                void sendPaymentLinkPaystackSuccessEmails({
+                  transactionId: ourTransactionId,
+                  paystackReference: reference,
+                  payerEmail,
+                  platformPaystackEmail: env.PAYSTACK_PLATFORM_EMAIL ?? null,
+                  fiatAmount,
+                  fiatCurrency,
+                  merchantSupportEmail: business?.supportEmail ?? null,
+                  businessName: business?.name ?? "Your business",
+                  linkTitle: paymentLink.title ?? "Payment link",
+                  linkPublicCode: paymentLink.publicCode ?? "",
+                }).catch(() => {});
+              }
+
+              if (isSuccess && tx.type === "BUY" && updateResult.count > 0 && needsOnrampCryptoSend) {
                 setImmediate(() => {
-                  executeOnrampSend(ourTransactionId).then((r) => {
-                    if (!r.ok) {
-                      req.log.warn(
-                        { err: r.error, code: r.code, transactionId: ourTransactionId },
-                        "[onramp] Step 2 FAILED: crypto send failed. Transaction remains PENDING."
-                      );
-                      console.warn(
-                        `[onramp] Step 2 FAILED: crypto send failed for ${ourTransactionId}. Error: ${r.error} (code: ${r.code ?? "—"}). Transaction remains PENDING.`
-                      );
-                    }
-                  }).catch((err) => {
-                    req.log.error({ err, transactionId: ourTransactionId }, "[onramp] Step 2 error (exception)");
-                    console.error(`[onramp] Step 2 error for ${ourTransactionId}:`, err);
-                  });
+                  executeOnrampSend(ourTransactionId)
+                    .then((r) => {
+                      if (!r.ok) {
+                        req.log.warn(
+                          { err: r.error, code: r.code, transactionId: ourTransactionId },
+                          "[onramp] Step 2 FAILED: crypto send failed. Transaction remains PENDING."
+                        );
+                        console.warn(
+                          `[onramp] Step 2 FAILED: crypto send failed for ${ourTransactionId}. Error: ${r.error} (code: ${r.code ?? "—"}). Transaction remains PENDING.`
+                        );
+                      }
+                    })
+                    .catch((err) => {
+                      req.log.error({ err, transactionId: ourTransactionId }, "[onramp] Step 2 error (exception)");
+                      console.error(`[onramp] Step 2 error for ${ourTransactionId}:`, err);
+                    });
                 });
               }
-              if (isSuccess && tx.type === "REQUEST") {
+              if (isSuccess && tx.type === "REQUEST" && updateResult.count > 0) {
                 setImmediate(() => {
-                  onRequestPaymentSettled({ transactionId: ourTransactionId }).then((r) => {
-                    if (!r.ok) req.log.warn({ err: r.error, transactionId: ourTransactionId }, "Request settlement failed");
-                  }).catch((err) => req.log.error({ err, transactionId: ourTransactionId }, "Request settlement error"));
+                  onRequestPaymentSettled({ transactionId: ourTransactionId })
+                    .then((r) => {
+                      if (!r.ok) req.log.warn({ err: r.error, transactionId: ourTransactionId }, "Request settlement failed");
+                    })
+                    .catch((err) => req.log.error({ err, transactionId: ourTransactionId }, "Request settlement error"));
                 });
               }
             }

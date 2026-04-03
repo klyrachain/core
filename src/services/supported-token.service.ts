@@ -5,9 +5,25 @@
 
 import { prisma } from "../lib/prisma.js";
 import type { PoolToken } from "../lib/onramp-quote.types.js";
-import { inferFonbnkCodeFromChainAndSymbol, isFonbnkSupportedPayoutCode } from "./fonbnk.service.js";
+import {
+  inferFonbnkCodeFromChainAndSymbol,
+  isFonbnkSupportedPayoutCodeResolved,
+} from "./fonbnk.service.js";
 
 export const CHAIN_ID_BASE = 8453;
+const NATIVE_TOKEN_SYMBOLS = new Set([
+  "ETH",
+  "BNB",
+  "MATIC",
+  "POL",
+  "CELO",
+  "AVAX",
+  "FTM",
+  "SOL",
+  "BTC",
+  "XLM",
+  "SUI",
+]);
 
 /** Shape of supported token row from DB (chainId is BigInt in DB; we use number in PoolToken for quote/pool). */
 interface SupportedTokenRow {
@@ -64,16 +80,57 @@ export async function findPoolTokenFromDb(chainId: number, token: string): Promi
 }
 
 /**
- * Prefer same-chain USDC, then same-chain ETH, then Base USDC.
+ * Prefer same-chain USDC, then same-chain native, then Base USDC.
  */
 export async function getIntermediatePoolTokenFromDb(requestChainId: number): Promise<PoolToken> {
+  const ordered = await getIntermediatePoolTokenCandidatesFromDb(requestChainId);
+  if (ordered.length > 0) return ordered[0];
   const tokens = await getPoolTokensFromDb();
-  const sameChainUsdc = tokens.find((p) => p.chainId === requestChainId && p.symbol === "USDC");
-  if (sameChainUsdc) return sameChainUsdc;
-  const sameChainEth = tokens.find((p) => p.chainId === requestChainId && p.symbol === "ETH");
-  if (sameChainEth) return sameChainEth;
-  const baseUsdc = tokens.find((p) => p.chainId === CHAIN_ID_BASE && p.symbol === "USDC");
-  return baseUsdc ?? tokens[0];
+  return tokens[0];
+}
+
+function isLikelyNativePoolToken(pool: PoolToken): boolean {
+  const normalizedAddress = pool.address.trim().toLowerCase();
+  if (
+    normalizedAddress === "native" ||
+    normalizedAddress === "0x0000000000000000000000000000000000000000"
+  ) {
+    return true;
+  }
+  if (pool.fonbnkCode.toUpperCase().endsWith("_NATIVE")) return true;
+  return NATIVE_TOKEN_SYMBOLS.has(pool.symbol.toUpperCase());
+}
+
+export async function getIntermediatePoolTokenCandidatesFromDb(
+  requestChainId: number
+): Promise<PoolToken[]> {
+  const tokens = await getPoolTokensFromDb();
+  const ordered: PoolToken[] = [];
+  const seen = new Set<string>();
+  const pushUnique = async (pool: PoolToken | undefined): Promise<void> => {
+    if (!pool || !(await useDirectFonbnkForPoolToken(pool))) return;
+    const key = `${pool.chainId}|${pool.address.toLowerCase()}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    ordered.push(pool);
+  };
+
+  const sameChainUsdc = tokens.find(
+    (pool) => pool.chainId === requestChainId && pool.symbol.toUpperCase() === "USDC"
+  );
+  await pushUnique(sameChainUsdc);
+
+  const sameChainNative = tokens.find(
+    (pool) => pool.chainId === requestChainId && isLikelyNativePoolToken(pool)
+  );
+  await pushUnique(sameChainNative);
+
+  const baseUsdc = tokens.find(
+    (pool) => pool.chainId === CHAIN_ID_BASE && pool.symbol.toUpperCase() === "USDC"
+  );
+  await pushUnique(baseUsdc);
+
+  return ordered;
 }
 
 /** Base mainnet USDC pool row (Fonbnk BASE_USDC when configured). Used as cross-chain swap leg fallback. */
@@ -96,6 +153,6 @@ export async function getPoolTokenDecimalsFromDb(symbol: string): Promise<number
 /**
  * Whether this pool token can get a direct Fonbnk quote (Fonbnk supports its fonbnkCode).
  */
-export function useDirectFonbnkForPoolToken(pool: PoolToken): boolean {
-  return isFonbnkSupportedPayoutCode(pool.fonbnkCode);
+export async function useDirectFonbnkForPoolToken(pool: PoolToken): Promise<boolean> {
+  return isFonbnkSupportedPayoutCodeResolved(pool.fonbnkCode);
 }

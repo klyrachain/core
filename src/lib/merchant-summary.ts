@@ -67,6 +67,17 @@ export type MerchantSummaryResult = {
     transactionCount: number;
     completedVolumeUsd: number;
   }>;
+  /** Checkout payment-link attribution (PaymentLink rows). */
+  paymentLinks: {
+    /** USD volume from COMPLETED txs tied to a payment link in the period. */
+    volumeUsdInPeriod: number;
+    /** COMPLETED txs in period that reference a payment link. */
+    completedTxWithLinkCount: number;
+    /** Distinct payment links with ≥1 COMPLETED tx in the period. */
+    distinctLinksUsedInPeriod: number;
+    /** Total payment link definitions for the business (all statuses). */
+    totalPaymentLinks: number;
+  };
 };
 
 export async function buildMerchantSummary(
@@ -199,6 +210,33 @@ export async function buildMerchantSummary(
     bucketMap.set(key, cur);
   }
 
+  const [totalPaymentLinks, linkCompletedInPeriod] = await Promise.all([
+    prisma.paymentLink.count({ where: { businessId, environment: options.environment } }),
+    prisma.transaction.findMany({
+      where: {
+        businessId,
+        environment: options.environment,
+        status: COMPLETED,
+        createdAt: { gte: periodFrom },
+        paymentLinkId: { not: null },
+      },
+      select: {
+        paymentLinkId: true,
+        f_amount: true,
+        t_amount: true,
+        f_tokenPriceUsd: true,
+        t_tokenPriceUsd: true,
+      },
+    }),
+  ]);
+
+  let paymentLinkVolumeUsd = 0;
+  const distinctLinksUsed = new Set<string>();
+  for (const t of linkCompletedInPeriod) {
+    if (t.paymentLinkId) distinctLinksUsed.add(t.paymentLinkId);
+    paymentLinkVolumeUsd += transactionVolumeUsdApprox(t);
+  }
+
   const series: MerchantSummaryResult["series"] = [];
   for (let i = 0; i < seriesDays; i += 1) {
     const d = new Date(seriesStart);
@@ -242,6 +280,12 @@ export async function buildMerchantSummary(
     settlements: {
       countByStatus,
       amountSumByCurrencyAndStatus,
+    },
+    paymentLinks: {
+      volumeUsdInPeriod: Math.round(paymentLinkVolumeUsd * 100) / 100,
+      completedTxWithLinkCount: linkCompletedInPeriod.length,
+      distinctLinksUsedInPeriod: distinctLinksUsed.size,
+      totalPaymentLinks,
     },
     series,
   };

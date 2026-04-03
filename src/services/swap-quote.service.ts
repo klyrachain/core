@@ -92,6 +92,7 @@ async function getZeroXQuoteNormalized(
 
 /** Competitive threshold: second quote is "alternative" if within this fraction of best to_amount. */
 const COMPETITIVE_PCT = 0.05; // 5%
+const NON_EVM_CHAIN_IDS = new Set([101, 148, 8332]);
 
 /** 0x often returns this for validation failures; prefer a more specific message from another provider when present. */
 const GENERIC_ZEROX_STYLE = /^the input is invalid$/i;
@@ -162,7 +163,16 @@ export async function getBestQuotes(
   params: BestQuoteRequest
 ): Promise<{ ok: true; data: BestQuoteResponse } | { ok: false; error: string }> {
   const sameChain = params.from_chain === params.to_chain;
-  const providers: ("0x" | "squid" | "lifi")[] = sameChain ? ["0x", "squid", "lifi"] : ["squid", "lifi"];
+  const isNonEvmPath =
+    NON_EVM_CHAIN_IDS.has(params.from_chain) ||
+    NON_EVM_CHAIN_IDS.has(params.to_chain);
+  const providers: ("0x" | "squid" | "lifi")[] = sameChain
+    ? isNonEvmPath
+      ? ["squid", "lifi"]
+      : ["0x", "squid", "lifi"]
+    : isNonEvmPath
+      ? ["squid", "lifi"]
+      : ["squid", "lifi"];
 
   const results = await Promise.allSettled(
     providers.map((provider) =>
@@ -219,7 +229,14 @@ export async function getAllQuotes(
   params: AllQuotesRequest
 ): Promise<{ ok: true; data: AllQuotesResponse } | { ok: false; error: string }> {
   const sameChain = params.from_chain === params.to_chain;
-  const providers: ("0x" | "squid" | "lifi")[] = sameChain ? ["0x", "squid", "lifi"] : ["squid", "lifi"];
+  const isNonEvmPath =
+    NON_EVM_CHAIN_IDS.has(params.from_chain) ||
+    NON_EVM_CHAIN_IDS.has(params.to_chain);
+  const providers: ("0x" | "squid" | "lifi")[] = sameChain
+    ? isNonEvmPath
+      ? ["squid", "lifi"]
+      : ["0x", "squid", "lifi"]
+    : ["squid", "lifi"];
 
   const results = await Promise.allSettled(
     providers.map((provider) =>

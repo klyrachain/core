@@ -1305,7 +1305,18 @@ async function main() {
     update: { name: "SOLANA", iconUri: undefined },
   });
 
-  const tokenData: Array<{ chainId: number; tokenAddress: string; symbol: string; decimals: number; name: string | null; logoUri: string | null; fonbnkCode: string | null }> = [
+  const ETHEREUM_MANA = "0x0f5d2fb29fb7d3cfee444a200298f468908cc942";
+
+  const tokenData: Array<{
+    chainId: number;
+    tokenAddress: string;
+    symbol: string;
+    decimals: number;
+    name: string | null;
+    logoUri: string | null;
+    fonbnkCode: string | null;
+    displaySymbol?: string | null;
+  }> = [
     { chainId: CHAIN_ID_BASE, tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", symbol: "USDC", decimals: 6, name: "USD Coin", logoUri: null, fonbnkCode: "BASE_USDC" },
     { chainId: CHAIN_ID_BASE, tokenAddress: NATIVE, symbol: "ETH", decimals: 18, name: "Ether", logoUri: null, fonbnkCode: "BASE_ETH" },
     { chainId: CHAIN_ID_BASE, tokenAddress: "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb", symbol: "DAI", decimals: 18, name: "Dai Stablecoin", logoUri: null, fonbnkCode: null },
@@ -1321,6 +1332,16 @@ async function main() {
       name: "Wrapped XRP",
       logoUri: null,
       fonbnkCode: null,
+    },
+    {
+      chainId: CHAIN_ID_ETHEREUM,
+      tokenAddress: ETHEREUM_MANA,
+      symbol: "MANA",
+      decimals: 18,
+      name: "Decentraland MANA",
+      logoUri: null,
+      fonbnkCode: null,
+      displaySymbol: "ETHEREUM MANA",
     },
     { chainId: CHAIN_ID_BNB, tokenAddress: BSC_USDC, symbol: "USDC", decimals: 18, name: "USD Coin (BNB)", logoUri: null, fonbnkCode: "BNB_USDC" },
     { chainId: CHAIN_ID_BNB, tokenAddress: NATIVE, symbol: "BNB", decimals: 18, name: "BNB", logoUri: null, fonbnkCode: "BNB_NATIVE" },
@@ -1349,8 +1370,24 @@ async function main() {
   for (const t of tokenData) {
     await prisma.supportedToken.upsert({
       where: { chainId_tokenAddress: { chainId: t.chainId, tokenAddress: t.tokenAddress } },
-      create: t,
-      update: { symbol: t.symbol, decimals: t.decimals, name: t.name, logoUri: t.logoUri, fonbnkCode: t.fonbnkCode },
+      create: {
+        chainId: t.chainId,
+        tokenAddress: t.tokenAddress,
+        symbol: t.symbol,
+        decimals: t.decimals,
+        name: t.name,
+        logoUri: t.logoUri,
+        fonbnkCode: t.fonbnkCode,
+        displaySymbol: t.displaySymbol ?? null,
+      },
+      update: {
+        symbol: t.symbol,
+        decimals: t.decimals,
+        name: t.name,
+        logoUri: t.logoUri,
+        fonbnkCode: t.fonbnkCode,
+        displaySymbol: t.displaySymbol ?? undefined,
+      },
     });
   }
 

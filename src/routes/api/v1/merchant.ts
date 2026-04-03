@@ -24,6 +24,7 @@ import { buildMerchantSummary } from "../../../lib/merchant-summary.js";
 import { registerMerchantExtendedRoutes } from "./merchant-extended.js";
 import { registerMerchantCommerceRoutes } from "./merchant-commerce.js";
 import { registerMerchantSaasRoutes } from "./merchant-saas.js";
+import { registerMerchantGasRoutes } from "./merchant-gas.js";
 
 type PayoutStatus = "SCHEDULED" | "PROCESSING" | "PAID" | "FAILED" | "REVERSED";
 
@@ -52,6 +53,82 @@ const createApiKeyBody = z.object({
 });
 
 export async function merchantV1Routes(app: FastifyInstance): Promise<void> {
+  app.get(
+    "/wrapped/summary",
+    async (
+      req: FastifyRequest<{
+        Querystring: { period?: string };
+      }>,
+      reply
+    ) => {
+      try {
+        if (!requirePermission(req, reply, PERMISSION_TRANSACTIONS_READ, { allowMerchant: true })) return;
+        const businessId = getMerchantV1BusinessId(req);
+        const environment = getMerchantEnvironmentOrThrow(req);
+        const period = (req.query.period ?? "year").trim().toLowerCase();
+        const days =
+          period === "month" ? 30 : period === "quarter" ? 90 : 365;
+        const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+        const txs = await prisma.transaction.findMany({
+          where: {
+            businessId,
+            environment,
+            createdAt: { gte: from },
+          },
+          select: {
+            id: true,
+            status: true,
+            f_amount: true,
+            t_amount: true,
+            f_token: true,
+            t_token: true,
+            f_chain: true,
+            t_chain: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: "asc" },
+        });
+        const completed = txs.filter((tx) => tx.status === "COMPLETED");
+        const topTokens = new Map<string, number>();
+        const topChains = new Map<string, number>();
+        for (const tx of completed) {
+          topTokens.set(tx.t_token, (topTokens.get(tx.t_token) ?? 0) + Number(tx.t_amount));
+          topChains.set(tx.t_chain, (topChains.get(tx.t_chain) ?? 0) + 1);
+        }
+        return successEnvelope(reply, {
+          period,
+          totals: {
+            transactions: txs.length,
+            completed: completed.length,
+            successRate: txs.length > 0 ? Number((completed.length / txs.length).toFixed(4)) : 0,
+          },
+          topTokens: [...topTokens.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5)
+            .map(([symbol, amount]) => ({ symbol, amount })),
+          topChains: [...topChains.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5)
+            .map(([chain, count]) => ({ chain, count })),
+          timeline: txs.map((tx) => ({
+            id: tx.id,
+            at: tx.createdAt.toISOString(),
+            status: tx.status,
+            fromAmount: tx.f_amount.toString(),
+            toAmount: tx.t_amount.toString(),
+            fromToken: tx.f_token,
+            toToken: tx.t_token,
+            fromChain: tx.f_chain,
+            toChain: tx.t_chain,
+          })),
+        });
+      } catch (err) {
+        req.log.error({ err }, "GET /api/v1/merchant/wrapped/summary");
+        return errorEnvelope(reply, "Something went wrong.", 500);
+      }
+    }
+  );
+
   app.get(
     "/summary",
     async (
@@ -134,9 +211,16 @@ export async function merchantV1Routes(app: FastifyInstance): Promise<void> {
         if (q) {
           const uuidLike =
             /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(q);
+          const idOrWallet = [
+            { fromIdentifier: { contains: q, mode: "insensitive" } },
+            { toIdentifier: { contains: q, mode: "insensitive" } },
+          ] as const;
+          const linkMatch = {
+            paymentLink: { is: { publicCode: { contains: q, mode: "insensitive" as const } } },
+          };
           where.OR = uuidLike
-            ? [{ id: q }, { fromIdentifier: { contains: q, mode: "insensitive" } }, { toIdentifier: { contains: q, mode: "insensitive" } }]
-            : [{ fromIdentifier: { contains: q, mode: "insensitive" } }, { toIdentifier: { contains: q, mode: "insensitive" } }];
+            ? [{ id: q }, ...idOrWallet, linkMatch]
+            : [...idOrWallet, linkMatch];
         }
         const [items, total] = await Promise.all([
           prisma.transaction.findMany({
@@ -147,20 +231,27 @@ export async function merchantV1Routes(app: FastifyInstance): Promise<void> {
             include: {
               fromUser: { select: { id: true, email: true, username: true } },
               toUser: { select: { id: true, email: true, username: true } },
+              business: { select: { name: true } },
+              paymentLink: { select: { publicCode: true } },
             },
           }),
           prisma.transaction.count({ where }),
         ]);
-        const data = items.map((t) => ({
-          ...t,
-          f_amount: t.f_amount.toString(),
-          t_amount: t.t_amount.toString(),
-          ...serializeTransactionPrices(t),
-          fee: t.fee != null ? t.fee.toString() : null,
-          platformFee: t.platformFee != null ? t.platformFee.toString() : null,
-          merchantFee: t.merchantFee != null ? t.merchantFee.toString() : null,
-          providerPrice: t.providerPrice != null ? t.providerPrice.toString() : null,
-        }));
+        const data = items.map((t) => {
+          const { paymentLink, business, ...rest } = t;
+          return {
+            ...rest,
+            f_amount: t.f_amount.toString(),
+            t_amount: t.t_amount.toString(),
+            ...serializeTransactionPrices(t),
+            fee: t.fee != null ? t.fee.toString() : null,
+            platformFee: t.platformFee != null ? t.platformFee.toString() : null,
+            merchantFee: t.merchantFee != null ? t.merchantFee.toString() : null,
+            providerPrice: t.providerPrice != null ? t.providerPrice.toString() : null,
+            paymentLinkPublicCode: paymentLink?.publicCode ?? "",
+            businessName: business?.name?.trim() ?? "",
+          };
+        });
         return successEnvelopeWithMeta(reply, data, { page, limit, total });
       } catch (err) {
         req.log.error({ err }, "GET /api/v1/merchant/transactions");
@@ -180,11 +271,13 @@ export async function merchantV1Routes(app: FastifyInstance): Promise<void> {
           fromUser: { select: { id: true, email: true, address: true, username: true } },
           toUser: { select: { id: true, email: true, address: true, username: true } },
           request: true,
+          paymentLink: { select: { publicCode: true } },
         },
       });
       if (!tx) return errorEnvelope(reply, "Transaction not found.", 404);
+      const { paymentLink, ...txRest } = tx;
       const data = {
-        ...tx,
+        ...txRest,
         f_amount: tx.f_amount.toString(),
         t_amount: tx.t_amount.toString(),
         ...serializeTransactionPrices(tx),
@@ -192,6 +285,7 @@ export async function merchantV1Routes(app: FastifyInstance): Promise<void> {
         platformFee: tx.platformFee != null ? tx.platformFee.toString() : null,
         merchantFee: tx.merchantFee != null ? tx.merchantFee.toString() : null,
         providerPrice: tx.providerPrice != null ? tx.providerPrice.toString() : null,
+        paymentLinkPublicCode: paymentLink?.publicCode ?? "",
       };
       return successEnvelope(reply, data);
     } catch (err) {
@@ -450,4 +544,5 @@ export async function merchantV1Routes(app: FastifyInstance): Promise<void> {
   registerMerchantSaasRoutes(app);
   registerMerchantExtendedRoutes(app);
   registerMerchantCommerceRoutes(app);
+  registerMerchantGasRoutes(app);
 }

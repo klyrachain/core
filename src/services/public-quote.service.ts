@@ -14,6 +14,8 @@ import {
   type CachedChain,
 } from "./validation-cache.service.js";
 import { quoteOnRamp, quoteOffRamp, calculateBaseProfit, volatilityToPremium } from "../lib/pricing-engine.js";
+import { getSwapQuoteEstimateFromAddress } from "../lib/swap-quote-from-address.js";
+import { getProviderFeeCapability } from "./provider-capabilities.service.js";
 
 export type QuoteAction = "ONRAMP" | "OFFRAMP" | "SWAP";
 
@@ -32,6 +34,11 @@ export type QuoteRequestDto = {
    * OFFRAMP "to": amount = **fiat to receive**; use `inputCurrency` = fiat, `outputCurrency` = crypto (or swap order — we normalize).
    */
   inputSide?: InputSide;
+  /**
+   * EVM address for swap legs inside getOnrampQuote (indirect tokens) and LiFi/Squid.
+   * When omitted, Core uses QUOTE_ESTIMATE_FROM_ADDRESS (if configured) else a server estimate address.
+   */
+  fromAddress?: string;
 };
 
 export type QuoteResponseDto = {
@@ -56,6 +63,14 @@ export type QuoteResponseDto = {
     networkFee: string;
     platformFee: string;
     totalFee: string;
+  };
+  feeCapture?: {
+    providerCode: string;
+    supportsMarkup: boolean;
+    requiresExplicitFeeLeg: boolean;
+    mode: "embedded_markup" | "explicit_service_fee_leg";
+    explicitServiceFee: string;
+    embeddedPlatformFee: string;
   };
   debug?: {
     basePrice: string;
@@ -213,8 +228,14 @@ async function getRawRate(params: {
   chain?: string;
   /** For SWAP only: from-token amount in human form. Converted to wei and sent to swap provider. If omitted, 1 is used (rate quote). */
   fromAmountHuman?: number;
-}): Promise<{ basePrice: number; ok: true } | { ok: false; error: string; status?: number }> {
-  const { action, inputCurrency, outputCurrency, chain, fromAmountHuman } = params;
+  /** Passed to getOnrampQuote swap legs; defaults to server estimate address. */
+  fromAddress?: string;
+}): Promise<
+  | { basePrice: number; providerCode: string; ok: true }
+  | { ok: false; error: string; status?: number }
+> {
+  const { action, inputCurrency, outputCurrency, chain, fromAmountHuman, fromAddress } = params;
+  const swapFrom = fromAddress?.trim() || getSwapQuoteEstimateFromAddress();
   await ensureValidationCache();
   const chains = await getCachedChains();
   const chainRecord = resolveCachedChain(chains, chain);
@@ -229,11 +250,12 @@ async function getRawRate(params: {
       amount: 1,
       amount_in: "crypto",
       purchase_method: "buy",
+      from_address: swapFrom,
     });
     if (!result.ok) return { ok: false, error: result.error, status: result.status };
     const basePrice = result.data.total_fiat;
     if (!Number.isFinite(basePrice) || basePrice <= 0) return { ok: false, error: "Invalid onramp rate" };
-    return { basePrice, ok: true };
+    return { basePrice, providerCode: "fonbnk", ok: true };
   }
 
   if (action === "OFFRAMP") {
@@ -246,11 +268,12 @@ async function getRawRate(params: {
       amount: 1,
       amount_in: "crypto",
       purchase_method: "sell",
+      from_address: swapFrom,
     });
     if (!result.ok) return { ok: false, error: result.error, status: result.status };
     const basePrice = result.data.total_fiat;
     if (!Number.isFinite(basePrice) || basePrice <= 0) return { ok: false, error: "Invalid offramp rate" };
-    return { basePrice, ok: true };
+    return { basePrice, providerCode: "fonbnk", ok: true };
   }
 
   if (action === "SWAP") {
@@ -279,7 +302,7 @@ async function getRawRate(params: {
       to_chain: chainRecord.chainId,
       from_token: fromTokenRecord.tokenAddress,
       to_token: toTokenRecord.tokenAddress,
-      from_address: "0x0000000000000000000000000000000000000001",
+      from_address: swapFrom,
       amount: amountWei,
     });
     if (!bestResult.ok) return { ok: false, error: bestResult.error, status: 502 };
@@ -288,7 +311,7 @@ async function getRawRate(params: {
     const toAmountHuman = Number(quote.to_amount) / 10 ** toDecimals;
     if (!Number.isFinite(toAmountHuman) || toAmountHuman <= 0) return { ok: false, error: "Invalid swap rate" };
     const ratePerOne = toAmountHuman / fromAmount;
-    return { basePrice: ratePerOne, ok: true };
+    return { basePrice: ratePerOne, providerCode: quote.provider ?? "unknown", ok: true };
   }
 
   return { ok: false, error: "Unsupported action", status: 400 };
@@ -322,8 +345,9 @@ export async function buildPublicQuote(
   request: QuoteRequestDto,
   options?: { includeDebug?: boolean }
 ): Promise<PublicQuoteResult> {
-  const { action, inputAmount, chain, inputSide: inputSideRaw } = request;
+  const { action, inputAmount, chain, inputSide: inputSideRaw, fromAddress } = request;
   const inputSide: InputSide = inputSideRaw === "to" ? "to" : "from";
+  const rateFromAddress = fromAddress?.trim();
   const { inputCurrency, outputCurrency } = normalizeQuoteRequestCurrencies(
     action,
     request.inputCurrency,
@@ -345,14 +369,41 @@ export async function buildPublicQuote(
 
   let raw: { basePrice: number; ok: true } | { ok: false; error: string; status?: number };
   if (action === "SWAP" && inputSide === "to") {
-    const rawOne = await getRawRate({ action, inputCurrency: fromCurrency, outputCurrency: toCurrency, chain, fromAmountHuman: 1 });
+    const rawOne = await getRawRate({
+      action,
+      inputCurrency: fromCurrency,
+      outputCurrency: toCurrency,
+      chain,
+      fromAmountHuman: 1,
+      fromAddress: rateFromAddress,
+    });
     if (!rawOne.ok) return { success: false, error: rawOne.error, code: "RATE_UNAVAILABLE", status: rawOne.status ?? 502 };
     const fromAmountForQuote = inputAmountNum / rawOne.basePrice;
-    raw = await getRawRate({ action, inputCurrency: fromCurrency, outputCurrency: toCurrency, chain, fromAmountHuman: fromAmountForQuote });
+    raw = await getRawRate({
+      action,
+      inputCurrency: fromCurrency,
+      outputCurrency: toCurrency,
+      chain,
+      fromAmountHuman: fromAmountForQuote,
+      fromAddress: rateFromAddress,
+    });
   } else if (action === "SWAP" && inputSide === "from") {
-    raw = await getRawRate({ action, inputCurrency: fromCurrency, outputCurrency: toCurrency, chain, fromAmountHuman: inputAmountNum });
+    raw = await getRawRate({
+      action,
+      inputCurrency: fromCurrency,
+      outputCurrency: toCurrency,
+      chain,
+      fromAmountHuman: inputAmountNum,
+      fromAddress: rateFromAddress,
+    });
   } else {
-    raw = await getRawRate({ action, inputCurrency: fromCurrency, outputCurrency: toCurrency, chain });
+    raw = await getRawRate({
+      action,
+      inputCurrency: fromCurrency,
+      outputCurrency: toCurrency,
+      chain,
+      fromAddress: rateFromAddress,
+    });
   }
   if (!raw.ok) {
     const code =
@@ -363,6 +414,11 @@ export async function buildPublicQuote(
   }
 
   const basePrice = raw.basePrice;
+  const providerCode =
+    "providerCode" in raw && typeof raw.providerCode === "string"
+      ? raw.providerCode
+      : "unknown";
+  const feeCapability = getProviderFeeCapability(providerCode);
 
   await ensureValidationCache();
   const volatility = DEFAULT_VOLATILITY;
@@ -479,8 +535,11 @@ export async function buildPublicQuote(
 
   const networkFeeStub = "0";
   const platformFeeRounded = Math.round(platformFeeNum * 1e8) / 1e8;
+  const embeddedPlatformFeeNum = feeCapability.supportsMarkup ? platformFeeRounded : 0;
+  const explicitServiceFeeNum = feeCapability.requiresExplicitFeeLeg ? platformFeeRounded : 0;
   const platformFeeDisplay = platformFeeRounded.toFixed(2);
-  const totalFeeNum = platformFeeRounded + parseFloat(networkFeeStub);
+  const totalFeeNum =
+    embeddedPlatformFeeNum + explicitServiceFeeNum + parseFloat(networkFeeStub);
   const expiresAt = new Date(Date.now() + QUOTE_VALIDITY_SECONDS * 1000).toISOString();
 
   const prices = {
@@ -505,6 +564,16 @@ export async function buildPublicQuote(
       networkFee: networkFeeStub,
       platformFee: platformFeeDisplay,
       totalFee: totalFeeNum.toFixed(2),
+    },
+    feeCapture: {
+      providerCode: feeCapability.providerCode,
+      supportsMarkup: feeCapability.supportsMarkup,
+      requiresExplicitFeeLeg: feeCapability.requiresExplicitFeeLeg,
+      mode: feeCapability.supportsMarkup
+        ? "embedded_markup"
+        : "explicit_service_fee_leg",
+      explicitServiceFee: explicitServiceFeeNum.toFixed(2),
+      embeddedPlatformFee: embeddedPlatformFeeNum.toFixed(2),
     },
     ...(debug ? { debug } : {}),
   };

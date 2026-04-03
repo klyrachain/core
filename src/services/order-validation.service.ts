@@ -24,6 +24,7 @@ import {
   deleteStoredQuote,
 } from "../lib/redis.js";
 import { getRedis } from "../lib/redis.js";
+import { getSwapQuoteEstimateFromAddress } from "../lib/swap-quote-from-address.js";
 import { getSwapQuote } from "./swap-quote.service.js";
 import { buildPublicQuote, type QuoteResponseDto } from "./public-quote.service.js";
 
@@ -362,7 +363,9 @@ export async function validateOrder(input: OrderValidationInput): Promise<OrderV
       from_token: fTokenRecord.tokenAddress,
       to_token: tTokenRecord.tokenAddress,
       amount: amountWei,
-      from_address: input.fromAddress?.trim() || (sameChain ? undefined : "0x0000000000000000000000000000000000000000"),
+      from_address:
+        input.fromAddress?.trim() ||
+        (sameChain ? undefined : getSwapQuoteEstimateFromAddress()),
     });
     if (swapResult.ok) {
       const expectedTAmountHuman = weiToHuman(swapResult.quote.to_amount, tDecimals);

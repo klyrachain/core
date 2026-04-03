@@ -18,7 +18,7 @@ import {
   sendRequestSettledToRequester,
 } from "./notification.service.js";
 
-type PayoutFiat = {
+export type PayoutFiat = {
   type: "nuban" | "mobile_money";
   account_name: string;
   account_number: string;
@@ -52,6 +52,60 @@ function normalizeAccountForPaystack(account: string, currency: string, type: "n
     out = local.length === 9 ? `0${local}` : local.startsWith("0") ? local : `0${local}`;
   }
   return out;
+}
+
+/**
+ * Send fiat to bank or mobile money via Paystack Transfer (recipient created from verified details).
+ */
+export async function executePaystackFiatTransfer(opts: {
+  payoutFiat: PayoutFiat;
+  /** Human amount in major units (same as transaction t_amount for GHS). */
+  amountHuman: string | number | { toString(): string };
+  referencePrefix: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!isPaystackConfigured()) {
+    return { ok: false, error: "Paystack is not configured for transfers." };
+  }
+  const payoutFiat = opts.payoutFiat;
+  const amountSubunits = Math.round(Number(String(opts.amountHuman)) * 100);
+  const accountForPaystack = normalizeAccountForPaystack(
+    payoutFiat.account_number,
+    payoutFiat.currency,
+    payoutFiat.type
+  );
+  const recipientType = payoutFiat.type === "nuban" ? "nuban" : "mobile_money";
+  const bankCode = payoutFiat.bank_code?.trim();
+  if (!bankCode) {
+    return {
+      ok: false,
+      error:
+        recipientType === "nuban"
+          ? "bank_code is required for bank payout"
+          : "bank_code (provider code, e.g. MTN) is required for mobile money",
+    };
+  }
+  try {
+    const { recipient_code } = await createTransferRecipient({
+      type: recipientType,
+      name: payoutFiat.account_name,
+      account_number: accountForPaystack,
+      bank_code: bankCode,
+      currency: payoutFiat.currency,
+    });
+    const reference = `${opts.referencePrefix}_${Date.now()}`.replace(/-/g, "_").slice(0, 50);
+    await initiateTransfer({
+      source: "balance",
+      amount: amountSubunits,
+      recipient: recipient_code,
+      reference,
+      reason: "Claim payout",
+      currency: payoutFiat.currency,
+    });
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Paystack transfer failed";
+    return { ok: false, error: msg };
+  }
 }
 
 export type OnRequestPaymentSettledResult =
@@ -108,43 +162,12 @@ export async function onRequestPaymentSettled(opts: {
   }
 
   if (!isCrypto && payoutFiat && isPaystackConfigured()) {
-    const amountSubunits = Math.round(Number(tx.t_amount) * 100); // GHS: pesewas
-    const accountForPaystack = normalizeAccountForPaystack(
-      payoutFiat.account_number,
-      payoutFiat.currency,
-      payoutFiat.type
-    );
-    const recipientType = payoutFiat.type === "nuban" ? "nuban" : "mobile_money";
-    const bankCode = payoutFiat.bank_code?.trim();
-    if (!bankCode) {
-      return {
-        ok: false,
-        error: recipientType === "nuban"
-          ? "payoutFiat.bank_code is required for bank payout"
-          : "payoutFiat.bank_code (provider code, e.g. MTN) is required for mobile money",
-      };
-    }
-    try {
-      const { recipient_code } = await createTransferRecipient({
-        type: recipientType,
-        name: payoutFiat.account_name,
-        account_number: accountForPaystack,
-        bank_code: bankCode,
-        currency: payoutFiat.currency,
-      });
-      const reference = `req_${request.id.slice(0, 8)}_${Date.now()}`.replace(/-/g, "_").slice(0, 50);
-      await initiateTransfer({
-        source: "balance",
-        amount: amountSubunits,
-        recipient: recipient_code,
-        reference,
-        reason: "Request settlement",
-        currency: payoutFiat.currency,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Paystack transfer failed";
-      return { ok: false, error: msg };
-    }
+    const fiatSend = await executePaystackFiatTransfer({
+      payoutFiat,
+      amountHuman: tx.t_amount.toString(),
+      referencePrefix: `req_${request.id.slice(0, 8)}`,
+    });
+    if (!fiatSend.ok) return fiatSend;
   }
 
   if (claim && claim.status === "ACTIVE") {

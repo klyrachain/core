@@ -8,6 +8,7 @@
 import crypto from "node:crypto";
 import { getEnv } from "../config/env.js";
 import type { FonbnkQuoteRequest, FonbnkQuoteResponse } from "../lib/onramp-quote.types.js";
+import { prisma } from "../lib/prisma.js";
 
 /** Fonbnk-supported payout/deposit codes (NETWORK_ASSET). From https://docs.fonbnk.com/supported-countries-and-cryptocurrencies */
 const FONBNK_SUPPORTED_PAYOUT_CODES = new Set([
@@ -43,9 +44,135 @@ const FONBNK_SUPPORTED_PAYOUT_CODES = new Set([
   "XRP_RLUSD",
 ]);
 
+const CHAIN_ID_BY_NETWORK: Record<string, number> = {
+  ARBITRUM: 42161,
+  AVALANCHE: 43114,
+  BASE: 8453,
+  BNB: 56,
+  CELO: 42220,
+  ETHEREUM: 1,
+  LISK: 1135,
+  OPTIMISM: 10,
+  POLYGON: 137,
+  SOLANA: 101,
+  STELLAR: 148,
+  TON: 607,
+  TRON: 728126428,
+  XRP: 1440002,
+};
+
 export function isFonbnkSupportedPayoutCode(code: string): boolean {
   const normalized = code.trim().toUpperCase();
   return FONBNK_SUPPORTED_PAYOUT_CODES.has(normalized);
+}
+
+function parseSupportedCode(code: string): {
+  normalizedCode: string;
+  network: string | null;
+  asset: string | null;
+  chainId: bigint | null;
+} {
+  const normalizedCode = code.trim().toUpperCase();
+  if (!normalizedCode.includes("_")) {
+    return {
+      normalizedCode,
+      network: null,
+      asset: null,
+      chainId: null,
+    };
+  }
+  const [network, ...assetParts] = normalizedCode.split("_");
+  const asset = assetParts.join("_");
+  const chainId = CHAIN_ID_BY_NETWORK[network ?? ""] ?? null;
+  return {
+    normalizedCode,
+    network: network ?? null,
+    asset: asset || null,
+    chainId: chainId != null ? BigInt(chainId) : null,
+  };
+}
+
+export async function syncFonbnkSupportedAssetsInDb(options?: {
+  codes?: string[];
+  source?: string;
+}): Promise<{ upserted: number }> {
+  const codes =
+    options?.codes?.map((value) => value.trim()).filter((value) => value.length > 0) ??
+    [...FONBNK_SUPPORTED_PAYOUT_CODES];
+  const source = options?.source?.trim() || "docs_sync";
+  const uniqueCodes = [...new Set(codes.map((value) => value.toUpperCase()))];
+  for (const code of uniqueCodes) {
+    const parsed = parseSupportedCode(code);
+    await prisma.fonbnkSupportedAsset.upsert({
+      where: { code: parsed.normalizedCode },
+      create: {
+        code: parsed.normalizedCode,
+        network: parsed.network,
+        asset: parsed.asset,
+        chainId: parsed.chainId,
+        source,
+        isActive: true,
+      },
+      update: {
+        network: parsed.network,
+        asset: parsed.asset,
+        chainId: parsed.chainId,
+        source,
+        isActive: true,
+      },
+    });
+  }
+  return { upserted: uniqueCodes.length };
+}
+
+export async function getActiveFonbnkSupportedPayoutCodesFromDb(): Promise<Set<string>> {
+  const rows = await prisma.fonbnkSupportedAsset.findMany({
+    where: { isActive: true },
+    select: { code: true },
+  });
+  return new Set(rows.map((row) => row.code.trim().toUpperCase()));
+}
+
+export async function isFonbnkSupportedPayoutCodeResolved(code: string): Promise<boolean> {
+  const normalizedCode = code.trim().toUpperCase();
+  const dbCodes = await getActiveFonbnkSupportedPayoutCodesFromDb();
+  if (dbCodes.size > 0) return dbCodes.has(normalizedCode);
+  return isFonbnkSupportedPayoutCode(normalizedCode);
+}
+
+export async function listFonbnkSupportedAssets(params?: {
+  limit?: number;
+  network?: string;
+}): Promise<
+  Array<{
+    code: string;
+    network: string | null;
+    asset: string | null;
+    chainId: string | null;
+    source: string | null;
+    isActive: boolean;
+    updatedAt: string;
+  }>
+> {
+  const limit = Math.min(Math.max(params?.limit ?? 100, 1), 500);
+  const rows = await prisma.fonbnkSupportedAsset.findMany({
+    where: {
+      ...(params?.network?.trim()
+        ? { network: params.network.trim().toUpperCase() }
+        : {}),
+    },
+    orderBy: { updatedAt: "desc" },
+    take: limit,
+  });
+  return rows.map((row) => ({
+    code: row.code,
+    network: row.network,
+    asset: row.asset,
+    chainId: row.chainId != null ? row.chainId.toString() : null,
+    source: row.source,
+    isActive: row.isActive,
+    updatedAt: row.updatedAt.toISOString(),
+  }));
 }
 
 /**

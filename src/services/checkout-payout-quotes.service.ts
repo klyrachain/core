@@ -5,20 +5,31 @@
 
 import { buildPublicQuote } from "./public-quote.service.js";
 import { getBestQuotes } from "./swap-quote.service.js";
+import { getSwapQuoteEstimateFromAddress } from "../lib/swap-quote-from-address.js";
+import { prisma } from "../lib/prisma.js";
 import {
   DEFAULT_CHECKOUT_ROWS,
   type CheckoutRowSpec,
 } from "../types/checkout-row-spec.js";
 
 const CHAIN_ID_BASE = 8453;
+const CHAIN_ID_BNB = 56;
 const CHAIN_ID_ETHEREUM = 1;
+const CHAIN_ID_SOLANA = 101;
 const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-/** Ethereum mainnet WXRP (Squid-supported; verify liquidity). */
+/** Ethereum mainnet USDC — intermediate leg when direct Base→WXRP cross-chain is unsupported. */
+const ETH_MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+/** Ethereum mainnet Wrapped XRP (ERC-20). */
 const ETH_WXRP = "0x39fBBABf11738317a448031930706cd3e612e1B9";
 const WXRP_DECIMALS = 18;
+const BNB_USDC = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
+const SOL_USDC = "EPjFWdd5AufqSSqeM2qAq3h91M4A8fYf1R9n9xv8wYw";
+const SOL_MINT = "So11111111111111111111111111111111111111112";
+const USDC_DECIMALS = 6;
+const SOL_DECIMALS = 9;
 
-/** Matches Squid quote exploration (burn address); swap quotes do not need a funded wallet. */
-const DEFAULT_FROM_ADDRESS = "0x0000000000000000000000000000000000000000";
+/** Non-zero placeholder so LiFi/Squid accept quote-only routes (see swap-quote-from-address). */
+const DEFAULT_FROM_ADDRESS = getSwapQuoteEstimateFromAddress();
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -27,6 +38,24 @@ function sleep(ms: number): Promise<void> {
 function isRateLimitMessage(msg: string): boolean {
   const m = msg.toLowerCase();
   return m.includes("too many") || m.includes("rate") || m.includes("429");
+}
+
+/** User-facing copy when provider has no rate for this asset/country pair. */
+function mapCheckoutQuoteError(
+  raw: string,
+  context: "offramp" | "swap" = "swap"
+): string {
+  const m = raw.toLowerCase();
+  if (m.includes("no offers") || m.includes("no offer")) {
+    return "No rate available for this asset right now. Try another token or check back later.";
+  }
+  if (m.includes("unsupported chain") || m.includes("chain is not supported")) {
+    if (context === "offramp") {
+      return "This provider does not currently support the selected chain for offramp quotes.";
+    }
+    return "This provider does not currently support the selected chain for swap quotes.";
+  }
+  return raw;
 }
 
 export type CheckoutQuoteRowResult = {
@@ -59,11 +88,163 @@ function usdcHumanToSmallestUnits(human: string): string {
   return String(Math.round(n * 1e6));
 }
 
+function humanToRawUnits(human: string, decimals: number): string {
+  const n = Number.parseFloat(human);
+  if (!Number.isFinite(n) || n <= 0) return "0";
+  return String(Math.round(n * Math.pow(10, decimals)));
+}
+
 /** Match checkout display: two decimal places for all token amounts. */
 function formatCheckoutCryptoDisplay(human: string): string {
   const n = parseFloat(human);
   if (!Number.isFinite(n) || n < 0) return human;
   return n.toFixed(2);
+}
+
+const FIAT_CURRENCIES = new Set([
+  "USD",
+  "EUR",
+  "GBP",
+  "GHS",
+  "NGN",
+  "KES",
+  "ZAR",
+  "XOF",
+  "XAF",
+  "UGX",
+  "TZS",
+  "RWF",
+  "MZN",
+  "BWP",
+  "ZMW",
+]);
+
+function isFiatCurrency(code: string): boolean {
+  return FIAT_CURRENCIES.has(code.trim().toUpperCase());
+}
+
+type ChainTokenRef = { address: string; decimals: number };
+const CHECKOUT_CHAIN_TO_ID: Record<string, number> = {
+  BASE: CHAIN_ID_BASE,
+  BNB: CHAIN_ID_BNB,
+  ETHEREUM: CHAIN_ID_ETHEREUM,
+  SOLANA: CHAIN_ID_SOLANA,
+};
+const CHAIN_SYMBOL_TOKEN: Record<string, Record<string, ChainTokenRef>> = {
+  BASE: {
+    USDC: { address: BASE_USDC, decimals: USDC_DECIMALS },
+  },
+  BNB: {
+    USDC: { address: BNB_USDC, decimals: USDC_DECIMALS },
+  },
+  SOLANA: {
+    USDC: { address: SOL_USDC, decimals: USDC_DECIMALS },
+    SOL: { address: SOL_MINT, decimals: SOL_DECIMALS },
+  },
+  ETHEREUM: {
+    USDC: { address: ETH_MAINNET_USDC, decimals: USDC_DECIMALS },
+    WXRP: { address: ETH_WXRP, decimals: WXRP_DECIMALS },
+  },
+};
+
+function getRowTargetToken(row: Extract<CheckoutRowSpec, { kind: "offramp" }>): ChainTokenRef | null {
+  const chainMap = CHAIN_SYMBOL_TOKEN[row.chain];
+  if (!chainMap) return null;
+  const key = row.symbol.trim().toUpperCase();
+  const fromMap = chainMap[key];
+  if (fromMap) return fromMap;
+  const explicit = row.tokenAddress?.trim();
+  if (!explicit) return null;
+  return { address: explicit, decimals: key === "USDC" ? USDC_DECIMALS : 18 };
+}
+
+async function resolveTokenFromSupported(
+  chainCode: string,
+  symbol: string
+): Promise<ChainTokenRef | null> {
+  const chainId = CHECKOUT_CHAIN_TO_ID[chainCode];
+  if (!chainId) return null;
+  const row = await prisma.supportedToken.findFirst({
+    where: {
+      chainId,
+      symbol: symbol.trim().toUpperCase(),
+    },
+    select: {
+      tokenAddress: true,
+      decimals: true,
+    },
+  });
+  if (!row?.tokenAddress) return null;
+  return {
+    address: row.tokenAddress,
+    decimals: Number(row.decimals) || 18,
+  };
+}
+
+async function quoteCryptoRow(
+  id: string,
+  row: Extract<CheckoutRowSpec, { kind: "offramp" }>,
+  invoiceCryptoAmount: string,
+  invoiceCryptoSymbol: string,
+  fromAddress: string
+): Promise<CheckoutQuoteRowResult> {
+  const chainMap = CHAIN_SYMBOL_TOKEN[row.chain];
+  if (!chainMap) {
+    return { id, cryptoAmount: null, cryptoSymbol: null, error: "Unsupported checkout chain." };
+  }
+  const invoiceSymbol = invoiceCryptoSymbol.trim().toUpperCase();
+  const source =
+    chainMap[invoiceSymbol] ??
+    (await resolveTokenFromSupported(row.chain, invoiceSymbol));
+  const target =
+    getRowTargetToken(row) ??
+    (await resolveTokenFromSupported(row.chain, row.symbol));
+  if (!source || !target) {
+    return { id, cryptoAmount: null, cryptoSymbol: null, error: "Swap path unavailable for this token." };
+  }
+
+  const sameToken = source.address.toLowerCase() === target.address.toLowerCase();
+  if (sameToken) {
+    return {
+      id,
+      cryptoAmount: formatCheckoutCryptoDisplay(invoiceCryptoAmount),
+      cryptoSymbol: row.symbol.trim().toUpperCase(),
+      error: null,
+    };
+  }
+
+  const rawIn = humanToRawUnits(invoiceCryptoAmount, source.decimals);
+  if (rawIn === "0") {
+    return { id, cryptoAmount: null, cryptoSymbol: null, error: "Invalid crypto amount." };
+  }
+
+  const chainId = CHECKOUT_CHAIN_TO_ID[row.chain];
+  if (!chainId) {
+    return { id, cryptoAmount: null, cryptoSymbol: null, error: "Unsupported checkout chain." };
+  }
+  const bq = await getBestQuotes({
+    from_chain: chainId,
+    to_chain: chainId,
+    from_token: source.address,
+    to_token: target.address,
+    from_address: fromAddress,
+    amount: rawIn,
+  });
+  if (!bq.ok) {
+    return {
+      id,
+      cryptoAmount: null,
+      cryptoSymbol: null,
+      error: mapCheckoutQuoteError(bq.error ?? "Swap quote unavailable"),
+    };
+  }
+  const outHuman = formatFromRawUnits(bq.data.best.to_amount, target.decimals);
+  return {
+    id,
+    cryptoAmount: formatCheckoutCryptoDisplay(outHuman),
+    cryptoSymbol: row.symbol.trim().toUpperCase(),
+    error: null,
+  };
 }
 
 /**
@@ -77,7 +258,9 @@ async function quoteInvoiceOfframpRow(
   chain: string,
   cryptoSymbol: string,
   /** When set (e.g. from token picker), resolves the exact SupportedToken row; avoids wrong symbol match. */
-  tokenAddress?: string | null
+  tokenAddress?: string | null,
+  /** EVM address for indirect swap legs; defaults inside buildPublicQuote when omitted. */
+  fromAddress?: string
 ): Promise<CheckoutQuoteRowResult> {
   const outputToken = tokenAddress?.trim() || cryptoSymbol;
   const r = await buildPublicQuote({
@@ -87,13 +270,14 @@ async function quoteInvoiceOfframpRow(
     outputCurrency: outputToken,
     chain,
     inputSide: "to",
+    fromAddress,
   });
   if (!r.success) {
     return {
       id,
       cryptoAmount: null,
       cryptoSymbol: null,
-      error: r.error ?? "Quote unavailable",
+      error: mapCheckoutQuoteError(r.error ?? "Quote unavailable", "offramp"),
     };
   }
   return {
@@ -119,7 +303,9 @@ async function quoteCompositeWxrpRow(
       fiatAmount,
       fiatCurrency,
       "BASE",
-      "USDC"
+      "USDC",
+      undefined,
+      fromAddress
     );
     if (!baseUsdc.cryptoAmount || baseUsdc.error) {
       return {
@@ -180,6 +366,48 @@ async function quoteCompositeWxrpRow(
     }
   }
 
+  // Fallback: Squid/LiFi often omit niche ERC-20s for cross-chain legs. Bridge Base USDC → ETH USDC,
+  // then same-chain USDC → WXRP (0x / aggregators handle major→long-tail on L1).
+  if (!gotWxrp) {
+    const bridge = await getBestQuotes({
+      from_chain: CHAIN_ID_BASE,
+      to_chain: CHAIN_ID_ETHEREUM,
+      from_token: BASE_USDC,
+      to_token: ETH_MAINNET_USDC,
+      from_address: fromAddress,
+      amount: amountSmallest,
+    });
+    if (bridge.ok) {
+      const usdcOut = bridge.data.best.to_amount;
+      const same = await getBestQuotes({
+        from_chain: CHAIN_ID_ETHEREUM,
+        to_chain: CHAIN_ID_ETHEREUM,
+        from_token: ETH_MAINNET_USDC,
+        to_token: ETH_WXRP,
+        from_address: fromAddress,
+        amount: usdcOut,
+      });
+      if (same.ok) {
+        const human = formatFromRawUnits(same.data.best.to_amount, WXRP_DECIMALS);
+        if (human.length > 0) {
+          wxrp = {
+            id,
+            cryptoAmount: formatCheckoutCryptoDisplay(human),
+            cryptoSymbol: "WXRP",
+            error: null,
+          };
+          gotWxrp = true;
+        } else {
+          lastSwapErr = "Swap quote returned zero WXRP output";
+        }
+      } else {
+        lastSwapErr = same.error ?? lastSwapErr;
+      }
+    } else {
+      lastSwapErr = bridge.error ?? lastSwapErr;
+    }
+  }
+
   if (!gotWxrp) {
     wxrp = {
       id,
@@ -213,6 +441,7 @@ export async function buildCheckoutPayoutQuotes(params: {
   const refetchIds = params.refetchRowIds?.filter((s) => s.trim().length > 0);
   const partial = refetchIds != null && refetchIds.length > 0;
   const want = partial ? new Set(refetchIds) : null;
+  const fiatMode = isFiatCurrency(inputCurrency);
 
   const results: CheckoutQuoteRowResult[] = [];
 
@@ -232,16 +461,20 @@ export async function buildCheckoutPayoutQuotes(params: {
     : offrampSpecs;
 
   const offrampResults = await Promise.all(
-    offrampToRun.map((r) =>
-      quoteInvoiceOfframpRow(
-        r.id,
-        inputAmount,
-        inputCurrency,
-        r.chain,
-        r.symbol,
-        r.tokenAddress
-      )
-    )
+    offrampToRun.map((r) => {
+      if (fiatMode) {
+        return quoteInvoiceOfframpRow(
+          r.id,
+          inputAmount,
+          inputCurrency,
+          r.chain,
+          r.symbol,
+          r.tokenAddress,
+          fromAddress
+        );
+      }
+      return quoteCryptoRow(r.id, r, inputAmount, inputCurrency, fromAddress);
+    })
   );
   const byId = new Map(offrampResults.map((r) => [r.id, r]));
 
@@ -250,7 +483,7 @@ export async function buildCheckoutPayoutQuotes(params: {
     : compositeSpecs;
 
   let baseUsdcForWxrp: string | null = null;
-  if (compositeToRun.length > 0) {
+  if (fiatMode && compositeToRun.length > 0) {
     const br = byId.get("base-usdc");
     if (br?.cryptoAmount && !br.error) {
       baseUsdcForWxrp = br.cryptoAmount;
@@ -260,7 +493,9 @@ export async function buildCheckoutPayoutQuotes(params: {
         inputAmount,
         inputCurrency,
         "BASE",
-        "USDC"
+        "USDC",
+        undefined,
+        fromAddress
       );
       if (tmp.cryptoAmount && !tmp.error) {
         baseUsdcForWxrp = tmp.cryptoAmount;
@@ -269,13 +504,25 @@ export async function buildCheckoutPayoutQuotes(params: {
   }
 
   for (const spec of compositeToRun) {
-    const r = await quoteCompositeWxrpRow(
-      spec.id,
-      inputAmount,
-      inputCurrency,
-      fromAddress,
-      baseUsdcForWxrp
-    );
+    if (fiatMode) {
+      const r = await quoteCompositeWxrpRow(
+        spec.id,
+        inputAmount,
+        inputCurrency,
+        fromAddress,
+        baseUsdcForWxrp
+      );
+      byId.set(spec.id, r);
+      continue;
+    }
+    const syntheticRow: Extract<CheckoutRowSpec, { kind: "offramp" }> = {
+      id: spec.id,
+      kind: "offramp",
+      chain: "ETHEREUM",
+      symbol: "WXRP",
+      tokenAddress: ETH_WXRP,
+    };
+    const r = await quoteCryptoRow(spec.id, syntheticRow, inputAmount, inputCurrency, fromAddress);
     byId.set(spec.id, r);
   }
 

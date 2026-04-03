@@ -8,8 +8,11 @@ import {
   errorEnvelope,
 } from "../../lib/api-helpers.js";
 import type { InvoiceStatus } from "../../../prisma/generated/prisma/enums.js";
+import type { Prisma } from "../../../prisma/generated/prisma/client.js";
 import { requirePermission } from "../../lib/admin-auth.guard.js";
 import { PERMISSION_INVOICES_READ, PERMISSION_INVOICES_WRITE } from "../../lib/permissions.js";
+import { getOptionalMerchantBusinessId } from "../../lib/business-portal-tenant.guard.js";
+import { getMerchantEnvironmentOrThrow } from "../../lib/merchant-environment.js";
 
 // --- Types (spec §2) ---
 
@@ -94,6 +97,13 @@ function nextInvoiceNumber(): string {
   return `INV-${t}-${r}`;
 }
 
+function tenantInvoiceWhere(req: FastifyRequest): Prisma.InvoiceWhereInput {
+  const bid = getOptionalMerchantBusinessId(req);
+  if (!bid) return {};
+  const env = getMerchantEnvironmentOrThrow(req);
+  return { businessId: bid, environment: env };
+}
+
 function computeTotals(
   lineItems: LineItem[],
   discountPercent: number
@@ -136,13 +146,18 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
-        if (!requirePermission(req, reply, PERMISSION_INVOICES_READ)) return;
+        if (!requirePermission(req, reply, PERMISSION_INVOICES_READ, { allowMerchant: true }))
+          return;
         const { page, limit, skip } = parsePagination(req.query);
         const status = req.query.status;
-        const where =
+        const statusWhere: Prisma.InvoiceWhereInput =
           status && VALID_STATUSES.includes(status as InvoiceStatus)
             ? { status: status as InvoiceStatus }
             : {};
+        const where: Prisma.InvoiceWhereInput = {
+          ...statusWhere,
+          ...tenantInvoiceWhere(req),
+        };
         const [items, total] = await Promise.all([
           prisma.invoice.findMany({
             where,
@@ -166,9 +181,10 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
     "/api/invoices/:id",
     async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
       try {
-        if (!requirePermission(req, reply, PERMISSION_INVOICES_READ)) return;
-        const row = await prisma.invoice.findUnique({
-          where: { id: req.params.id },
+        if (!requirePermission(req, reply, PERMISSION_INVOICES_READ, { allowMerchant: true }))
+          return;
+        const row = await prisma.invoice.findFirst({
+          where: { id: req.params.id, ...tenantInvoiceWhere(req) },
         });
         if (!row) return errorEnvelope(reply, "Invoice not found", 404);
         return successEnvelope(reply, toFullInvoice(row));
@@ -199,7 +215,8 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
-        if (!requirePermission(req, reply, PERMISSION_INVOICES_WRITE)) return;
+        if (!requirePermission(req, reply, PERMISSION_INVOICES_WRITE, { allowMerchant: true }))
+          return;
         const body = req.body ?? {};
         const billedTo = body.billedTo?.trim();
         const subject = body.subject?.trim();
@@ -239,6 +256,7 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
           (await prisma.invoice.findUnique({ where: { invoiceNumber } })) != null
         );
 
+        const scopeBid = getOptionalMerchantBusinessId(req);
         const row = await prisma.invoice.create({
           data: {
             invoiceNumber,
@@ -261,6 +279,12 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
             termsAndConditions: body.termsAndConditions?.trim() ?? "",
             notesContent: body.notesContent?.trim() ?? "",
             log: log as object,
+            ...(scopeBid
+              ? {
+                  businessId: scopeBid,
+                  environment: getMerchantEnvironmentOrThrow(req),
+                }
+              : {}),
           },
         });
 
@@ -269,8 +293,8 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
             row.log as LogEntry[],
             `Invoice was sent to ${row.billedTo}.`
           );
-          await prisma.invoice.update({
-            where: { id: row.id },
+          await prisma.invoice.updateMany({
+            where: { id: row.id, ...tenantInvoiceWhere(req) },
             data: { log: logUpdated as object },
           });
           (row as { log: unknown }).log = logUpdated;
@@ -304,9 +328,10 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
-        if (!requirePermission(req, reply, PERMISSION_INVOICES_WRITE)) return;
-        const row = await prisma.invoice.findUnique({
-          where: { id: req.params.id },
+        if (!requirePermission(req, reply, PERMISSION_INVOICES_WRITE, { allowMerchant: true }))
+          return;
+        const row = await prisma.invoice.findFirst({
+          where: { id: req.params.id, ...tenantInvoiceWhere(req) },
         });
         if (!row) return errorEnvelope(reply, "Invoice not found", 404);
         if (row.status === "Paid" || row.status === "Cancelled")
@@ -351,10 +376,15 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
           updates.amount = total;
         }
 
-        const updated = await prisma.invoice.update({
-          where: { id: req.params.id },
+        const scopedWhere = { id: req.params.id, ...tenantInvoiceWhere(req) };
+        await prisma.invoice.updateMany({
+          where: scopedWhere,
           data: updates as object,
         });
+        const updated = await prisma.invoice.findFirst({
+          where: scopedWhere,
+        });
+        if (!updated) return errorEnvelope(reply, "Invoice not found", 404);
         return successEnvelope(reply, toFullInvoice(updated));
       } catch (err) {
         req.log.error({ err }, "PATCH /api/invoices/:id");
@@ -374,9 +404,10 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
-        if (!requirePermission(req, reply, PERMISSION_INVOICES_WRITE)) return;
-        const row = await prisma.invoice.findUnique({
-          where: { id: req.params.id },
+        if (!requirePermission(req, reply, PERMISSION_INVOICES_WRITE, { allowMerchant: true }))
+          return;
+        const row = await prisma.invoice.findFirst({
+          where: { id: req.params.id, ...tenantInvoiceWhere(req) },
         });
         if (!row) return errorEnvelope(reply, "Invoice not found", 404);
         if (row.status === "Cancelled")
@@ -390,8 +421,8 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
           row.log as LogEntry[],
           `Invoice was sent to ${toEmail}.`
         );
-        await prisma.invoice.update({
-          where: { id: req.params.id },
+        await prisma.invoice.updateMany({
+          where: { id: req.params.id, ...tenantInvoiceWhere(req) },
           data: { log: log as object },
         });
         return successEnvelope(reply, { sent: true, to: toEmail });
@@ -407,9 +438,10 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
     "/api/invoices/:id/duplicate",
     async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
       try {
-        if (!requirePermission(req, reply, PERMISSION_INVOICES_WRITE)) return;
-        const row = await prisma.invoice.findUnique({
-          where: { id: req.params.id },
+        if (!requirePermission(req, reply, PERMISSION_INVOICES_WRITE, { allowMerchant: true }))
+          return;
+        const row = await prisma.invoice.findFirst({
+          where: { id: req.params.id, ...tenantInvoiceWhere(req) },
         });
         if (!row) return errorEnvelope(reply, "Invoice not found", 404);
 
@@ -458,6 +490,8 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
             termsAndConditions: row.termsAndConditions,
             notesContent: row.notesContent,
             log: log as object,
+            businessId: row.businessId,
+            environment: row.environment,
           },
         });
         return successEnvelope(reply, toFullInvoice(newRow), 201);
@@ -473,9 +507,10 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
     "/api/invoices/:id/mark-paid",
     async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
       try {
-        if (!requirePermission(req, reply, PERMISSION_INVOICES_WRITE)) return;
-        const row = await prisma.invoice.findUnique({
-          where: { id: req.params.id },
+        if (!requirePermission(req, reply, PERMISSION_INVOICES_WRITE, { allowMerchant: true }))
+          return;
+        const row = await prisma.invoice.findFirst({
+          where: { id: req.params.id, ...tenantInvoiceWhere(req) },
         });
         if (!row) return errorEnvelope(reply, "Invoice not found", 404);
         if (row.status === "Paid")
@@ -488,10 +523,14 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
           row.log as LogEntry[],
           "Invoice was marked as paid."
         );
-        const updated = await prisma.invoice.update({
-          where: { id: req.params.id },
+        await prisma.invoice.updateMany({
+          where: { id: req.params.id, ...tenantInvoiceWhere(req) },
           data: { status: "Paid", paidAt, amountDue: 0, log: log as object },
         });
+        const updated = await prisma.invoice.findFirst({
+          where: { id: req.params.id, ...tenantInvoiceWhere(req) },
+        });
+        if (!updated) return errorEnvelope(reply, "Invoice not found", 404);
         return successEnvelope(reply, toFullInvoice(updated));
       } catch (err) {
         req.log.error({ err }, "POST /api/invoices/:id/mark-paid");
@@ -505,9 +544,10 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
     "/api/invoices/:id/cancel",
     async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
       try {
-        if (!requirePermission(req, reply, PERMISSION_INVOICES_WRITE)) return;
-        const row = await prisma.invoice.findUnique({
-          where: { id: req.params.id },
+        if (!requirePermission(req, reply, PERMISSION_INVOICES_WRITE, { allowMerchant: true }))
+          return;
+        const row = await prisma.invoice.findFirst({
+          where: { id: req.params.id, ...tenantInvoiceWhere(req) },
         });
         if (!row) return errorEnvelope(reply, "Invoice not found", 404);
         if (row.status === "Paid")
@@ -519,10 +559,14 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
           row.log as LogEntry[],
           "Invoice was cancelled."
         );
-        const updated = await prisma.invoice.update({
-          where: { id: req.params.id },
+        await prisma.invoice.updateMany({
+          where: { id: req.params.id, ...tenantInvoiceWhere(req) },
           data: { status: "Cancelled", amountDue: 0, log: log as object },
         });
+        const updated = await prisma.invoice.findFirst({
+          where: { id: req.params.id, ...tenantInvoiceWhere(req) },
+        });
+        if (!updated) return errorEnvelope(reply, "Invoice not found", 404);
         return successEnvelope(reply, toFullInvoice(updated));
       } catch (err) {
         req.log.error({ err }, "POST /api/invoices/:id/cancel");
@@ -542,9 +586,10 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
       reply
     ) => {
       try {
-        if (!requirePermission(req, reply, PERMISSION_INVOICES_READ)) return;
-        const row = await prisma.invoice.findUnique({
-          where: { id: req.params.id },
+        if (!requirePermission(req, reply, PERMISSION_INVOICES_READ, { allowMerchant: true }))
+          return;
+        const row = await prisma.invoice.findFirst({
+          where: { id: req.params.id, ...tenantInvoiceWhere(req) },
         });
         if (!row) return errorEnvelope(reply, "Invoice not found", 404);
 

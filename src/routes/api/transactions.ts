@@ -11,6 +11,8 @@ import {
 import { requirePermission } from "../../lib/admin-auth.guard.js";
 import { PERMISSION_CONNECT_TRANSACTIONS } from "../../lib/permissions.js";
 import { verifyTransactionByHash } from "../../services/transaction-verify.service.js";
+import { getOptionalMerchantBusinessId } from "../../lib/business-portal-tenant.guard.js";
+import { getMerchantEnvironmentOrThrow } from "../../lib/merchant-environment.js";
 
 const CHAIN_NAME_TO_ID: Record<string, number> = {
   ETHEREUM: 1,
@@ -35,12 +37,28 @@ export async function transactionsApiRoutes(app: FastifyInstance): Promise<void>
         const { page, limit, skip } = parsePagination(req.query);
         const status = req.query.status as string | undefined;
         const type = req.query.type as string | undefined;
+        const merchantBid = getOptionalMerchantBusinessId(req);
+        const merchantEnv = getMerchantEnvironmentOrThrow(req);
         const where =
-          status || type
+          status || type || merchantBid
             ? {
-              ...(status ? { status: status as "ACTIVE" | "PENDING" | "COMPLETED" | "CANCELLED" | "FAILED" } : {}),
-              ...(type ? { type: type as "BUY" | "SELL" | "TRANSFER" | "REQUEST" | "CLAIM" } : {}),
-            }
+                ...(status
+                  ? {
+                      status: status as
+                        | "ACTIVE"
+                        | "PENDING"
+                        | "COMPLETED"
+                        | "CANCELLED"
+                        | "FAILED",
+                    }
+                  : {}),
+                ...(type
+                  ? { type: type as "BUY" | "SELL" | "TRANSFER" | "REQUEST" | "CLAIM" }
+                  : {}),
+                ...(merchantBid
+                  ? { businessId: merchantBid, environment: merchantEnv }
+                  : {}),
+              }
             : {};
         const [items, total] = await Promise.all([
           prisma.transaction.findMany({
@@ -133,8 +151,12 @@ export async function transactionsApiRoutes(app: FastifyInstance): Promise<void>
   app.get("/api/transactions/:id", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
     try {
       if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
-      const tx = await prisma.transaction.findUnique({
-        where: { id: req.params.id },
+      const merchantBid = getOptionalMerchantBusinessId(req);
+      const merchantEnv = getMerchantEnvironmentOrThrow(req);
+      const tx = await prisma.transaction.findFirst({
+        where: merchantBid
+          ? { id: req.params.id, businessId: merchantBid, environment: merchantEnv }
+          : { id: req.params.id },
         include: {
           fromUser: { select: { id: true, email: true, address: true, username: true } },
           toUser: { select: { id: true, email: true, address: true, username: true } },

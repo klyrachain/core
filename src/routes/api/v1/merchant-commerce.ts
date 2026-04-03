@@ -51,6 +51,8 @@ const createPayPageBody = z.object({
   amount: z.union([z.coerce.number().positive(), z.null()]).optional(),
   currency: z.string().min(1).max(16).optional(),
   chargeKind: z.enum(["FIAT", "CRYPTO"]).optional(),
+  gasSponsorshipEnabled: z.boolean().optional(),
+  isOneTime: z.boolean().optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -102,8 +104,14 @@ function serializePayPage(p: {
   amount: { toString(): string } | null;
   currency: string;
   chargeKind: string;
+  gasSponsorshipEnabled: boolean;
+  isOneTime: boolean;
+  paidAt: Date | null;
+  paidByTransactionId: string | null;
+  paidByWalletAddress: string | null;
   isActive: boolean;
   views: number;
+  usageCount?: number;
 }) {
   return {
     id: p.id,
@@ -119,8 +127,14 @@ function serializePayPage(p: {
     amount: p.amount != null ? p.amount.toString() : null,
     currency: p.currency,
     chargeKind: p.chargeKind,
+    gasSponsorshipEnabled: p.gasSponsorshipEnabled,
+    isOneTime: p.isOneTime,
+    paidAt: p.paidAt?.toISOString() ?? null,
+    paidByTransactionId: p.paidByTransactionId ?? null,
+    paidByWalletAddress: p.paidByWalletAddress ?? null,
     isActive: p.isActive,
     views: p.views,
+    usageCount: p.usageCount ?? 0,
   };
 }
 
@@ -150,6 +164,15 @@ async function allocateUniquePaymentLinkPublicCode(): Promise<string> {
     if (!hit) return code;
   }
   throw new Error("PUBLIC_CODE_ALLOCATION_FAILED");
+}
+
+function isPrismaUniqueViolation(err: unknown): boolean {
+  return (
+    err !== null &&
+    typeof err === "object" &&
+    "code" in err &&
+    (err as { code?: string }).code === "P2002"
+  );
 }
 
 export function registerMerchantCommerceRoutes(app: FastifyInstance): void {
@@ -338,8 +361,30 @@ export function registerMerchantCommerceRoutes(app: FastifyInstance): void {
           }),
           prisma.paymentLink.count({ where }),
         ]);
+        const linkIds = rows.map((row) => row.id);
+        const usageByLink = new Map<string, number>();
+        if (linkIds.length > 0) {
+          const grouped = await prisma.transaction.groupBy({
+            by: ["paymentLinkId"],
+            where: {
+              businessId,
+              environment,
+              paymentLinkId: { in: linkIds },
+              OR: [
+                { status: "COMPLETED" },
+                { status: "PENDING", paymentConfirmedAt: { not: null } },
+              ],
+            },
+            _count: { _all: true },
+          });
+          for (const row of grouped) {
+            if (row.paymentLinkId) {
+              usageByLink.set(row.paymentLinkId, row._count._all);
+            }
+          }
+        }
         const data = rows.map((r) => ({
-          ...serializePayPage(r),
+          ...serializePayPage({ ...r, usageCount: usageByLink.get(r.id) ?? 0 }),
           product: r.product ? { id: r.product.id, name: r.product.name } : undefined,
         }));
         return successEnvelopeWithMeta(reply, data, { page, limit, total });
@@ -360,6 +405,8 @@ export function registerMerchantCommerceRoutes(app: FastifyInstance): void {
         return reply.status(400).send({ success: false, error: "Validation failed", details: parsed.error.flatten() });
       }
       const b = parsed.data;
+      const linkGasSponsorshipEnabled =
+        (b.chargeKind ?? "FIAT") === "CRYPTO" && b.gasSponsorshipEnabled === true;
       if (b.productId) {
         const p = await prisma.product.findFirst({
           where: { id: b.productId, businessId, environment, isArchived: false },
@@ -368,28 +415,52 @@ export function registerMerchantCommerceRoutes(app: FastifyInstance): void {
           return reply.status(400).send({ success: false, error: "productId must belong to this business." });
         }
       }
-      const slug =
-        b.slug != null && b.slug.trim().length > 0
-          ? b.slug.trim()
+      const userProvidedSlug = b.slug != null && b.slug.trim().length > 0;
+      let providedSlugBase = userProvidedSlug ? b.slug!.trim() : "";
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const slug = userProvidedSlug
+          ? providedSlugBase
           : await allocateUniquePaymentLinkSlug(randomPaySlugCandidate());
-      const publicCode = await allocateUniquePaymentLinkPublicCode();
-      const created = await prisma.paymentLink.create({
-        data: {
-          businessId,
-          environment,
-          title: b.title,
-          description: b.description,
-          slug,
-          publicCode,
-          type: b.type ?? "STANDARD",
-          productId: b.productId ?? undefined,
-          amount: b.amount ?? undefined,
-          currency: b.currency ?? "USD",
-          chargeKind: b.chargeKind ?? "FIAT",
-          isActive: b.isActive ?? true,
-        },
-      });
-      return reply.status(201).send({ success: true, data: serializePayPage(created) });
+        const publicCode = await allocateUniquePaymentLinkPublicCode();
+        try {
+          const created = await prisma.paymentLink.create({
+            data: {
+              businessId,
+              environment,
+              title: b.title,
+              description: b.description,
+              slug,
+              publicCode,
+              type: b.type ?? "STANDARD",
+              productId: b.productId ?? undefined,
+              amount: b.amount ?? undefined,
+              currency: b.currency ?? "USD",
+              chargeKind: b.chargeKind ?? "FIAT",
+              gasSponsorshipEnabled: linkGasSponsorshipEnabled,
+              isOneTime: b.isOneTime ?? false,
+              isActive: b.isActive ?? true,
+            },
+          });
+          return reply.status(201).send({ success: true, data: serializePayPage(created) });
+        } catch (err: unknown) {
+          if (!isPrismaUniqueViolation(err)) throw err;
+          if (userProvidedSlug) {
+            if (attempt === 4) {
+              return reply
+                .status(409)
+                .send({ success: false, error: "Slug already in use.", code: "SLUG_TAKEN" });
+            }
+            providedSlugBase = await allocateUniquePaymentLinkSlug(providedSlugBase);
+            continue;
+          }
+          if (attempt === 4) {
+            return reply
+              .status(409)
+              .send({ success: false, error: "Unable to allocate unique pay page slug.", code: "SLUG_TAKEN" });
+          }
+        }
+      }
+      return errorEnvelope(reply, "Unable to create pay page right now.", 500);
     } catch (err: unknown) {
       const code = err && typeof err === "object" && "code" in err ? (err as { code?: string }).code : undefined;
       if (code === "P2002") {
@@ -439,8 +510,19 @@ export function registerMerchantCommerceRoutes(app: FastifyInstance): void {
           : {}),
         ...(patch.currency !== undefined ? { currency: patch.currency } : {}),
         ...(patch.chargeKind !== undefined ? { chargeKind: patch.chargeKind } : {}),
+        ...(patch.gasSponsorshipEnabled !== undefined
+          ? {
+              gasSponsorshipEnabled:
+                (patch.chargeKind ?? existing.chargeKind) === "CRYPTO" &&
+                patch.gasSponsorshipEnabled,
+            }
+          : {}),
+        ...(patch.isOneTime !== undefined ? { isOneTime: patch.isOneTime } : {}),
         ...(patch.isActive !== undefined ? { isActive: patch.isActive } : {}),
       };
+      if (patch.chargeKind === "FIAT") {
+        data.gasSponsorshipEnabled = false;
+      }
       if (Object.keys(data).length === 0) {
         return reply.status(400).send({ success: false, error: "No fields to update." });
       }

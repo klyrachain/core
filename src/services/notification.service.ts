@@ -29,6 +29,18 @@ import {
   type RequestPaymentReceivedTemplateVars,
   type RequestSettledToRequesterTemplateVars,
 } from "../email/templates/request-settled.js";
+import {
+  paymentLinkPayerReceiptSubject,
+  paymentLinkPayerReceiptHtml,
+  paymentLinkPayerReceiptText,
+  type PaymentLinkPayerReceiptVars,
+} from "../email/templates/payment-link-payer-receipt.js";
+import {
+  paymentLinkMerchantReceiptSubject,
+  paymentLinkMerchantReceiptHtml,
+  paymentLinkMerchantReceiptText,
+  type PaymentLinkMerchantReceiptVars,
+} from "../email/templates/payment-link-merchant-receipt.js";
 
 export type PaymentRequestNotificationPayload = {
   channels: NotificationChannel[];
@@ -175,6 +187,65 @@ export async function sendRequestSettledToRequester(
     entityRefId,
   });
   return r.ok ? { ok: true } : { ok: false, error: r.error };
+}
+
+/**
+ * After Paystack charge.success for commerce BUY: payer + merchant receipts (best-effort; failures ignored).
+ */
+export async function sendPaymentLinkPaystackSuccessEmails(opts: {
+  transactionId: string;
+  paystackReference: string;
+  /** Prefer metadata payer_email; avoid sending to platform inbox. */
+  payerEmail: string | null;
+  platformPaystackEmail: string | null;
+  fiatAmount: number;
+  fiatCurrency: string;
+  merchantSupportEmail: string | null;
+  businessName: string;
+  linkTitle: string;
+  linkPublicCode: string;
+}): Promise<void> {
+  const amountLabel = `${opts.fiatAmount} ${opts.fiatCurrency}`.trim();
+  const platform = opts.platformPaystackEmail?.trim().toLowerCase() ?? "";
+
+  const payerVars: PaymentLinkPayerReceiptVars = {
+    amountLabel,
+    orderReference: opts.paystackReference,
+    transactionId: opts.transactionId,
+  };
+
+  let payerTo = opts.payerEmail?.trim().toLowerCase() ?? "";
+  if (!payerTo.includes("@")) payerTo = "";
+  if (platform && payerTo === platform) payerTo = "";
+
+  if (payerTo) {
+    await sendEmail({
+      to: payerTo,
+      subject: paymentLinkPayerReceiptSubject(payerVars),
+      html: paymentLinkPayerReceiptHtml(payerVars),
+      text: paymentLinkPayerReceiptText(payerVars),
+      entityRefId: `${opts.transactionId}:payer-fiat-success`,
+      idempotencyKey: `${opts.transactionId}:payer-fiat-success`,
+    }).catch(() => {});
+  }
+
+  const merchantTo = opts.merchantSupportEmail?.trim() ?? "";
+  if (merchantTo.includes("@")) {
+    const mVars: PaymentLinkMerchantReceiptVars = {
+      businessName: opts.businessName,
+      amountLabel,
+      linkLabel: `${opts.linkTitle} (${opts.linkPublicCode})`,
+      transactionId: opts.transactionId,
+    };
+    await sendEmail({
+      to: merchantTo,
+      subject: paymentLinkMerchantReceiptSubject(mVars),
+      html: paymentLinkMerchantReceiptHtml(mVars),
+      text: paymentLinkMerchantReceiptText(mVars),
+      entityRefId: `${opts.transactionId}:merchant-fiat-success`,
+      idempotencyKey: `${opts.transactionId}:merchant-fiat-success`,
+    }).catch(() => {});
+  }
 }
 
 /** Build frontend URL for payment request (payer pays here). */

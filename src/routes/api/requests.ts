@@ -22,6 +22,7 @@ import { verifyTransactionByHash, transferMatches } from "../../services/transac
 import { addInventory } from "../../services/inventory.service.js";
 import { onRequestPaymentSettled } from "../../services/request-settlement.service.js";
 import { getOptionalMerchantBusinessId } from "../../lib/business-portal-tenant.guard.js";
+import { getMerchantEnvironmentOrThrow } from "../../lib/merchant-environment.js";
 
 const CHAIN_NAME_TO_ID: Record<string, number> = {
   ETHEREUM: 1,
@@ -37,14 +38,20 @@ export async function requestsApiRoutes(app: FastifyInstance): Promise<void> {
     try {
       if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
       const { page, limit, skip } = parsePagination(req.query);
+      const merchantBid = getOptionalMerchantBusinessId(req);
+      const merchantEnv = getMerchantEnvironmentOrThrow(req);
+      const where = merchantBid
+        ? { businessId: merchantBid, environment: merchantEnv }
+        : {};
       const [items, total] = await Promise.all([
         prisma.request.findMany({
+          where,
           skip,
           take: limit,
           orderBy: { createdAt: "desc" },
           include: { transaction: true, claim: true },
         }),
-        prisma.request.count(),
+        prisma.request.count({ where }),
       ]);
       const data = items.map((r) => ({
         ...r,
@@ -100,8 +107,12 @@ export async function requestsApiRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/requests/:id", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
     try {
       if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
-      const request = await prisma.request.findUnique({
-        where: { id: req.params.id },
+      const merchantBid = getOptionalMerchantBusinessId(req);
+      const merchantEnv = getMerchantEnvironmentOrThrow(req);
+      const request = await prisma.request.findFirst({
+        where: merchantBid
+          ? { id: req.params.id, businessId: merchantBid, environment: merchantEnv }
+          : { id: req.params.id },
         include: { transaction: true, claim: true },
       });
       if (!request) return errorEnvelope(reply, "Request not found", 404);
@@ -133,12 +144,13 @@ export async function requestsApiRoutes(app: FastifyInstance): Promise<void> {
   /** POST /api/requests — create payment request and notify payer (email/SMS/WhatsApp) with link to pay. */
   app.post<{ Body: unknown }>("/api/requests", async (req: FastifyRequest<{ Body: unknown }>, reply) => {
     try {
-      if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
+      if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS, { allowMerchant: true })) return;
       const parse = CreatePaymentRequestBodySchema.safeParse(req.body);
       if (!parse.success) {
         return reply.status(400).send({ success: false, error: "Validation failed", details: parse.error.flatten() });
       }
-      const data = await createPaymentRequest(parse.data, { businessId: null });
+      const merchantBid = getOptionalMerchantBusinessId(req) ?? null;
+      const data = await createPaymentRequest(parse.data, { businessId: merchantBid });
       return reply.status(201).send({
         success: true,
         data: {
@@ -174,6 +186,7 @@ export async function requestsApiRoutes(app: FastifyInstance): Promise<void> {
           type: true,
           status: true,
           businessId: true,
+          environment: true,
           t_chain: true,
           t_token: true,
           t_amount: true,
@@ -184,7 +197,8 @@ export async function requestsApiRoutes(app: FastifyInstance): Promise<void> {
       });
       if (!tx) return errorEnvelope(reply, "Transaction not found", 404);
       const merchantBid = getOptionalMerchantBusinessId(req);
-      if (merchantBid && tx.businessId !== merchantBid) {
+      const merchantEnv = getMerchantEnvironmentOrThrow(req);
+      if (merchantBid && (tx.businessId !== merchantBid || tx.environment !== merchantEnv)) {
         return reply.status(403).send({ success: false, error: "Forbidden", code: "TENANT_MISMATCH" });
       }
       if (tx.type !== "REQUEST") return reply.status(400).send({ success: false, error: "Transaction must be REQUEST" });
@@ -238,6 +252,7 @@ export async function requestsApiRoutes(app: FastifyInstance): Promise<void> {
         type: true,
         status: true,
         businessId: true,
+          environment: true,
         createdAt: true,
         t_chain: true,
         t_token: true,
@@ -250,7 +265,11 @@ export async function requestsApiRoutes(app: FastifyInstance): Promise<void> {
     });
     if (!tx) return errorEnvelope(reply, "Transaction not found", 404);
     const merchantBidConfirm = getOptionalMerchantBusinessId(req);
-    if (merchantBidConfirm && tx.businessId !== merchantBidConfirm) {
+    const merchantEnvConfirm = getMerchantEnvironmentOrThrow(req);
+    if (
+      merchantBidConfirm &&
+      (tx.businessId !== merchantBidConfirm || tx.environment !== merchantEnvConfirm)
+    ) {
       return reply.status(403).send({ success: false, error: "Forbidden", code: "TENANT_MISMATCH" });
     }
     if (tx.type !== "REQUEST") return reply.status(400).send({ success: false, error: "Transaction must be REQUEST" });

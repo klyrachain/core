@@ -38,6 +38,11 @@ const envSchema = z.object({
 
   /** Paystack secret key for account verification, banks, transfers. Optional; if missing, Paystack routes return 503. */
   PAYSTACK_SECRET_KEY: z.string().min(1).optional(),
+  /**
+   * Required for POST /api/paystack/payments/initialize: this address is sent to Paystack as the customer email
+   * so Paystack notifications go to your platform inbox; the payer’s email is stored on the transaction only.
+   */
+  PAYSTACK_PLATFORM_EMAIL: z.string().email().optional(),
 
   /** Fonbnk API for onramp fiat↔crypto quotes. Optional; if missing, onramp quote returns 503. */
   FONBNK_API_URL: z.string().optional(),
@@ -86,8 +91,23 @@ const envSchema = z.object({
   /** Payer checkout app origin (no trailing slash), e.g. https://pay.example.com. Exposed read-only via GET /api/meta/checkout-base-url. */
   CHECKOUT_BASE_URL: z.string().url().optional(),
 
+  /** When true, periodically re-verify stale Paystack commerce pendings (requires PAYSTACK_SECRET_KEY). */
+  PAYSTACK_RECONCILE_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true" || v === "1"),
+  /** Interval for Paystack commerce reconciliation (ms). Default 5 minutes. */
+  PAYSTACK_RECONCILE_INTERVAL_MS: z.coerce.number().int().positive().optional().default(300_000),
+  /** Minimum age before a PENDING row is eligible (ms). Default 2 minutes to avoid racing initialize. */
+  PAYSTACK_RECONCILE_MIN_AGE_MS: z.coerce.number().int().positive().optional().default(120_000),
+  /** Max rows per reconciliation tick. */
+  PAYSTACK_RECONCILE_MAX_BATCH: z.coerce.number().int().min(1).max(200).optional().default(30),
+
   /** HMAC secret for business portal JWT (signup / dashboard session). Defaults to ENCRYPTION_KEY. */
   BUSINESS_PORTAL_JWT_SECRET: z.string().min(32).optional(),
+
+  /** HMAC for checkout gas-usage report tokens (defaults to ENCRYPTION_KEY if unset). */
+  GAS_REPORT_HMAC_SECRET: z.string().min(32).optional(),
 
   /** Google OAuth for business signup (optional; omit to disable “Continue with Google”). */
   GOOGLE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
@@ -115,6 +135,12 @@ const envSchema = z.object({
   BUSINESS_WEBAUTHN_RP_ID: z.string().min(1).optional(),
   /** Comma-separated origins allowed for business portal WebAuthn (e.g. http://localhost:3000). */
   BUSINESS_WEBAUTHN_ORIGINS: z.string().optional(),
+
+  /**
+   * Optional: override swap quote `fromAddress` used for server-side route estimates
+   * when the user has not connected a wallet. Must be a valid EVM address.
+   */
+  QUOTE_ESTIMATE_FROM_ADDRESS: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

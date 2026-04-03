@@ -16,6 +16,11 @@ import {
   maskSecret,
   getSwapFeeConfigMasked,
 } from "../../services/platform-settings.service.js";
+import {
+  listFonbnkSupportedAssets,
+  syncFonbnkSupportedAssetsInDb,
+} from "../../services/fonbnk.service.js";
+import { listRecentQuoteRouteAttempts } from "../../services/quote-route-memory.service.js";
 import { requirePermission } from "../../lib/admin-auth.guard.js";
 import {
   PERMISSION_SETTINGS_READ,
@@ -415,5 +420,83 @@ export async function settingsApiRoutes(app: FastifyInstance): Promise<void> {
       return errorEnvelope(reply, "Something went wrong.", 500);
     }
   });
+
+  // --- POST /api/settings/quotes/fonbnk/sync ---
+  app.post(
+    "/api/settings/quotes/fonbnk/sync",
+    async (
+      req: FastifyRequest<{ Body: { codes?: string[]; source?: string } }>,
+      reply
+    ) => {
+      try {
+        if (!requirePermission(req, reply, PERMISSION_SETTINGS_WRITE)) return;
+        const body = req.body ?? {};
+        const data = await syncFonbnkSupportedAssetsInDb({
+          codes: Array.isArray(body.codes) ? body.codes : undefined,
+          source: typeof body.source === "string" ? body.source : "admin_manual",
+        });
+        return successEnvelope(reply, data);
+      } catch (err) {
+        req.log.error({ err }, "POST /api/settings/quotes/fonbnk/sync");
+        return errorEnvelope(reply, "Something went wrong.", 500);
+      }
+    }
+  );
+
+  // --- GET /api/settings/quotes/fonbnk/supported ---
+  app.get(
+    "/api/settings/quotes/fonbnk/supported",
+    async (
+      req: FastifyRequest<{ Querystring: { limit?: string; network?: string } }>,
+      reply
+    ) => {
+      try {
+        if (!requirePermission(req, reply, PERMISSION_SETTINGS_READ)) return;
+        const limit = Number.parseInt(req.query.limit ?? "100", 10);
+        const data = await listFonbnkSupportedAssets({
+          limit: Number.isFinite(limit) ? limit : 100,
+          network: req.query.network,
+        });
+        return successEnvelope(reply, data);
+      } catch (err) {
+        req.log.error({ err }, "GET /api/settings/quotes/fonbnk/supported");
+        return errorEnvelope(reply, "Something went wrong.", 500);
+      }
+    }
+  );
+
+  // --- GET /api/settings/quotes/routes ---
+  app.get(
+    "/api/settings/quotes/routes",
+    async (
+      req: FastifyRequest<{
+        Querystring: {
+          limit?: string;
+          chainId?: string;
+          tokenKey?: string;
+          countryCode?: string;
+          provider?: string;
+        };
+      }>,
+      reply
+    ) => {
+      try {
+        if (!requirePermission(req, reply, PERMISSION_SETTINGS_READ)) return;
+        const parsedChainId = Number.parseInt(req.query.chainId ?? "", 10);
+        const parsedLimit = Number.parseInt(req.query.limit ?? "50", 10);
+        const data = await listRecentQuoteRouteAttempts({
+          limit: Number.isFinite(parsedLimit) ? parsedLimit : 50,
+          chainId: Number.isFinite(parsedChainId) ? parsedChainId : undefined,
+          tokenKey: req.query.tokenKey,
+          countryCode: req.query.countryCode,
+          provider: req.query.provider,
+        });
+        return successEnvelope(reply, data);
+      } catch (err) {
+        req.log.error({ err }, "GET /api/settings/quotes/routes");
+        return errorEnvelope(reply, "Something went wrong.", 500);
+      }
+    }
+  );
 }
 

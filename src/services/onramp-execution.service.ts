@@ -48,6 +48,9 @@ export async function executeOnrampSend(transactionId: string): Promise<ExecuteO
       t_amount: true,
       t_tokenPriceUsd: true,
       cryptoSendTxHash: true,
+      paymentLinkId: true,
+      fromIdentifier: true,
+      fromType: true,
     },
   });
   if (!tx) return { ok: false, error: "Transaction not found", code: "TX_NOT_FOUND" };
@@ -106,6 +109,17 @@ export async function executeOnrampSend(transactionId: string): Promise<ExecuteO
       where: { id: transactionId },
       data: { status: "COMPLETED", cryptoSendTxHash: sendResult.txHash },
     });
+    if (tx.paymentLinkId) {
+      await prisma.paymentLink.updateMany({
+        where: { id: tx.paymentLinkId, isOneTime: true, paidAt: null },
+        data: {
+          paidAt: new Date(),
+          paidByTransactionId: transactionId,
+          paidByWalletAddress:
+            tx.fromType === "ADDRESS" ? (tx.fromIdentifier ?? null) : null,
+        },
+      });
+    }
     await triggerTransactionStatusChange({
       transactionId,
       status: "COMPLETED",
@@ -194,6 +208,17 @@ export async function executeOnrampSend(transactionId: string): Promise<ExecuteO
     where: { id: transactionId },
     data: { status: "COMPLETED", cryptoSendTxHash: sendResult.txHash },
   });
+  if (tx.paymentLinkId) {
+    await prisma.paymentLink.updateMany({
+      where: { id: tx.paymentLinkId, isOneTime: true, paidAt: null },
+      data: {
+        paidAt: new Date(),
+        paidByTransactionId: transactionId,
+        paidByWalletAddress:
+          tx.fromType === "ADDRESS" ? (tx.fromIdentifier ?? null) : null,
+      },
+    });
+  }
   await triggerTransactionStatusChange({
     transactionId,
     status: "COMPLETED",

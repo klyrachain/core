@@ -183,6 +183,18 @@ enum LedgerType {
   REBALANCE
 }
 
+enum GasLedgerDirection {
+  CREDIT
+  DEBIT
+}
+
+enum GasLedgerReason {
+  TOPUP
+  SPONSORSHIP
+  ADJUSTMENT
+  REFUND
+}
+
 // --------------------------------------
 // Core Models
 // --------------------------------------
@@ -605,6 +617,51 @@ model SupportedToken {
   @@index([displaySymbol])
 }
 
+model FonbnkSupportedAsset {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  code      String   @unique // e.g. ETHEREUM_USDC
+  network   String?  // e.g. ETHEREUM
+  asset     String?  // e.g. USDC
+  chainId   BigInt?
+  isActive  Boolean  @default(true)
+  source    String?  // docs_sync, admin_manual
+  metadata  Json?
+
+  @@index([network, asset])
+  @@index([chainId])
+  @@index([isActive])
+}
+
+enum QuoteRouteStrategy {
+  DIRECT
+  SAME_CHAIN_USDC
+  SAME_CHAIN_NATIVE
+  BASE_CROSS_CHAIN
+}
+
+model QuoteRouteAttempt {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  action      String
+  chainId     Int
+  countryCode String?
+  tokenKey    String // symbol/address normalized
+  strategy    QuoteRouteStrategy
+  provider    String?
+  success     Boolean @default(false)
+  errorCode   String?
+  errorReason String?
+  metadata    Json?
+
+  @@index([chainId, tokenKey, strategy, success, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@index([countryCode, createdAt(sort: Desc)])
+}
+
 // --------------------------------------
 // Business (B2B2C: Platform–Merchant–User)
 // --------------------------------------
@@ -650,6 +707,68 @@ model Business {
   merchantCustomers MerchantCustomer[]
   webhookEndpoints WebhookEndpoint[]
   refunds       Refund[]
+
+  gasAccount    BusinessGasAccount?
+  gasLedgerEntries GasLedgerEntry[]
+}
+
+/// Singleton row: platform-wide gas sponsorship policy (id = "default").
+model PlatformGasSettings {
+  id        String   @id @default("default")
+  updatedAt DateTime @updatedAt
+
+  sponsorshipEnabled Boolean  @default(false)
+  maxUsdPerTx          Decimal? @db.Decimal(18, 2)
+  notes                String?
+}
+
+/// Per-business prepaid gas balance and sponsorship toggle.
+model BusinessGasAccount {
+  businessId String @id
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  prepaidBalanceUsd    Decimal  @default(0) @db.Decimal(18, 2)
+  sponsorshipEnabled   Boolean  @default(false)
+  lowBalanceWarnUsd    Decimal? @db.Decimal(18, 2)
+
+  reservations GasReservation[]
+}
+
+/// Append-only ledger for gas credits/debits (business or platform when businessId is null).
+model GasLedgerEntry {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  businessId String?
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+
+  direction GasLedgerDirection
+  amountUsd Decimal          @db.Decimal(18, 2)
+  reason    GasLedgerReason
+  idempotencyKey String     @unique
+
+  metadata Json?
+
+  @@index([businessId, createdAt])
+}
+
+/// Holds prepaid amount until tx completes or TTL expires (prevents overspend).
+model GasReservation {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  businessId String
+  account    BusinessGasAccount @relation(fields: [businessId], references: [businessId], onDelete: Cascade)
+
+  amountUsd      Decimal @db.Decimal(18, 2)
+  idempotencyKey String  @unique
+
+  @@index([businessId])
+  @@index([expiresAt])
 }
 
 // --------------------------------------
@@ -710,6 +829,11 @@ model PaymentLink {
   currency String   @default("USD")
 
   chargeKind PaymentLinkChargeKind @default(FIAT)
+  gasSponsorshipEnabled Boolean @default(false)
+  isOneTime Boolean @default(false)
+  paidAt DateTime?
+  paidByTransactionId String?
+  paidByWalletAddress String?
 
   isActive Boolean @default(true)
   views    Int     @default(0)
@@ -1219,4 +1343,20 @@ model Refund {
   @@index([businessId])
   @@index([businessId, environment])
   @@index([transactionId])
+}
+
+/// Audit: outbound share of a generated receive/payment link (email or SMS from Receive flow).
+model PaymentLinkDispatch {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  channel     String // EMAIL | SMS
+  destination String
+  linkUrl     String
+  amount      String?
+  tokenSymbol String?
+  chainId     String?
+  receiveMode String @default("CRYPTO") // CRYPTO | FIAT
+
+  @@index([createdAt])
 }

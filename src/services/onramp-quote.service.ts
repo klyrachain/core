@@ -7,6 +7,7 @@ import {
   CHAIN_ID_BASE,
   findPoolTokenFromDb,
   getBaseUsdcPoolTokenFromDb,
+  getIntermediatePoolTokenCandidatesFromDb,
   getIntermediatePoolTokenFromDb,
   getPoolTokenDecimalsFromDb,
   useDirectFonbnkForPoolToken,
@@ -17,6 +18,34 @@ import {
 } from "./fonbnk.service.js";
 import type { FonbnkQuoteResponse } from "../lib/onramp-quote.types.js";
 import { getBestQuotes } from "./swap-quote.service.js";
+import { getSwapQuoteEstimateFromAddress } from "../lib/swap-quote-from-address.js";
+import {
+  getPreferredRouteStrategies,
+  recordQuoteRouteAttempt,
+} from "./quote-route-memory.service.js";
+
+type QuoteRouteStrategy = "same-chain-usdc" | "same-chain-native" | "base-cross-chain";
+
+function orderStrategies(preferred: QuoteRouteStrategy[]): QuoteRouteStrategy[] {
+  const defaults: QuoteRouteStrategy[] = [
+    "same-chain-usdc",
+    "same-chain-native",
+    "base-cross-chain",
+  ];
+  const seen = new Set<QuoteRouteStrategy>();
+  const ordered: QuoteRouteStrategy[] = [];
+  for (const strategy of preferred) {
+    if (seen.has(strategy)) continue;
+    seen.add(strategy);
+    ordered.push(strategy);
+  }
+  for (const strategy of defaults) {
+    if (seen.has(strategy)) continue;
+    seen.add(strategy);
+    ordered.push(strategy);
+  }
+  return ordered;
+}
 
 function humanToWei(amount: number, decimals: number): string {
   const s = Number(amount) * 10 ** decimals;
@@ -28,6 +57,17 @@ function weiToHuman(wei: string, decimals: number): number {
   const remainder = BigInt(wei) % BigInt(10 ** decimals);
   const frac = Number(remainder) / 10 ** decimals;
   return n + frac;
+}
+
+function shouldFallbackFromDirectSellError(error: string): boolean {
+  const msg = error.trim().toLowerCase();
+  return (
+    msg.includes("unsupported chain") ||
+    msg.includes("chain is not supported") ||
+    msg.includes("no offer") ||
+    msg.includes("no offers") ||
+    msg.includes("not available")
+  );
 }
 
 async function getFonbnkQuoteSafe(
@@ -73,9 +113,10 @@ export async function getOnrampQuote(
   const countryCode = country.trim().toUpperCase().slice(0, 2);
   const currency = getCurrencyForCountry(country);
   const isSell = purchase_method === "sell";
+  const actionKind: "buy" | "sell" = isSell ? "sell" : "buy";
 
   const pool = await findPoolTokenFromDb(chain_id, token);
-  const useDirectFonbnk = pool != null && useDirectFonbnkForPoolToken(pool);
+  const useDirectFonbnk = pool != null && (await useDirectFonbnkForPoolToken(pool));
   const effectiveDecimals = pool?.decimals ?? token_decimals;
   // For swap path we need the requested token's contract address (getBestQuotes expects addresses, not symbols).
   if (!useDirectFonbnk && !pool) {
@@ -97,39 +138,44 @@ export async function getOnrampQuote(
       amountIn: quoteAmountIn,
     });
     if (!fonbnkRes.ok) {
-      return { ok: false, error: fonbnkRes.error, status: 502 };
-    }
-    const fonbnk = fonbnkRes.quote;
-    let totalCrypto: string;
-    let totalFiat: number;
-    if (isSellFiatTarget) {
-      // We got rate for "sell 1 crypto → fonbnk.total fiat". So crypto needed = amount / rate.
-      const rate = fonbnk.rate > 0 ? fonbnk.rate : fonbnk.total;
-      totalCrypto = String(amount / rate);
-      totalFiat = amount;
-    } else if (amount_in === "fiat") {
-      // Buy, amount in fiat: total crypto = fonbnk.total, total fiat = amount
-      totalCrypto = String(fonbnk.total);
-      totalFiat = amount;
+      // Direct provider route can fail for some corridors/assets.
+      // For sell flows, continue into existing swap-assisted path before failing.
+      if (!(isSell && shouldFallbackFromDirectSellError(fonbnkRes.error))) {
+        return { ok: false, error: fonbnkRes.error, status: 502 };
+      }
     } else {
-      // amount_in === "crypto": total crypto = amount, total fiat = fonbnk.total
-      totalCrypto = String(amount);
-      totalFiat = fonbnk.total;
+      const fonbnk = fonbnkRes.quote;
+      let totalCrypto: string;
+      let totalFiat: number;
+      if (isSellFiatTarget) {
+        // We got rate for "sell 1 crypto → fonbnk.total fiat". So crypto needed = amount / rate.
+        const rate = fonbnk.rate > 0 ? fonbnk.rate : fonbnk.total;
+        totalCrypto = String(amount / rate);
+        totalFiat = amount;
+      } else if (amount_in === "fiat") {
+        // Buy, amount in fiat: total crypto = fonbnk.total, total fiat = amount
+        totalCrypto = String(fonbnk.total);
+        totalFiat = amount;
+      } else {
+        // amount_in === "crypto": total crypto = amount, total fiat = fonbnk.total
+        totalCrypto = String(amount);
+        totalFiat = fonbnk.total;
+      }
+      const data: OnrampQuoteResponse = {
+        country: countryCode,
+        currency,
+        chain_id,
+        token: pool.address,
+        token_symbol: pool.symbol,
+        amount,
+        amount_in,
+        rate: fonbnk.rate,
+        fee: fonbnk.fee,
+        total_crypto: totalCrypto,
+        total_fiat: totalFiat,
+      };
+      return { ok: true, data };
     }
-    const data: OnrampQuoteResponse = {
-      country: countryCode,
-      currency,
-      chain_id,
-      token: pool.address,
-      token_symbol: pool.symbol,
-      amount,
-      amount_in,
-      rate: fonbnk.rate,
-      fee: fonbnk.fee,
-      total_crypto: totalCrypto,
-      total_fiat: totalFiat,
-    };
-    return { ok: true, data };
   }
 
   const intermediate = await getIntermediatePoolTokenFromDb(chain_id);
@@ -162,7 +208,7 @@ export async function getOnrampQuote(
         amount: estimatePoolWei,
         from_chain: intermediate.chainId,
         to_chain: chain_id,
-        from_address: from_address ?? "0x0000000000000000000000000000000000000000",
+        from_address: from_address ?? getSwapQuoteEstimateFromAddress(),
       });
       if (!swapEstimate.ok) {
         return { ok: false, error: swapEstimate.error, status: 502 };
@@ -178,7 +224,7 @@ export async function getOnrampQuote(
         amount: neededRequestedStr,
         from_chain: chain_id,
         to_chain: intermediate.chainId,
-        from_address: from_address ?? "0x0000000000000000000000000000000000000000",
+        from_address: from_address ?? getSwapQuoteEstimateFromAddress(),
       });
       if (!swapResult.ok) {
         return { ok: false, error: swapResult.error, status: 502 };
@@ -213,7 +259,7 @@ export async function getOnrampQuote(
       amount: poolAmountWei,
       from_chain: intermediate.chainId,
       to_chain: chain_id,
-      from_address: from_address ?? "0x0000000000000000000000000000000000000000",
+      from_address: from_address ?? getSwapQuoteEstimateFromAddress(),
     });
     if (!swapResult.ok) {
       return { ok: false, error: swapResult.error, status: 502 };
@@ -246,25 +292,117 @@ export async function getOnrampQuote(
   // amount_in === "crypto"
   const requestedWei = humanToWei(amount, effectiveDecimals);
   if (isSell) {
-    const swapAddr = from_address ?? "0x0000000000000000000000000000000000000000";
-    let swapResult = await getBestQuotes({
-      from_token: requestedTokenAddress,
-      to_token: intermediate.address,
-      amount: requestedWei,
-      from_chain: chain_id,
-      to_chain: intermediate.chainId,
-      from_address: swapAddr,
-    });
+    const swapAddr = from_address ?? getSwapQuoteEstimateFromAddress();
+    const candidates = await getIntermediatePoolTokenCandidatesFromDb(chain_id);
+    const sameChainUsdc = candidates.find(
+      (candidate) =>
+        candidate.chainId === chain_id && candidate.symbol.toUpperCase() === "USDC"
+    );
+    const sameChainNative = candidates.find(
+      (candidate) =>
+        candidate.chainId === chain_id &&
+        candidate.symbol.toUpperCase() !== "USDC"
+    );
+    const baseUsdc = await getBaseUsdcPoolTokenFromDb();
+    const preferredStrategies = orderStrategies(
+      await getPreferredRouteStrategies({
+        chainId: chain_id,
+        tokenAddressOrSymbol: requestedTokenAddress,
+      })
+    );
+
+    let swapResult:
+      | Awaited<ReturnType<typeof getBestQuotes>>
+      | { ok: false; error: string; status?: number } = {
+      ok: false,
+      error: "Quote unavailable for selected token route.",
+    };
     let settleIntermediate = intermediate;
     let settlePoolDecimals = poolDecimals;
-    if (
-      !swapResult.ok &&
-      chain_id !== CHAIN_ID_BASE &&
-      intermediate.chainId === chain_id
-    ) {
-      const baseUsdc = await getBaseUsdcPoolTokenFromDb();
-      if (baseUsdc != null && useDirectFonbnkForPoolToken(baseUsdc)) {
-        const cross = await getBestQuotes({
+
+    for (const strategy of preferredStrategies) {
+      if (strategy === "same-chain-usdc" && sameChainUsdc) {
+        const sameUsdcSwap = await getBestQuotes({
+          from_token: requestedTokenAddress,
+          to_token: sameChainUsdc.address,
+          amount: requestedWei,
+          from_chain: chain_id,
+          to_chain: sameChainUsdc.chainId,
+          from_address: swapAddr,
+        });
+        if (sameUsdcSwap.ok) {
+          await recordQuoteRouteAttempt({
+            action: actionKind,
+            chainId: chain_id,
+            countryCode,
+            tokenAddressOrSymbol: requestedTokenAddress,
+            strategy: "same-chain-usdc",
+            provider: sameUsdcSwap.data.best.provider,
+            success: true,
+          });
+          swapResult = sameUsdcSwap;
+          settleIntermediate = sameChainUsdc;
+          settlePoolDecimals =
+            sameChainUsdc.decimals ?? (await getPoolTokenDecimalsFromDb("USDC"));
+          break;
+        }
+        await recordQuoteRouteAttempt({
+          action: actionKind,
+          chainId: chain_id,
+          countryCode,
+          tokenAddressOrSymbol: requestedTokenAddress,
+          strategy: "same-chain-usdc",
+          success: false,
+          errorReason: sameUsdcSwap.error,
+        });
+        swapResult = sameUsdcSwap;
+      }
+
+      if (strategy === "same-chain-native" && sameChainNative) {
+        const sameNativeSwap = await getBestQuotes({
+          from_token: requestedTokenAddress,
+          to_token: sameChainNative.address,
+          amount: requestedWei,
+          from_chain: chain_id,
+          to_chain: sameChainNative.chainId,
+          from_address: swapAddr,
+        });
+        if (sameNativeSwap.ok) {
+          await recordQuoteRouteAttempt({
+            action: actionKind,
+            chainId: chain_id,
+            countryCode,
+            tokenAddressOrSymbol: requestedTokenAddress,
+            strategy: "same-chain-native",
+            provider: sameNativeSwap.data.best.provider,
+            success: true,
+          });
+          swapResult = sameNativeSwap;
+          settleIntermediate = sameChainNative;
+          settlePoolDecimals =
+            sameChainNative.decimals ??
+            (await getPoolTokenDecimalsFromDb(sameChainNative.symbol));
+          break;
+        }
+        await recordQuoteRouteAttempt({
+          action: actionKind,
+          chainId: chain_id,
+          countryCode,
+          tokenAddressOrSymbol: requestedTokenAddress,
+          strategy: "same-chain-native",
+          success: false,
+          errorReason: sameNativeSwap.error,
+        });
+        swapResult = sameNativeSwap;
+      }
+
+      if (
+        strategy === "base-cross-chain" &&
+        chain_id !== CHAIN_ID_BASE &&
+        baseUsdc != null &&
+        (await useDirectFonbnkForPoolToken(baseUsdc))
+      ) {
+        const crossSwap = await getBestQuotes({
           from_token: requestedTokenAddress,
           to_token: baseUsdc.address,
           amount: requestedWei,
@@ -272,13 +410,35 @@ export async function getOnrampQuote(
           to_chain: CHAIN_ID_BASE,
           from_address: swapAddr,
         });
-        if (cross.ok) {
-          swapResult = cross;
+        if (crossSwap.ok) {
+          await recordQuoteRouteAttempt({
+            action: actionKind,
+            chainId: chain_id,
+            countryCode,
+            tokenAddressOrSymbol: requestedTokenAddress,
+            strategy: "base-cross-chain",
+            provider: crossSwap.data.best.provider,
+            success: true,
+          });
+          swapResult = crossSwap;
           settleIntermediate = baseUsdc;
-          settlePoolDecimals = baseUsdc.decimals ?? (await getPoolTokenDecimalsFromDb("USDC"));
+          settlePoolDecimals =
+            baseUsdc.decimals ?? (await getPoolTokenDecimalsFromDb("USDC"));
+          break;
         }
+        await recordQuoteRouteAttempt({
+          action: actionKind,
+          chainId: chain_id,
+          countryCode,
+          tokenAddressOrSymbol: requestedTokenAddress,
+          strategy: "base-cross-chain",
+          success: false,
+          errorReason: crossSwap.error,
+        });
+        swapResult = crossSwap;
       }
     }
+
     if (!swapResult.ok) {
       return { ok: false, error: swapResult.error, status: 502 };
     }
@@ -325,7 +485,7 @@ export async function getOnrampQuote(
     amount: estimatePoolWei,
     from_chain: intermediate.chainId,
     to_chain: chain_id,
-    from_address: from_address ?? "0x0000000000000000000000000000000000000000",
+    from_address: from_address ?? getSwapQuoteEstimateFromAddress(),
   });
   if (!swapResult.ok) {
     return { ok: false, error: swapResult.error, status: 502 };
@@ -345,7 +505,7 @@ export async function getOnrampQuote(
     amount: neededFromWeiStr,
     from_chain: intermediate.chainId,
     to_chain: chain_id,
-    from_address: from_address ?? "0x0000000000000000000000000000000000000000",
+    from_address: from_address ?? getSwapQuoteEstimateFromAddress(),
   });
   if (!swapResult2.ok) {
     return { ok: false, error: swapResult2.error, status: 502 };

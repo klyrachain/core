@@ -36,6 +36,17 @@ async function paystackGet<T>(path: string, query?: Record<string, string>): Pro
 }
 
 export type PaystackError = Error & { paystackResponse?: unknown };
+const PAYSTACK_ALLOWED_CHANNELS = new Set([
+  "card",
+  "bank",
+  "apple_pay",
+  "ussd",
+  "qr",
+  "mobile_money",
+  "bank_transfer",
+  "eft",
+  "payattitude",
+]);
 
 async function paystackPost<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const key = getSecretKey();
@@ -260,15 +271,31 @@ type InitializeResponse = {
  * Initialize a Paystack transaction. Returns authorization_url for frontend redirect.
  */
 export async function initializePayment(params: InitializePaymentParams): Promise<InitializePaymentResult> {
+  const normalizedCurrency = (params.currency ?? "NGN").trim().toUpperCase();
+  const amountSubunits = Math.round(params.amount);
+  const normalizedChannels = [...new Set((params.channels ?? []).map((channel) => channel.trim().toLowerCase()))]
+    .filter((channel) => channel.length > 0)
+    .filter((channel) => PAYSTACK_ALLOWED_CHANNELS.has(channel));
+  const callbackUrl = params.callback_url?.trim();
+  const hasValidCallbackUrl = (() => {
+    if (!callbackUrl) return false;
+    try {
+      const parsed = new URL(callbackUrl);
+      return parsed.protocol === "https:" || parsed.protocol === "http:";
+    } catch {
+      return false;
+    }
+  })();
+
   const body: Record<string, unknown> = {
     email: params.email.trim(),
-    amount: params.amount,
-    currency: params.currency ?? "NGN",
+    amount: String(amountSubunits),
+    currency: normalizedCurrency,
     metadata: params.metadata ?? {},
   };
-  if (params.callback_url) body.callback_url = params.callback_url;
+  if (hasValidCallbackUrl && callbackUrl) body.callback_url = callbackUrl;
   if (params.reference) body.reference = params.reference;
-  if (params.channels?.length) body.channels = params.channels;
+  if (normalizedChannels.length > 0) body.channels = normalizedChannels;
 
   const raw = await paystackPost<InitializeResponse>("/transaction/initialize", body);
   const d = raw.data;
