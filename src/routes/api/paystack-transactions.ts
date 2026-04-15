@@ -21,6 +21,7 @@ import { settleCommercePaystackTransaction } from "../../services/commerce-payst
 import { successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
 import { requirePermission } from "../../lib/admin-auth.guard.js";
 import { PERMISSION_CONNECT_TRANSACTIONS } from "../../lib/permissions.js";
+import { notifyPeerRampFiatPaymentReceived } from "../../services/peer-ramp-notify.service.js";
 
 const ListQuerySchema = z.object({
   perPage: z.coerce.number().min(1).max(100).optional(),
@@ -110,6 +111,9 @@ export async function paystackTransactionsApiRoutes(app: FastifyInstance): Promi
               },
             });
             if (updateResult.count > 0) {
+              void notifyPeerRampFiatPaymentReceived(ourTransactionId, reference).catch((e) =>
+                req.log.warn({ err: e, transactionId: ourTransactionId }, "peer-ramp fiat notify")
+              );
               setImmediate(() => {
                 executeOnrampSend(ourTransactionId).then((r) => {
                   if (!r.ok) {

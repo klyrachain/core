@@ -17,6 +17,7 @@ import { onRequestPaymentSettled } from "../../services/request-settlement.servi
 import { settleCommercePaystackTransaction } from "../../services/commerce-paystack-settlement.service.js";
 import { sendPaymentLinkPaystackSuccessEmails } from "../../services/notification.service.js";
 import { getEnv } from "../../config/env.js";
+import { notifyPeerRampFiatPaymentReceived } from "../../services/peer-ramp-notify.service.js";
 
 type PaystackWebhookEvent = {
   event: string;
@@ -152,6 +153,11 @@ export async function paystackWebhookRoutes(app: FastifyInstance): Promise<void>
                 console.log(
                   `[onramp] Step 1: Paystack payment CONFIRMED for transaction ${ourTransactionId} (reference ${reference}). Proceeding to Step 2: send crypto.`
                 );
+                if (updateResult.count > 0) {
+                  void notifyPeerRampFiatPaymentReceived(ourTransactionId, reference).catch((e) =>
+                    req.log.warn({ err: e, transactionId: ourTransactionId }, "peer-ramp fiat notify")
+                  );
+                }
               }
 
               try {

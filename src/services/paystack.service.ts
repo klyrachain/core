@@ -36,7 +36,9 @@ async function paystackGet<T>(path: string, query?: Record<string, string>): Pro
 }
 
 export type PaystackError = Error & { paystackResponse?: unknown };
-const PAYSTACK_ALLOWED_CHANNELS = new Set([
+
+/** Channels accepted by `initialize` when passed as `channels[]` (Paystack checkout). */
+export const PAYSTACK_CHECKOUT_CHANNELS = [
   "card",
   "bank",
   "apple_pay",
@@ -46,7 +48,9 @@ const PAYSTACK_ALLOWED_CHANNELS = new Set([
   "bank_transfer",
   "eft",
   "payattitude",
-]);
+] as const;
+
+const PAYSTACK_ALLOWED_CHANNELS: Set<string> = new Set(PAYSTACK_CHECKOUT_CHANNELS);
 
 async function paystackPost<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const key = getSecretKey();
@@ -157,6 +161,7 @@ export async function listBanks(params: {
   currency?: string;
   type?: string;
   perPage?: number;
+  page?: number;
   use_cursor?: boolean;
   next?: string;
 }): Promise<{ data: BankListItem[]; meta?: { next?: string; previous?: string; perPage?: number } }> {
@@ -165,6 +170,7 @@ export async function listBanks(params: {
   if (params.currency) query.currency = params.currency;
   if (params.type) query.type = params.type;
   if (params.perPage != null) query.perPage = String(params.perPage);
+  if (params.page != null) query.page = String(params.page);
   if (params.use_cursor) query.use_cursor = "true";
   if (params.next) query.next = params.next;
 
@@ -179,6 +185,35 @@ export async function listBanks(params: {
     type: row.type,
   }));
   return { data, meta: (raw as ListBanksResponse).meta };
+}
+
+const LIST_BANKS_MAX_PAGES = 80;
+
+/**
+ * Page through GET /bank until a short page or max pages (Paystack lists can be large).
+ */
+export async function listAllBanksPages(params: {
+  country?: string;
+  currency?: string;
+  type?: string;
+  perPage?: number;
+  maxPages?: number;
+}): Promise<BankListItem[]> {
+  const perPage = params.perPage ?? 100;
+  const maxPages = params.maxPages ?? LIST_BANKS_MAX_PAGES;
+  const out: BankListItem[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const { data } = await listBanks({
+      country: params.country,
+      currency: params.currency,
+      type: params.type,
+      perPage,
+      page,
+    });
+    out.push(...data);
+    if (data.length === 0 || data.length < perPage) break;
+  }
+  return out;
 }
 
 /**

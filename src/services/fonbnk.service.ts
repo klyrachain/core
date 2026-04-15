@@ -92,6 +92,11 @@ function parseSupportedCode(code: string): {
   };
 }
 
+/**
+ * Upsert `FonbnkSupportedAsset` from a maintained static list (see Fonbnk docs) or from `codes[]` in the request body.
+ * Fonbnk does not publish a stable public “list all NETWORK_ASSET codes” API for discovery; refresh codes via docs,
+ * this sync, or `POST /api/settings/quotes/fonbnk/sync` with `{ "codes": ["BASE_USDC", ...] }`.
+ */
 export async function syncFonbnkSupportedAssetsInDb(options?: {
   codes?: string[];
   source?: string;

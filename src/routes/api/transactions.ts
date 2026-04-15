@@ -73,16 +73,19 @@ export async function transactionsApiRoutes(app: FastifyInstance): Promise<void>
           }),
           prisma.transaction.count({ where }),
         ]);
-        const data = items.map((t) => ({
-          ...t,
-          f_amount: t.f_amount.toString(),
-          t_amount: t.t_amount.toString(),
-          ...serializeTransactionPrices(t),
-          fee: t.fee != null ? t.fee.toString() : null,
-          platformFee: t.platformFee != null ? t.platformFee.toString() : null,
-          merchantFee: t.merchantFee != null ? t.merchantFee.toString() : null,
-          providerPrice: t.providerPrice != null ? t.providerPrice.toString() : null,
-        }));
+        const data = items.map((t) => {
+          const { peerRampEscrowFundingTxHash: _prEscrow, ...rest } = t;
+          return {
+            ...rest,
+            f_amount: t.f_amount.toString(),
+            t_amount: t.t_amount.toString(),
+            ...serializeTransactionPrices(t),
+            fee: t.fee != null ? t.fee.toString() : null,
+            platformFee: t.platformFee != null ? t.platformFee.toString() : null,
+            merchantFee: t.merchantFee != null ? t.merchantFee.toString() : null,
+            providerPrice: t.providerPrice != null ? t.providerPrice.toString() : null,
+          };
+        });
         return successEnvelopeWithMeta(reply, data, { page, limit, total });
       } catch (err) {
         req.log.error({ err }, "GET /api/transactions");
@@ -164,8 +167,9 @@ export async function transactionsApiRoutes(app: FastifyInstance): Promise<void>
         },
       });
       if (!tx) return errorEnvelope(reply, "Transaction not found", 404);
+      const { peerRampEscrowFundingTxHash: _prEscrow, ...txRest } = tx;
       const data = {
-        ...tx,
+        ...txRest,
         f_amount: tx.f_amount.toString(),
         t_amount: tx.t_amount.toString(),
         ...serializeTransactionPrices(tx),

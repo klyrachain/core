@@ -3,6 +3,7 @@ import { loadEnv, getEnv } from "../../src/config/env.js";
 
 const requiredEnv = {
   NODE_ENV: "test",
+  PORT: "4000",
   DATABASE_URL: "postgresql://user:pass@localhost:5432/db",
   DIRECT_URL: "postgresql://user:pass@localhost:5432/db",
   ENCRYPTION_KEY: "a".repeat(32),

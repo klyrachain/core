@@ -14,7 +14,7 @@
           { "id": 2, "name": "currency", "type": "variable", "props": { "variableType": "text", "sample": "USDC", "url": null, "shortUrl": null, "alt": null, "mediaType": null } },
           { "id": 3, "name": "claimCode", "type": "variable", "props": { "variableType": "text", "sample": "A1B2C3", "url": null, "shortUrl": null, "alt": null, "mediaType": null } },
           { "id": 4, "name": "otp", "type": "variable", "props": { "variableType": "text", "sample": "847291", "url": null, "shortUrl": null, "alt": null, "mediaType": null } },
-          { "id": 5, "name": "link", "type": "variable", "props": { "variableType": "text", "sample": "https://app.klyra.com/claim/A1B2C3", "url": null, "shortUrl": null, "alt": null, "mediaType": null } }
+          { "id": 5, "name": "link", "type": "variable", "props": { "variableType": "text", "sample": "https://app.morapay.com/claim/A1B2C3", "url": null, "shortUrl": null, "alt": null, "mediaType": null } }
         ]
       },
       "sms": null,

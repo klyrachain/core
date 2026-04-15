@@ -20,6 +20,9 @@ import {
   listFonbnkSupportedAssets,
   syncFonbnkSupportedAssetsInDb,
 } from "../../services/fonbnk.service.js";
+import { syncPaystackMetadataToCountry } from "../../services/paystack-country-sync.service.js";
+import { runProviderCatalogSync } from "../../services/provider-catalog-sync.service.js";
+import { isPaystackConfigured } from "../../services/paystack.service.js";
 import { listRecentQuoteRouteAttempts } from "../../services/quote-route-memory.service.js";
 import { requirePermission } from "../../lib/admin-auth.guard.js";
 import {
@@ -438,6 +441,48 @@ export async function settingsApiRoutes(app: FastifyInstance): Promise<void> {
         return successEnvelope(reply, data);
       } catch (err) {
         req.log.error({ err }, "POST /api/settings/quotes/fonbnk/sync");
+        return errorEnvelope(reply, "Something went wrong.", 500);
+      }
+    }
+  );
+
+  // --- POST /api/settings/providers/paystack/sync ---
+  app.post(
+    "/api/settings/providers/paystack/sync",
+    async (req: FastifyRequest, reply) => {
+      try {
+        if (!requirePermission(req, reply, PERMISSION_SETTINGS_WRITE)) return;
+        if (!isPaystackConfigured()) {
+          return errorEnvelope(reply, "PAYSTACK_SECRET_KEY is not configured.", 503);
+        }
+        const data = await syncPaystackMetadataToCountry();
+        return successEnvelope(reply, data);
+      } catch (err) {
+        req.log.error({ err }, "POST /api/settings/providers/paystack/sync");
+        const message = err instanceof Error ? err.message : "Something went wrong.";
+        return errorEnvelope(reply, message, 500);
+      }
+    }
+  );
+
+  // --- POST /api/settings/providers/catalog/sync ---
+  app.post(
+    "/api/settings/providers/catalog/sync",
+    async (
+      req: FastifyRequest<{ Body: { codes?: string[]; source?: string } }>,
+      reply
+    ) => {
+      try {
+        if (!requirePermission(req, reply, PERMISSION_SETTINGS_WRITE)) return;
+        const body = req.body ?? {};
+        const data = await runProviderCatalogSync({
+          fonbnkCodes: Array.isArray(body.codes) ? body.codes : undefined,
+          fonbnkSource: typeof body.source === "string" ? body.source : "admin_catalog_sync",
+          logger: req.log,
+        });
+        return successEnvelope(reply, data);
+      } catch (err) {
+        req.log.error({ err }, "POST /api/settings/providers/catalog/sync");
         return errorEnvelope(reply, "Something went wrong.", 500);
       }
     }

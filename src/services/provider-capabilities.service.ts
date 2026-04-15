@@ -10,6 +10,12 @@ const PROVIDER_FEE_CAPABILITIES: Record<string, ProviderFeeCapability> = {
     supportsMarkup: true,
     requiresExplicitFeeLeg: false,
   },
+  /** Fonbnk GHS leg + ExchangeRate-API fiat conversion; same fee behavior as Fonbnk for pricing engine. */
+  fonbnk_fx_pivot: {
+    providerCode: "fonbnk_fx_pivot",
+    supportsMarkup: true,
+    requiresExplicitFeeLeg: false,
+  },
   paystack: {
     providerCode: "paystack",
     supportsMarkup: false,

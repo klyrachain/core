@@ -195,6 +195,21 @@ enum GasLedgerReason {
   REFUND
 }
 
+/// Peer-to-peer ramp book (CLOB-style matching); v1 same-chain same token.
+enum PeerRampOrderSide {
+  ONRAMP
+  OFFRAMP
+}
+
+enum PeerRampOrderStatus {
+  OPEN
+  PARTIALLY_FILLED
+  AWAITING_SETTLEMENT
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
 // --------------------------------------
 // Core Models
 // --------------------------------------
@@ -322,6 +337,8 @@ model Transaction {
 
   /// Onramp: tx hash of crypto send from liquidity pool to user (set when send completes).
   cryptoSendTxHash String?
+  /// Peer-ramp: matched offramp user→escrow funding tx (admin/audit only; not shown to end users).
+  peerRampEscrowFundingTxHash String?
 
   request   Request?
   requestId String?  @unique
@@ -334,11 +351,134 @@ model Transaction {
   refunds                     Refund[]
   webhookDeliveryLogs         WebhookDeliveryLog[]
 
+  peerRampOrders PeerRampOrder[]
+
   @@index([status, type])
   @@index([businessId])
   @@index([businessId, environment])
   @@index([paymentLinkId])
   @@index([productId])
+}
+
+/// Resting peer ramp intent (onramp buys crypto with fiat; offramp sells crypto for fiat). Matched by chainId + tokenAddress + crypto remainder.
+model PeerRampOrder {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  side    PeerRampOrderSide
+  chainId Int
+  /// ERC-20 contract address (normalized lowercase in app).
+  tokenAddress String
+  decimals     Int
+
+  cryptoAmountTotal     Decimal @db.Decimal(28, 8)
+  cryptoAmountRemaining Decimal @db.Decimal(28, 8)
+  status                PeerRampOrderStatus @default(OPEN)
+
+  /// { fiatAmount, fiatCurrency, cryptoAmount, usdEquivalent?, displayCurrency? }
+  quoteSnapshot Json?
+
+  settlementCurrency String?
+  payerEmail         String?
+  recipientAddress   String?
+  /// Offramp: optional JSON for payout rail (bank, mobile money, etc.).
+  payoutHint         Json?
+  cliSessionId       String?
+
+  /// Offramp: optional ERC-20 transfer hash to platform escrow; set after verify.
+  escrowTxHash     String?
+  escrowVerifiedAt DateTime?
+  /// Last escrow tx verification attempt (success or failure): on-chain transfers, expected escrow/token, sums — audit / compliance.
+  escrowVerifyLastAttempt Json?
+
+  linkedTransactionId String?     @unique
+  linkedTransaction   Transaction? @relation(fields: [linkedTransactionId], references: [id], onDelete: SetNull)
+
+  fillsAsOnramp  PeerRampFill[] @relation("FillOnramp")
+  fillsAsOfframp PeerRampFill[] @relation("FillOfframp")
+
+  @@index([chainId, tokenAddress, side, status])
+  @@index([cliSessionId])
+  @@index([status])
+}
+
+/// Email OTP for peer-ramp web app; one row per email (overwritten on each request).
+model PeerRampAppOtp {
+  email     String   @id
+  codeHash  String
+  expiresAt DateTime
+  sentAt    DateTime @default(now())
+}
+
+/// Stable cliSessionId per verified email (for order history correlation).
+model PeerRampAppUser {
+  email        String   @id
+  cliSessionId String   @default(uuid())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  /// E.164 or local digits; normalized server-side where possible
+  phone               String?
+  /// ISO 3166-1 alpha-2 (e.g. NG, GH)
+  countryCode         String?
+  /// Paystack bank list slug: ghana, nigeria, kenya, south africa
+  paystackCountrySlug String?
+  /// bank | mobile_money
+  payoutMethod        String?
+  /// { bankCode, accountNumber, accountName, providerName?, providerSlug? }
+  payoutDetails       Json?
+  profileCompletedAt  DateTime?
+
+  /// KYC: "approved" | "declined" | "in_review" | "pending" | null (never exposed as provider name to clients)
+  kycStatus     String?
+  /// Internal: "didit" | "persona" — never returned to browser
+  kycProvider   String?
+  kycVerifiedAt DateTime?
+
+  kycSessions PeerRampKycSession[]
+
+  @@index([cliSessionId])
+}
+
+/// One row per provider session/inquiry per user. Status updated via verified webhooks and/or Didit decision API sync.
+model PeerRampKycSession {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  email       String
+  user        PeerRampAppUser @relation(fields: [email], references: [email], onDelete: Cascade)
+  /// "didit" | "persona"
+  provider    String
+  /// DIDIT session_id or Persona inquiry_id
+  externalId  String
+  /// Raw status string from provider (e.g. "Approved", "approved")
+  status      String
+  /// Last webhook or decision API payload (audit)
+  rawPayload  Json?
+
+  /// One active session per user per provider
+  @@unique([email, provider])
+  @@index([email])
+  @@index([externalId])
+}
+
+model PeerRampFill {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  onrampOrderId  String
+  onrampOrder    PeerRampOrder @relation("FillOnramp", fields: [onrampOrderId], references: [id], onDelete: Cascade)
+  offrampOrderId String
+  offrampOrder   PeerRampOrder @relation("FillOfframp", fields: [offrampOrderId], references: [id], onDelete: Cascade)
+  cryptoAmount    Decimal @db.Decimal(28, 8)
+
+  onrampAcceptedAt   DateTime?
+  offrampAcceptedAt  DateTime?
+
+  @@index([onrampOrderId])
+  @@index([offrampOrderId])
 }
 
 /// Balance before/after for each asset affected by a transaction (audit trail; avoids wrong balance when concurrent txs).
@@ -633,6 +773,22 @@ model FonbnkSupportedAsset {
   @@index([network, asset])
   @@index([chainId])
   @@index([isActive])
+}
+
+/// Cached dumps from Paystack/Fonbnk catalog sync (CLI + admin). One row per (provider, snapshotKey), upserted each run.
+model ProviderCatalogSnapshot {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  provider     String // PAYSTACK | FONBNK
+  snapshotKey  String // e.g. paystack_banks_by_market, fonbnk_fiat_corridors
+  rowCount     Int?
+  data         Json
+  source       String?
+
+  @@unique([provider, snapshotKey])
+  @@index([provider])
 }
 
 enum QuoteRouteStrategy {

@@ -2,7 +2,12 @@ import Fastify from "fastify";
 import { loadEnv, getEnv } from "./config/env.js";
 import { prisma, disconnectPrisma } from "./lib/prisma.js";
 import { getRedis, disconnectRedis } from "./lib/redis.js";
-import { createPollWorker, closeQueue } from "./lib/queue.js";
+import {
+  createPollWorker,
+  closeQueue,
+  createProviderCatalogWorker,
+  ensureProviderCatalogRepeatableJob,
+} from "./lib/queue.js";
 import { processPollJob } from "./workers/poll.worker.js";
 import { orderWebhookRoutes } from "./routes/webhook/order.js";
 import { adminWebhookRoutes } from "./routes/webhook/admin.js";
@@ -40,6 +45,11 @@ import { offrampApiRoutes } from "./routes/api/offramp.js";
 import { appTransferApiRoutes } from "./routes/api/app-transfer.js";
 import { paymentLinkDispatchApiRoutes } from "./routes/api/payment-link-dispatch.js";
 import { testApiRoutes } from "./routes/api/test.js";
+import { peerRampApiRoutes } from "./routes/api/peer-ramp.js";
+import { peerRampAppApiRoutes } from "./routes/api/peer-ramp-app.js";
+import { peerRampKycApiRoutes } from "./routes/api/peer-ramp-kyc.js";
+import { adminPeerRampKycApiRoutes } from "./routes/api/admin-peer-ramp-kyc.js";
+import { kycWebhookRoutes } from "./routes/webhook/kyc.js";
 import { metaApiRoutes } from "./routes/api/meta.js";
 import { publicPaymentLinksApiRoutes } from "./routes/api/public-payment-links.js";
 import { publicGasApiRoutes } from "./routes/api/public-gas.js";
@@ -61,6 +71,7 @@ import { merchantV1Routes } from "./routes/api/v1/merchant.js";
 import { ensureValidationCache, loadValidationCache } from "./services/validation-cache.service.js";
 import { processPendingEmails } from "./services/email.service.js";
 import { reconcileStaleCommercePaystackTransactions } from "./services/paystack-reconcile.service.js";
+import { runProviderCatalogSync } from "./services/provider-catalog-sync.service.js";
 
 loadEnv();
 
@@ -72,14 +83,19 @@ const app = Fastify({
   },
 });
 
-app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
-  (req as { rawBody?: string }).rawBody = typeof body === "string" ? body : "";
-  try {
-    done(null, body ? JSON.parse(body as string) : {});
-  } catch (e) {
-    done(e as Error, undefined);
+// Match `application/json`, `application/json; charset=utf-8`, etc. so webhooks keep `rawBody` for HMAC.
+app.addContentTypeParser(
+  /^application\/json(?:\s*;.*)?$/i,
+  { parseAs: "string" },
+  (req, body, done) => {
+    (req as { rawBody?: string }).rawBody = typeof body === "string" ? body : "";
+    try {
+      done(null, body ? JSON.parse(body as string) : {});
+    } catch (e) {
+      done(e as Error, undefined);
+    }
   }
-});
+);
 
 app.addHook("preValidation", onRequestLog);
 app.addHook("onResponse", onResponseLog);
@@ -93,6 +109,9 @@ app.addHook("preHandler", async (request, reply) => {
   if (path.startsWith("/api/business-auth")) return;
   if (path === "/signup/business") return;
   if (path === "/webhook/paystack") return; // Paystack does not send x-api-key; we verify x-paystack-signature instead
+  if (path === "/webhook/didit" || path === "/webhooks/didit")
+    return; // DIDIT webhook: HMAC verified inside handler
+  if (path === "/webhook/persona") return; // Persona webhook: HMAC verified inside handler
   if (method === "GET" && path.startsWith("/api/requests/by-link/")) return; // Public pay link for request
   if (method === "GET" && path === "/api/meta/checkout-base-url") return;
   if (method === "GET" && path.startsWith("/api/public/")) return;
@@ -105,6 +124,7 @@ app.addHook("preHandler", async (request, reply) => {
     return;
   }
   if (method === "OPTIONS") return;
+  if (path.startsWith("/api/peer-ramp-app/")) return;
 
   await resolveApiKeyIfPresent(request);
   await resolveAdminSessionIfPresent(request);
@@ -184,9 +204,18 @@ await app.register(offrampApiRoutes, { prefix: "" });
 await app.register(appTransferApiRoutes, { prefix: "" });
 await app.register(paymentLinkDispatchApiRoutes, { prefix: "" });
 await app.register(testApiRoutes, { prefix: "" });
+await app.register(peerRampApiRoutes, { prefix: "" });
+await app.register(peerRampAppApiRoutes, { prefix: "" });
+await app.register(peerRampKycApiRoutes, { prefix: "" });
+await app.register(adminPeerRampKycApiRoutes, { prefix: "" });
 await app.register(paystackWebhookRoutes, { prefix: "" });
+await app.register(kycWebhookRoutes, { prefix: "" });
 
 const pollWorker = createPollWorker(processPollJob);
+
+const providerCatalogWorker = createProviderCatalogWorker(async () => {
+  await runProviderCatalogSync({ logger: app.log });
+});
 
 let validationCacheInterval: ReturnType<typeof setInterval> | null = null;
 let paystackReconcileInterval: ReturnType<typeof setInterval> | null = null;
@@ -199,6 +228,7 @@ const shutdown = async () => {
   if (validationCacheInterval) clearInterval(validationCacheInterval);
   if (paystackReconcileInterval) clearInterval(paystackReconcileInterval);
   await pollWorker.close();
+  await providerCatalogWorker.close();
   await closeQueue();
   await disconnectRedis();
   await disconnectPrisma();
@@ -228,6 +258,10 @@ const startServer = async () => {
     }, VALIDATION_CACHE_REFRESH_MS);
 
     const env = getEnv();
+    await ensureProviderCatalogRepeatableJob().catch((e) =>
+      app.log.warn({ err: e }, "Provider catalog repeatable job registration failed")
+    );
+
     if (env.PAYSTACK_RECONCILE_ENABLED) {
       const tick = () => {
         reconcileStaleCommercePaystackTransactions({

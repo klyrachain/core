@@ -7,6 +7,18 @@ import { randomUUID } from "node:crypto";
 import { getOnrampQuote } from "./onramp-quote.service.js";
 import { getBestQuotes } from "./swap-quote.service.js";
 import {
+  convertAmountViaUsdRates,
+  getCachedUsdConversionRates,
+  isExchangeRateConfigured,
+} from "./exchange-rate.service.js";
+import {
+  isKnownFiatCurrencyCode,
+  isFiatSupportedByFonbnkInDb,
+  QUOTE_PIVOT_COUNTRY,
+  QUOTE_PIVOT_FIAT,
+  resolveCountryCodeForFiatCurrency,
+} from "./quote-fiat-corridor.service.js";
+import {
   getCachedChains,
   getCachedCostBasis,
   getCachedTokens,
@@ -90,23 +102,6 @@ export type QuoteResponseDto = {
   };
 };
 
-/** Fiat currency → country code (for Fonbnk). */
-const CURRENCY_TO_COUNTRY: Record<string, string> = {
-  GHS: "GH",
-  NGN: "NG",
-  KES: "KE",
-  TZS: "TZ",
-  UGX: "UG",
-  RWF: "RW",
-  ZMW: "ZM",
-  ZAR: "ZA",
-  XOF: "CI",
-  XAF: "CM",
-  BWP: "BW",
-  MZN: "MZ",
-  USD: "GH",
-};
-
 const QUOTE_VALIDITY_SECONDS = 30;
 const DEFAULT_VOLATILITY = 0.01;
 
@@ -125,8 +120,7 @@ function normalizeQuoteAssetField(raw: string): string {
 }
 
 function isFiatCurrencyCode(code: string): boolean {
-  const c = code.trim().toUpperCase();
-  return Object.prototype.hasOwnProperty.call(CURRENCY_TO_COUNTRY, c);
+  return isKnownFiatCurrencyCode(code);
 }
 
 function isFiatCurrencyField(raw: string): boolean {
@@ -215,6 +209,126 @@ export type PublicQuoteResult =
   | { success: true; data: QuoteResponseDto }
   | { success: false; error: string; code?: string; status?: number };
 
+type RawRateFailure = { ok: false; error: string; status?: number; code?: string };
+
+/**
+ * Fonbnk buy 1 unit crypto in pivot fiat (GHS), then convert to user fiat using cached bulk `latest/USD` rates (one API call per TTL).
+ * Pricing engine applies margin once on the resulting fiat-per-crypto base price.
+ */
+async function getPivotedOnrampBasePrice(params: {
+  chainId: number;
+  token: string;
+  swapFrom: string;
+  userFiat: string;
+}): Promise<{ ok: true; basePrice: number } | RawRateFailure> {
+  const ghsQuote = await getOnrampQuote({
+    country: QUOTE_PIVOT_COUNTRY,
+    chain_id: params.chainId,
+    token: params.token,
+    amount: 1,
+    amount_in: "crypto",
+    purchase_method: "buy",
+    from_address: params.swapFrom,
+  });
+  if (!ghsQuote.ok) {
+    return { ok: false, error: ghsQuote.error, status: ghsQuote.status ?? 502 };
+  }
+  const ghsPerCrypto = ghsQuote.data.total_fiat;
+  if (!Number.isFinite(ghsPerCrypto) || ghsPerCrypto <= 0) {
+    return { ok: false, error: "Invalid pivot onramp rate", status: 502 };
+  }
+  const target = params.userFiat.trim().toUpperCase();
+  if (target === QUOTE_PIVOT_FIAT) {
+    return { ok: true, basePrice: ghsPerCrypto };
+  }
+  try {
+    const { rates } = await getCachedUsdConversionRates();
+    const amt = convertAmountViaUsdRates(QUOTE_PIVOT_FIAT, target, ghsPerCrypto, rates);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      return {
+        ok: false,
+        error: "Fiat pivot returned invalid amount.",
+        status: 503,
+        code: "FIAT_PIVOT_UNAVAILABLE",
+      };
+    }
+    return { ok: true, basePrice: amt };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("Missing or invalid USD conversion rate")) {
+      return {
+        ok: false,
+        error: `Currency not in ExchangeRate feed or unsupported for pivot: ${target}`,
+        status: 503,
+        code: "FIAT_PIVOT_UNAVAILABLE",
+      };
+    }
+    return {
+      ok: false,
+      error: "Fiat pivot failed (ExchangeRate API).",
+      status: 503,
+      code: "FIAT_PIVOT_UNAVAILABLE",
+    };
+  }
+}
+
+async function getPivotedOfframpBasePrice(params: {
+  chainId: number;
+  token: string;
+  swapFrom: string;
+  userFiat: string;
+}): Promise<{ ok: true; basePrice: number } | RawRateFailure> {
+  const ghsQuote = await getOnrampQuote({
+    country: QUOTE_PIVOT_COUNTRY,
+    chain_id: params.chainId,
+    token: params.token,
+    amount: 1,
+    amount_in: "crypto",
+    purchase_method: "sell",
+    from_address: params.swapFrom,
+  });
+  if (!ghsQuote.ok) {
+    return { ok: false, error: ghsQuote.error, status: ghsQuote.status ?? 502 };
+  }
+  const ghsPerCrypto = ghsQuote.data.total_fiat;
+  if (!Number.isFinite(ghsPerCrypto) || ghsPerCrypto <= 0) {
+    return { ok: false, error: "Invalid pivot offramp rate", status: 502 };
+  }
+  const target = params.userFiat.trim().toUpperCase();
+  if (target === QUOTE_PIVOT_FIAT) {
+    return { ok: true, basePrice: ghsPerCrypto };
+  }
+  try {
+    const { rates } = await getCachedUsdConversionRates();
+    const amt = convertAmountViaUsdRates(QUOTE_PIVOT_FIAT, target, ghsPerCrypto, rates);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      return {
+        ok: false,
+        error: "Fiat pivot returned invalid amount.",
+        status: 503,
+        code: "FIAT_PIVOT_UNAVAILABLE",
+      };
+    }
+    return { ok: true, basePrice: amt };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("Missing or invalid USD conversion rate")) {
+      return {
+        ok: false,
+        error: `Currency not in ExchangeRate feed or unsupported for pivot: ${target}`,
+        status: 503,
+        code: "FIAT_PIVOT_UNAVAILABLE",
+      };
+    }
+    return {
+      ok: false,
+      error: "Fiat pivot failed (ExchangeRate API).",
+      status: 503,
+      code: "FIAT_PIVOT_UNAVAILABLE",
+    };
+  }
+}
+
 /**
  * Get raw provider rate (cost price) for the pair.
  * ONRAMP: fiat → crypto, rate = fiat per 1 unit of crypto (e.g. GHS per USDC).
@@ -232,7 +346,7 @@ async function getRawRate(params: {
   fromAddress?: string;
 }): Promise<
   | { basePrice: number; providerCode: string; ok: true }
-  | { ok: false; error: string; status?: number }
+  | RawRateFailure
 > {
   const { action, inputCurrency, outputCurrency, chain, fromAmountHuman, fromAddress } = params;
   const swapFrom = fromAddress?.trim() || getSwapQuoteEstimateFromAddress();
@@ -242,38 +356,107 @@ async function getRawRate(params: {
 
   if (action === "ONRAMP") {
     if (!chainRecord) return { ok: false, error: "chain is required for ONRAMP", status: 400 };
-    const country = CURRENCY_TO_COUNTRY[inputCurrency.toUpperCase()] ?? "GH";
-    const result = await getOnrampQuote({
-      country,
-      chain_id: chainRecord.chainId,
+    const fiat = inputCurrency.trim().toUpperCase();
+    const fonbnkCorridor = await isFiatSupportedByFonbnkInDb(fiat);
+    const country = await resolveCountryCodeForFiatCurrency(inputCurrency);
+    let lastDirectError = "Quote unavailable";
+    let lastDirectStatus = 502;
+
+    // USD: never use direct Fonbnk for pricing — GH corridor returns amounts in GHS; pivot GHS→USD instead.
+    if (fonbnkCorridor && fiat !== "USD") {
+      const result = await getOnrampQuote({
+        country,
+        chain_id: chainRecord.chainId,
+        token: outputCurrency,
+        amount: 1,
+        amount_in: "crypto",
+        purchase_method: "buy",
+        from_address: swapFrom,
+      });
+      if (result.ok) {
+        const basePrice = result.data.total_fiat;
+        if (Number.isFinite(basePrice) && basePrice > 0) {
+          return { basePrice, providerCode: "fonbnk", ok: true };
+        }
+        lastDirectError = "Invalid onramp rate";
+      } else {
+        lastDirectError = result.error;
+        lastDirectStatus = result.status ?? 502;
+      }
+    }
+
+    if (!isExchangeRateConfigured()) {
+      const triedDirect = fonbnkCorridor && fiat !== "USD";
+      return {
+        ok: false,
+        error: triedDirect
+          ? lastDirectError
+          : "Fiat pivot unavailable: set EXCHANGERATE_API_KEY for quotes in this currency.",
+        status: triedDirect ? lastDirectStatus : 503,
+        code: triedDirect ? undefined : "FIAT_PIVOT_UNAVAILABLE",
+      };
+    }
+
+    const pivoted = await getPivotedOnrampBasePrice({
+      chainId: chainRecord.chainId,
       token: outputCurrency,
-      amount: 1,
-      amount_in: "crypto",
-      purchase_method: "buy",
-      from_address: swapFrom,
+      swapFrom,
+      userFiat: fiat,
     });
-    if (!result.ok) return { ok: false, error: result.error, status: result.status };
-    const basePrice = result.data.total_fiat;
-    if (!Number.isFinite(basePrice) || basePrice <= 0) return { ok: false, error: "Invalid onramp rate" };
-    return { basePrice, providerCode: "fonbnk", ok: true };
+    if (!pivoted.ok) return pivoted;
+    return { basePrice: pivoted.basePrice, providerCode: "fonbnk_fx_pivot", ok: true };
   }
 
   if (action === "OFFRAMP") {
     if (!chainRecord) return { ok: false, error: "chain is required for OFFRAMP", status: 400 };
-    const country = CURRENCY_TO_COUNTRY[outputCurrency.toUpperCase()] ?? "GH";
-    const result = await getOnrampQuote({
-      country,
-      chain_id: chainRecord.chainId,
+    const fiat = outputCurrency.trim().toUpperCase();
+    const fonbnkCorridor = await isFiatSupportedByFonbnkInDb(fiat);
+    const country = await resolveCountryCodeForFiatCurrency(outputCurrency);
+    let lastDirectError = "Quote unavailable";
+    let lastDirectStatus = 502;
+
+    if (fonbnkCorridor && fiat !== "USD") {
+      const result = await getOnrampQuote({
+        country,
+        chain_id: chainRecord.chainId,
+        token: inputCurrency,
+        amount: 1,
+        amount_in: "crypto",
+        purchase_method: "sell",
+        from_address: swapFrom,
+      });
+      if (result.ok) {
+        const basePrice = result.data.total_fiat;
+        if (Number.isFinite(basePrice) && basePrice > 0) {
+          return { basePrice, providerCode: "fonbnk", ok: true };
+        }
+        lastDirectError = "Invalid offramp rate";
+      } else {
+        lastDirectError = result.error;
+        lastDirectStatus = result.status ?? 502;
+      }
+    }
+
+    if (!isExchangeRateConfigured()) {
+      const triedDirect = fonbnkCorridor && fiat !== "USD";
+      return {
+        ok: false,
+        error: triedDirect
+          ? lastDirectError
+          : "Fiat pivot unavailable: set EXCHANGERATE_API_KEY for quotes in this currency.",
+        status: triedDirect ? lastDirectStatus : 503,
+        code: triedDirect ? undefined : "FIAT_PIVOT_UNAVAILABLE",
+      };
+    }
+
+    const pivoted = await getPivotedOfframpBasePrice({
+      chainId: chainRecord.chainId,
       token: inputCurrency,
-      amount: 1,
-      amount_in: "crypto",
-      purchase_method: "sell",
-      from_address: swapFrom,
+      swapFrom,
+      userFiat: fiat,
     });
-    if (!result.ok) return { ok: false, error: result.error, status: result.status };
-    const basePrice = result.data.total_fiat;
-    if (!Number.isFinite(basePrice) || basePrice <= 0) return { ok: false, error: "Invalid offramp rate" };
-    return { basePrice, providerCode: "fonbnk", ok: true };
+    if (!pivoted.ok) return pivoted;
+    return { basePrice: pivoted.basePrice, providerCode: "fonbnk_fx_pivot", ok: true };
   }
 
   if (action === "SWAP") {
@@ -367,7 +550,9 @@ export async function buildPublicQuote(
 
   const { fromCurrency, toCurrency } = getCanonicalCurrencies(action, inputCurrency, outputCurrency, inputSide);
 
-  let raw: { basePrice: number; ok: true } | { ok: false; error: string; status?: number };
+  let raw:
+    | { basePrice: number; providerCode: string; ok: true }
+    | { ok: false; error: string; status?: number; code?: string };
   if (action === "SWAP" && inputSide === "to") {
     const rawOne = await getRawRate({
       action,
@@ -407,9 +592,10 @@ export async function buildPublicQuote(
   }
   if (!raw.ok) {
     const code =
-      raw.error.includes("chain is required") || raw.error.includes("CHAIN_REQUIRED")
+      raw.code ??
+      (raw.error.includes("chain is required") || raw.error.includes("CHAIN_REQUIRED")
         ? "CHAIN_REQUIRED"
-        : "RATE_UNAVAILABLE";
+        : "RATE_UNAVAILABLE");
     return { success: false, error: raw.error, code, status: raw.status ?? 502 };
   }
 

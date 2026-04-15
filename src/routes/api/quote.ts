@@ -9,6 +9,7 @@ import {
   buildPublicQuote,
   normalizeQuoteAssetForRequest,
 } from "../../services/public-quote.service.js";
+import { runPeerRampQuoteStream } from "../../services/quote-stream.service.js";
 import { setStoredQuote, QUOTE_TTL_SECONDS } from "../../lib/redis.js";
 import { getSwapQuote, getBestQuotes, getAllQuotes } from "../../services/swap-quote.service.js";
 import { getOnrampQuote } from "../../services/onramp-quote.service.js";
@@ -60,7 +61,91 @@ const OnrampQuoteBodySchema = z.object({
   token_decimals: z.coerce.number().int().nonnegative().optional(),
 });
 
+/** GET /api/quote/stream — SSE: one `quote` event per fiat as it completes, then `done`. */
+const QuoteStreamQuerySchema = z.object({
+  action: z.enum(["buy", "sell"]),
+  amount: z.coerce.number().positive(),
+  input_side: z.enum(["from", "to"]),
+  chain: z.string().min(1),
+  fiats: z.string().min(1).max(16_000),
+  /** Crypto leg symbol (default USDC); must match peer-ramp quote params. */
+  crypto: z.string().min(1).max(32).optional().default("USDC"),
+});
+
 export async function quoteApiRoutes(app: FastifyInstance): Promise<void> {
+  app.get(
+    "/api/quote/stream",
+    async (
+      req: FastifyRequest<{
+        Querystring: {
+          action?: string;
+          amount?: string;
+          input_side?: string;
+          chain?: string;
+          fiats?: string;
+          crypto?: string;
+        };
+      }>,
+      reply
+    ) => {
+      const parse = QuoteStreamQuerySchema.safeParse(req.query);
+      if (!parse.success) {
+        return reply.status(400).send({
+          success: false,
+          error: "Validation failed",
+          details: parse.error.flatten(),
+        });
+      }
+      const q = parse.data;
+      const fiatList = q.fiats
+        .split(",")
+        .map((s) => s.trim().toUpperCase())
+        .filter(Boolean);
+      if (fiatList.length === 0) {
+        return reply.status(400).send({ success: false, error: "fiats must list at least one code." });
+      }
+
+      reply.hijack();
+      const res = reply.raw;
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      });
+
+      const writeSse = (event: string, payload: unknown) => {
+        try {
+          res.write(`event: ${event}\n`);
+          res.write(`data: ${JSON.stringify(payload)}\n\n`);
+        } catch {
+          /* client disconnected */
+        }
+      };
+
+      try {
+        await runPeerRampQuoteStream(writeSse, {
+          action: q.action,
+          amount: q.amount,
+          inputSide: q.input_side,
+          chain: q.chain,
+          crypto: q.crypto,
+          fiats: fiatList,
+        });
+      } catch (err) {
+        req.log.error({ err }, "GET /api/quote/stream");
+        writeSse("error", { message: err instanceof Error ? err.message : "Quote stream failed" });
+      } finally {
+        writeSse("done", {});
+        try {
+          res.end();
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  );
+
   /**
    * Unified swap quote: single POST endpoint; provider (0x, squid, lifi) determines router.
    * Returns normalized quote with chains, cross_chain/same_chain, token_type, amounts, optional next_quote_timer, optional transaction/calldata.

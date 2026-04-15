@@ -52,6 +52,8 @@ const envSchema = z.object({
 
   /** ExchangeRate-API key for fiat↔fiat (USD pivot). Optional; used for non–Fonbnk countries. */
   EXCHANGERATE_API_KEY: z.string().min(1).optional(),
+  /** TTL (ms) for cached `latest/USD` bulk table. Default 600000 (10 minutes). */
+  EXCHANGERATE_CACHE_TTL_MS: z.coerce.number().int().positive().optional(),
 
   /** WebAuthn (passkey) RP ID for admin dashboard. Default localhost for dev. */
   ADMIN_RP_ID: z.string().min(1).optional(),
@@ -141,6 +143,61 @@ const envSchema = z.object({
    * when the user has not connected a wallet. Must be a valid EVM address.
    */
   QUOTE_ESTIMATE_FROM_ADDRESS: z.string().optional(),
+
+  /** When "1" or "true", core starts BullMQ worker for peer-ramp match queue (requires Redis). */
+  PEER_RAMP_WORKER_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true" || v === "1"),
+
+  /** Base Sepolia (test): platform USDC escrow address for peer offramp instructions (0x + 40 hex). */
+  PEER_RAMP_PLATFORM_ESCROW_ADDRESS: z.string().optional(),
+  /**
+   * Optional: private key for the escrow EOA (must match PEER_RAMP_PLATFORM_ESCROW_ADDRESS).
+   * Peer-ramp onramp USDC sends use this wallet so delivery txs are escrow→user. If unset, TESTNET_SEND_PRIVATE_KEY is used and must match the escrow address when both are set.
+   */
+  PEER_RAMP_ESCROW_SENDER_PRIVATE_KEY: z.string().min(1).optional(),
+
+  /** HMAC secret for peer-ramp app session JWT after email OTP (defaults to ENCRYPTION_KEY). */
+  PEER_RAMP_APP_JWT_SECRET: z.string().min(32).optional(),
+  /** Peer-ramp app session length in seconds (default 24h). */
+  PEER_RAMP_APP_SESSION_SECONDS: z.coerce.number().int().positive().optional().default(86_400),
+  /** Minimum seconds between OTP emails per address (default 60). */
+  PEER_RAMP_APP_OTP_COOLDOWN_SECONDS: z.coerce.number().int().min(10).optional().default(60),
+
+  // ── KYC providers ───────────────────────────────────────────────────────────
+
+  /** DIDIT: x-api-key for https://verification.didit.me/v3/ */
+  DIDIT_API_KEY: z.string().min(1).optional(),
+  /** DIDIT: Client ID from the Didit Console (identifies your application). */
+  DIDIT_CLIENT_ID: z.string().uuid().optional(),
+  /** DIDIT: Workflow ID from the Didit Console (required to create sessions). */
+  DIDIT_WORKFLOW_ID: z.string().uuid().optional(),
+  /** DIDIT: Webhook secret for X-Signature-V2 HMAC verification. */
+  DIDIT_WEBHOOK_SECRET: z.string().min(1).optional(),
+
+  /** Persona: Bearer API key (sandbox key starts with persona_sandbox_). */
+  PERSONA_API_KEY: z.string().min(1).optional(),
+  /** Persona: Inquiry template ID (itmpl_...). */
+  PERSONA_TEMPLATE_ID: z.string().min(1).optional(),
+  /** Persona: Environment ID (env_...) — returned to CDN client, not a secret. */
+  PERSONA_ENVIRONMENT_ID: z.string().min(1).optional(),
+  /** Persona: Webhook secret for Persona-Signature HMAC verification. */
+  PERSONA_WEBHOOK_SECRET: z.string().min(1).optional(),
+
+  /**
+   * KYC service routing map (JSON string).
+   * Maps opaque frontend service IDs to internal provider names.
+   * Example: {"svc_kyc_01":"didit","svc_kyc_02":"persona"}
+   */
+  KYC_SERVICE_MAP: z.string().optional(),
+
+  /**
+   * Default KYC service ID (must exist in KYC_SERVICE_MAP).
+   * When set, the x-kyc-service header becomes optional for /api/peer-ramp-app/kyc/init.
+   * Example: "svc_kyc_01"
+   */
+  DEFAULT_KYC_SERVICE: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

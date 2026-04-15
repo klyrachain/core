@@ -30,9 +30,14 @@
     "test:live:requests-payouts": "tsx scripts/test-live-requests-payouts.ts",
     "e2e:cli": "tsx scripts/e2e-cli.ts",
     "e2e:cli:requests-claims": "tsx scripts/e2e-cli-requests-claims.ts",
+    "peer-ramp:sim": "tsx scripts/peer-ramp-simulator.ts",
+    "peer-ramp:e2e-cli": "tsx scripts/peer-ramp-e2e-cli.ts",
+    "test:peer-ramp": "vitest run test/lib/peer-ramp-allocation.test.ts test/routes/api/peer-ramp.test.ts",
+    "test:peer-ramp-integration": "PEER_RAMP_INTEGRATION_TESTS=1 vitest run test/integration/peer-ramp-e2e.test.ts",
     "key:generate": "tsx scripts/generate-backend-key.ts",
     "sent:push-templates": "tsx scripts/push-sent-templates.ts",
-    "seed:merchant-dashboard-mock": "tsx scripts/seed-merchant-dashboard-mock.ts"
+    "seed:merchant-dashboard-mock": "tsx scripts/seed-merchant-dashboard-mock.ts",
+    "sync:providers": "tsx scripts/sync-providers.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",
