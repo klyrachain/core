@@ -5,8 +5,17 @@
   "license": "ISC",
   "type": "module",
   "main": "dist/src/server.js",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/engines",
+      "prisma",
+      "argon2",
+      "esbuild",
+      "msgpackr-extract"
+    ]
+  },
   "scripts": {
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/src/server.js",
     "db:generate": "prisma generate",

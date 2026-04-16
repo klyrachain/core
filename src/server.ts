@@ -104,6 +104,7 @@ app.addHook("onResponse", onResponseLog);
 app.addHook("preHandler", async (request, reply) => {
   const path = (request.url ?? "").split("?")[0];
   const method = (request.method ?? "").toUpperCase();
+  if (path === "/" || path === "") return;
   if (path === "/api/health" || path === "/api/ready") return;
   if (path.startsWith("/api/auth")) return;
   if (path.startsWith("/api/business-auth")) return;
@@ -141,6 +142,19 @@ app.addHook("preHandler", async (request, reply) => {
   }
 
   requireApiKeyOrSession(request, reply);
+});
+
+app.get("/", async (_, reply) => {
+  return reply.status(200).send({
+    success: true,
+    service: "morapay-core",
+    message: "Core API (pricing, liquidity, webhooks, platform routes).",
+    hint: "Use /api/health for liveness. Most /api/* routes require x-api-key or a session.",
+    endpoints: {
+      health: "/api/health",
+      ready: "/api/ready",
+    },
+  });
 });
 
 app.get("/api/health", async (_, reply) => {
