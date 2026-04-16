@@ -1,7 +1,7 @@
 /**
  * Verify on-chain transactions by hash: fetch tx + receipt and parse ERC20 Transfer events.
  * Used to confirm offramp (user sent token to our pool) and to verify onramp send (crypto received by user).
- * No external APIs — uses public RPC only (viem).
+ * Uses **viem** (public RPC + log decode) — same EVM primitives as wagmi; no wallet connect.
  */
 
 import { createPublicClient, http, parseEventLogs, type Hash } from "viem";
@@ -117,10 +117,12 @@ export async function verifyTransactionByHash(
         });
         for (const log of parsed) {
           if (log.eventName === "Transfer") {
+            const rawFrom = (log.args as { from?: string }).from ?? "";
+            const rawTo = (log.args as { to?: string }).to ?? "";
             transfers.push({
               token: log.address.toLowerCase(),
-              from: (log.args as { from?: string }).from ?? "",
-              to: (log.args as { to?: string }).to ?? "",
+              from: typeof rawFrom === "string" ? rawFrom.toLowerCase() : String(rawFrom).toLowerCase(),
+              to: typeof rawTo === "string" ? rawTo.toLowerCase() : String(rawTo).toLowerCase(),
               valueRaw: String((log.args as { value?: bigint }).value ?? 0n),
             });
           }
@@ -159,8 +161,76 @@ export async function verifyTransactionByHash(
 }
 
 /**
- * Check that a transaction sent at least `expectedAmountWei` of `tokenAddress` to `toAddress`.
- * Used by offramp confirm to ensure user actually sent funds to our pool.
+ * Sum ERC-20 Transfer amounts for `tokenAddress` → `toAddress` (case-insensitive).
+ * Handles multiple Transfer logs in one tx (e.g. split sends) and viem checksummed `from`/`to` args.
+ */
+export function sumMatchingTransfersToRecipient(
+  transfers: TransferItem[],
+  tokenAddress: string,
+  toAddress: string
+): bigint {
+  const tokenLower = tokenAddress.toLowerCase();
+  const toLower = toAddress.toLowerCase();
+  let sum = 0n;
+  for (const t of transfers) {
+    if (t.token.toLowerCase() === tokenLower && t.to.toLowerCase() === toLower) {
+      sum += BigInt(t.valueRaw);
+    }
+  }
+  return sum;
+}
+
+export type EscrowVerificationSnapshot = {
+  chainId: number;
+  txHash: string;
+  blockNumber: string;
+  blockTimestamp: number;
+  receiptStatus: "success" | "reverted";
+  txFrom: string;
+  /** Calldata target (often the token contract for simple transfers). */
+  txContract: string;
+  expectedToken: string;
+  expectedEscrow: string;
+  expectedMinWei: string;
+  /** Total wei of matching token→escrow transfers in this receipt. */
+  sumMatchingWei: string;
+  matched: boolean;
+  erc20TransferEventCount: number;
+  transferEvents: Array<{ token: string; from: string; to: string; valueWei: string }>;
+};
+
+export function buildEscrowVerificationSnapshot(
+  verify: Extract<VerifyByHashResult, { ok: true }>,
+  expectedToken: string,
+  expectedEscrow: string,
+  expectedMinWei: bigint
+): EscrowVerificationSnapshot {
+  const sumWei = sumMatchingTransfersToRecipient(verify.transfers, expectedToken, expectedEscrow);
+  return {
+    chainId: verify.chainId,
+    txHash: verify.hash,
+    blockNumber: verify.blockNumber.toString(),
+    blockTimestamp: verify.blockTimestamp,
+    receiptStatus: verify.status,
+    txFrom: verify.from,
+    txContract: verify.to,
+    expectedToken: expectedToken.toLowerCase(),
+    expectedEscrow: expectedEscrow.toLowerCase(),
+    expectedMinWei: expectedMinWei.toString(),
+    sumMatchingWei: sumWei.toString(),
+    matched: sumWei >= expectedMinWei,
+    erc20TransferEventCount: verify.transfers.length,
+    transferEvents: verify.transfers.map((t) => ({
+      token: t.token,
+      from: t.from,
+      to: t.to,
+      valueWei: t.valueRaw,
+    })),
+  };
+}
+
+/**
+ * True if cumulative ERC-20 transfers of `tokenAddress` to `toAddress` reach `expectedAmountWei`.
  */
 export function transferMatches(
   transfers: TransferItem[],
@@ -168,12 +238,5 @@ export function transferMatches(
   toAddress: string,
   expectedAmountWei: bigint
 ): boolean {
-  const tokenLower = tokenAddress.toLowerCase();
-  const toLower = toAddress.toLowerCase();
-  for (const t of transfers) {
-    if (t.token === tokenLower && t.to === toLower && BigInt(t.valueRaw) >= expectedAmountWei) {
-      return true;
-    }
-  }
-  return false;
+  return sumMatchingTransfersToRecipient(transfers, tokenAddress, toAddress) >= expectedAmountWei;
 }

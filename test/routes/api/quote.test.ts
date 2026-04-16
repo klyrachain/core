@@ -9,9 +9,14 @@ vi.mock("../../../src/services/swap-quote.service.js", () => ({
   getSwapQuote: vi.fn(),
   getBestQuotes: vi.fn(),
 }));
-vi.mock("../../../src/services/public-quote.service.js", () => ({
-  buildPublicQuote: vi.fn(),
-}));
+vi.mock("../../../src/services/public-quote.service.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../../src/services/public-quote.service.js")>();
+  return {
+    ...actual,
+    buildPublicQuote: vi.fn(),
+  };
+});
 vi.mock("../../../src/lib/redis.js", () => ({
   setStoredQuote: vi.fn().mockResolvedValue(undefined),
   QUOTE_TTL_SECONDS: 32,
@@ -122,9 +127,10 @@ describe("Quote API", () => {
         status: 400,
       });
 
+      const q = new URLSearchParams(validQuery as Record<string, string>).toString();
       const res = await app.inject({
         method: "GET",
-        url: "/api/quote?action=buy&amount=100&f_token=GHS&t_token=USDC&chain=",
+        url: `/api/quote?${q}`,
       });
 
       expect(res.statusCode).toBe(400);

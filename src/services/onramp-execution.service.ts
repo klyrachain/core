@@ -14,8 +14,14 @@ import { getEnv } from "../config/env.js";
 import { getLiquidityPoolWallet } from "./liquidity-pool.service.js";
 import { findPoolTokenFromDb } from "./supported-token.service.js";
 import { deductInventory } from "./inventory.service.js";
-import { sendFromLiquidityPool, sendTestnetBaseSepoliaUsdc, sendTestnetBaseSepoliaEth } from "./crypto-send.service.js";
+import {
+  sendFromLiquidityPool,
+  sendPeerRampOnrampUsdcFromEscrowWallet,
+  sendTestnetBaseSepoliaEth,
+  sendTestnetBaseSepoliaUsdc,
+} from "./crypto-send.service.js";
 import { triggerTransactionStatusChange } from "./pusher.service.js";
+import { notifyPeerRampAfterOnrampCryptoSent } from "./peer-ramp-notify.service.js";
 
 const CHAIN_NAME_TO_ID: Record<string, number> = {
   ETHEREUM: 1,
@@ -24,6 +30,20 @@ const CHAIN_NAME_TO_ID: Record<string, number> = {
   POLYGON: 137,
   ARBITRUM: 42161,
 };
+
+/** Matched offramp → escrow funding tx hash (admin audit). */
+async function peerRampEscrowFundingHashFromFill(onrampOrderId: string): Promise<string | null> {
+  const fill = await prisma.peerRampFill.findFirst({
+    where: { onrampOrderId },
+    orderBy: { createdAt: "asc" },
+    include: {
+      offrampOrder: { select: { escrowTxHash: true, escrowVerifiedAt: true } },
+    },
+  });
+  const h = fill?.offrampOrder?.escrowTxHash?.trim();
+  if (!h || !fill?.offrampOrder?.escrowVerifiedAt) return null;
+  return h;
+}
 
 export type ExecuteOnrampSendResult =
   | { ok: true; txHash: string }
@@ -48,6 +68,10 @@ export async function executeOnrampSend(transactionId: string): Promise<ExecuteO
       t_amount: true,
       t_tokenPriceUsd: true,
       cryptoSendTxHash: true,
+      paymentLinkId: true,
+      fromIdentifier: true,
+      fromType: true,
+      settlementQuoteSnapshot: true,
     },
   });
   if (!tx) return { ok: false, error: "Transaction not found", code: "TX_NOT_FOUND" };
@@ -94,23 +118,53 @@ export async function executeOnrampSend(transactionId: string): Promise<ExecuteO
   );
 
   if (useTestnetSend) {
+    const snap = tx.settlementQuoteSnapshot as { peerRampOrderId?: string } | null;
+    const peerRampOrderId = snap?.peerRampOrderId?.trim();
+    const isPeerRampUsdc = !!peerRampOrderId && tTokenUpper === "USDC";
+
     const sendResult =
       tTokenUpper === "ETH"
         ? await sendTestnetBaseSepoliaEth(toAddress, amountStr, transactionId)
-        : await sendTestnetBaseSepoliaUsdc(toAddress, amountStr, transactionId);
+        : isPeerRampUsdc
+          ? await sendPeerRampOnrampUsdcFromEscrowWallet(toAddress, amountStr)
+          : await sendTestnetBaseSepoliaUsdc(toAddress, amountStr, transactionId);
     if (!sendResult.ok) {
       console.warn(`[onramp] Step 2 FAILED: testnet send error for ${transactionId}: ${sendResult.error}. Transaction remains PENDING.`);
       return { ok: false, error: sendResult.error, code: "SEND_FAILED" };
     }
+
+    let peerRampFunding: string | null = null;
+    if (isPeerRampUsdc && peerRampOrderId) {
+      peerRampFunding = await peerRampEscrowFundingHashFromFill(peerRampOrderId);
+    }
+
     await prisma.transaction.update({
       where: { id: transactionId },
-      data: { status: "COMPLETED", cryptoSendTxHash: sendResult.txHash },
+      data: {
+        status: "COMPLETED",
+        cryptoSendTxHash: sendResult.txHash,
+        ...(peerRampFunding ? { peerRampEscrowFundingTxHash: peerRampFunding } : {}),
+      },
     });
+    if (tx.paymentLinkId) {
+      await prisma.paymentLink.updateMany({
+        where: { id: tx.paymentLinkId, isOneTime: true, paidAt: null },
+        data: {
+          paidAt: new Date(),
+          paidByTransactionId: transactionId,
+          paidByWalletAddress:
+            tx.fromType === "ADDRESS" ? (tx.fromIdentifier ?? null) : null,
+        },
+      });
+    }
     await triggerTransactionStatusChange({
       transactionId,
       status: "COMPLETED",
       type: "BUY",
     }).catch(() => {});
+    void notifyPeerRampAfterOnrampCryptoSent(transactionId).catch((e) =>
+      console.warn("[peer-ramp] onramp completion email failed:", e)
+    );
     console.log(`[onramp] Step 3: Crypto SENT successfully. Transaction ${transactionId} COMPLETED. txHash=${sendResult.txHash}`);
     return { ok: true, txHash: sendResult.txHash };
   }
@@ -194,11 +248,25 @@ export async function executeOnrampSend(transactionId: string): Promise<ExecuteO
     where: { id: transactionId },
     data: { status: "COMPLETED", cryptoSendTxHash: sendResult.txHash },
   });
+  if (tx.paymentLinkId) {
+    await prisma.paymentLink.updateMany({
+      where: { id: tx.paymentLinkId, isOneTime: true, paidAt: null },
+      data: {
+        paidAt: new Date(),
+        paidByTransactionId: transactionId,
+        paidByWalletAddress:
+          tx.fromType === "ADDRESS" ? (tx.fromIdentifier ?? null) : null,
+      },
+    });
+  }
   await triggerTransactionStatusChange({
     transactionId,
     status: "COMPLETED",
     type: "BUY",
   }).catch(() => {});
+  void notifyPeerRampAfterOnrampCryptoSent(transactionId).catch((e) =>
+    console.warn("[peer-ramp] onramp completion email failed:", e)
+  );
   console.log(`[onramp] Step 3: Crypto SENT successfully. Transaction ${transactionId} COMPLETED. txHash=${sendResult.txHash}`);
 
   return { ok: true, txHash: sendResult.txHash };

@@ -24,18 +24,26 @@ const ListBanksQuerySchema = z.object({
 });
 
 const ResolveAccountQuerySchema = z.object({
-  account_number: z.string().min(1, "account_number is required"),
+  account_number: z.string().trim().regex(/^\d{6,20}$/, "account_number must be 6-20 digits"),
   bank_code: z.string().min(1, "bank_code is required"),
 });
 
 const ValidateAccountBodySchema = z.object({
   bank_code: z.string().min(1),
-  country_code: z.string().length(2),
-  account_number: z.string().min(1),
+  country_code: z.string().trim().toUpperCase().length(2),
+  account_number: z.string().trim().regex(/^\d{6,20}$/, "account_number must be 6-20 digits"),
   account_name: z.string().min(1),
   account_type: z.enum(["personal", "business"]),
   document_type: z.enum(["identityNumber", "passportNumber", "businessRegistrationNumber"]),
   document_number: z.string().min(1),
+}).superRefine((data, ctx) => {
+  if (data.country_code !== "ZA") {
+    ctx.addIssue({
+      code: "custom",
+      path: ["country_code"],
+      message: "bank account validation via Paystack currently supports ZA country_code.",
+    });
+  }
 });
 
 export async function paystackBanksApiRoutes(app: FastifyInstance): Promise<void> {

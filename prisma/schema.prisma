@@ -130,6 +130,48 @@ enum PayoutStatus {
   REVERSED
 }
 
+// --------------------------------------
+// Commerce (merchant catalog & pay pages)
+// --------------------------------------
+
+enum PaymentLinkType {
+  STANDARD // Open or fixed amount "Pay me"
+  PRODUCT // Tied to a catalog product
+  DONATION // Open amount, donation framing
+}
+
+enum PaymentLinkChargeKind {
+  FIAT
+  CRYPTO
+}
+
+enum ProductType {
+  DIGITAL
+  PHYSICAL
+  SERVICE
+}
+
+/// Test vs live isolation for merchant data (Stripe-style).
+enum MerchantEnvironment {
+  TEST
+  LIVE
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  DELIVERED
+  FAILED
+  RETRYING
+}
+
 enum LotStatus {
   OPEN
   DEPLETED
@@ -139,6 +181,33 @@ enum LedgerType {
   ACQUIRED
   DISPOSED
   REBALANCE
+}
+
+enum GasLedgerDirection {
+  CREDIT
+  DEBIT
+}
+
+enum GasLedgerReason {
+  TOPUP
+  SPONSORSHIP
+  ADJUSTMENT
+  REFUND
+}
+
+/// Peer-to-peer ramp book (CLOB-style matching); v1 same-chain same token.
+enum PeerRampOrderSide {
+  ONRAMP
+  OFFRAMP
+}
+
+enum PeerRampOrderStatus {
+  OPEN
+  PARTIALLY_FILLED
+  AWAITING_SETTLEMENT
+  COMPLETED
+  CANCELLED
+  EXPIRED
 }
 
 // --------------------------------------
@@ -167,6 +236,7 @@ model User {
   transactionsTo   Transaction[] @relation("ToUser")
   members          BusinessMember[]
   merchantOnboarding MerchantOnboarding?
+  merchantCustomers MerchantCustomer[]
 
   @@index([email, address, username])
 }
@@ -248,6 +318,16 @@ model Transaction {
   businessId String? // Optional: if this tx was initiated via API by a merchant
   business   Business? @relation("BusinessTransactions", fields: [businessId], references: [id], onDelete: SetNull)
 
+  environment MerchantEnvironment @default(LIVE)
+
+  /// Merchant commerce: pay page / product attribution (optional).
+  paymentLinkId String?
+  paymentLink   PaymentLink? @relation(fields: [paymentLinkId], references: [id], onDelete: SetNull)
+  productId     String?
+  product       Product?     @relation(fields: [productId], references: [id], onDelete: SetNull)
+  /// Cart / multi-line display for merchant UI, e.g. [{ productId, name, qty, unitPrice }].
+  lineItems Json?
+
   platformFee Decimal? @default(0) @db.Decimal(18, 8) // Platform cut
   merchantFee Decimal? @default(0) @db.Decimal(18, 8) // Merchant markup (if any)
   fee        Decimal? @db.Decimal(18, 8) // Fee charged for this transaction (set when status = COMPLETED)
@@ -257,6 +337,8 @@ model Transaction {
 
   /// Onramp: tx hash of crypto send from liquidity pool to user (set when send completes).
   cryptoSendTxHash String?
+  /// Peer-ramp: matched offramp user→escrow funding tx (admin/audit only; not shown to end users).
+  peerRampEscrowFundingTxHash String?
 
   request   Request?
   requestId String?  @unique
@@ -266,9 +348,137 @@ model Transaction {
   cryptoTransactions CryptoTransaction[]
   transactionPnLs TransactionPnL[]
   transactionBalanceSnapshots TransactionBalanceSnapshot[]
+  refunds                     Refund[]
+  webhookDeliveryLogs         WebhookDeliveryLog[]
+
+  peerRampOrders PeerRampOrder[]
 
   @@index([status, type])
   @@index([businessId])
+  @@index([businessId, environment])
+  @@index([paymentLinkId])
+  @@index([productId])
+}
+
+/// Resting peer ramp intent (onramp buys crypto with fiat; offramp sells crypto for fiat). Matched by chainId + tokenAddress + crypto remainder.
+model PeerRampOrder {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  side    PeerRampOrderSide
+  chainId Int
+  /// ERC-20 contract address (normalized lowercase in app).
+  tokenAddress String
+  decimals     Int
+
+  cryptoAmountTotal     Decimal @db.Decimal(28, 8)
+  cryptoAmountRemaining Decimal @db.Decimal(28, 8)
+  status                PeerRampOrderStatus @default(OPEN)
+
+  /// { fiatAmount, fiatCurrency, cryptoAmount, usdEquivalent?, displayCurrency? }
+  quoteSnapshot Json?
+
+  settlementCurrency String?
+  payerEmail         String?
+  recipientAddress   String?
+  /// Offramp: optional JSON for payout rail (bank, mobile money, etc.).
+  payoutHint         Json?
+  cliSessionId       String?
+
+  /// Offramp: optional ERC-20 transfer hash to platform escrow; set after verify.
+  escrowTxHash     String?
+  escrowVerifiedAt DateTime?
+  /// Last escrow tx verification attempt (success or failure): on-chain transfers, expected escrow/token, sums — audit / compliance.
+  escrowVerifyLastAttempt Json?
+
+  linkedTransactionId String?     @unique
+  linkedTransaction   Transaction? @relation(fields: [linkedTransactionId], references: [id], onDelete: SetNull)
+
+  fillsAsOnramp  PeerRampFill[] @relation("FillOnramp")
+  fillsAsOfframp PeerRampFill[] @relation("FillOfframp")
+
+  @@index([chainId, tokenAddress, side, status])
+  @@index([cliSessionId])
+  @@index([status])
+}
+
+/// Email OTP for peer-ramp web app; one row per email (overwritten on each request).
+model PeerRampAppOtp {
+  email     String   @id
+  codeHash  String
+  expiresAt DateTime
+  sentAt    DateTime @default(now())
+}
+
+/// Stable cliSessionId per verified email (for order history correlation).
+model PeerRampAppUser {
+  email        String   @id
+  cliSessionId String   @default(uuid())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  /// E.164 or local digits; normalized server-side where possible
+  phone               String?
+  /// ISO 3166-1 alpha-2 (e.g. NG, GH)
+  countryCode         String?
+  /// Paystack bank list slug: ghana, nigeria, kenya, south africa
+  paystackCountrySlug String?
+  /// bank | mobile_money
+  payoutMethod        String?
+  /// { bankCode, accountNumber, accountName, providerName?, providerSlug? }
+  payoutDetails       Json?
+  profileCompletedAt  DateTime?
+
+  /// KYC: "approved" | "declined" | "in_review" | "pending" | null (never exposed as provider name to clients)
+  kycStatus     String?
+  /// Internal: "didit" | "persona" — never returned to browser
+  kycProvider   String?
+  kycVerifiedAt DateTime?
+
+  kycSessions PeerRampKycSession[]
+
+  @@index([cliSessionId])
+}
+
+/// One row per provider session/inquiry per user. Status updated via verified webhooks and/or Didit decision API sync.
+model PeerRampKycSession {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  email       String
+  user        PeerRampAppUser @relation(fields: [email], references: [email], onDelete: Cascade)
+  /// "didit" | "persona"
+  provider    String
+  /// DIDIT session_id or Persona inquiry_id
+  externalId  String
+  /// Raw status string from provider (e.g. "Approved", "approved")
+  status      String
+  /// Last webhook or decision API payload (audit)
+  rawPayload  Json?
+
+  /// One active session per user per provider
+  @@unique([email, provider])
+  @@index([email])
+  @@index([externalId])
+}
+
+model PeerRampFill {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  onrampOrderId  String
+  onrampOrder    PeerRampOrder @relation("FillOnramp", fields: [onrampOrderId], references: [id], onDelete: Cascade)
+  offrampOrderId String
+  offrampOrder   PeerRampOrder @relation("FillOfframp", fields: [offrampOrderId], references: [id], onDelete: Cascade)
+  cryptoAmount    Decimal @db.Decimal(28, 8)
+
+  onrampAcceptedAt   DateTime?
+  offrampAcceptedAt  DateTime?
+
+  @@index([onrampOrderId])
+  @@index([offrampOrderId])
 }
 
 /// Balance before/after for each asset affected by a transaction (audit trail; avoids wrong balance when concurrent txs).
@@ -354,6 +564,12 @@ model Request {
   transactionId String      @unique
   transaction   Transaction @relation(fields: [transactionId], references: [id])
 
+  /// Merchant scope (nullable for legacy platform-created requests).
+  businessId String?
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  environment MerchantEnvironment @default(LIVE)
+
   /// When set, payment is auto-settled to this address (crypto: 0x...). Requester does not claim.
   payoutTarget String?
 
@@ -361,6 +577,8 @@ model Request {
   payoutFiat   Json?
 
   claim Claim?
+
+  @@index([businessId])
 }
 
 model Claim {
@@ -539,6 +757,67 @@ model SupportedToken {
   @@index([displaySymbol])
 }
 
+model FonbnkSupportedAsset {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  code      String   @unique // e.g. ETHEREUM_USDC
+  network   String?  // e.g. ETHEREUM
+  asset     String?  // e.g. USDC
+  chainId   BigInt?
+  isActive  Boolean  @default(true)
+  source    String?  // docs_sync, admin_manual
+  metadata  Json?
+
+  @@index([network, asset])
+  @@index([chainId])
+  @@index([isActive])
+}
+
+/// Cached dumps from Paystack/Fonbnk catalog sync (CLI + admin). One row per (provider, snapshotKey), upserted each run.
+model ProviderCatalogSnapshot {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  provider     String // PAYSTACK | FONBNK
+  snapshotKey  String // e.g. paystack_banks_by_market, fonbnk_fiat_corridors
+  rowCount     Int?
+  data         Json
+  source       String?
+
+  @@unique([provider, snapshotKey])
+  @@index([provider])
+}
+
+enum QuoteRouteStrategy {
+  DIRECT
+  SAME_CHAIN_USDC
+  SAME_CHAIN_NATIVE
+  BASE_CROSS_CHAIN
+}
+
+model QuoteRouteAttempt {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  action      String
+  chainId     Int
+  countryCode String?
+  tokenKey    String // symbol/address normalized
+  strategy    QuoteRouteStrategy
+  provider    String?
+  success     Boolean @default(false)
+  errorCode   String?
+  errorReason String?
+  metadata    Json?
+
+  @@index([chainId, tokenKey, strategy, success, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@index([countryCode, createdAt(sort: Desc)])
+}
+
 // --------------------------------------
 // Business (B2B2C: Platform–Merchant–User)
 // --------------------------------------
@@ -561,14 +840,220 @@ model Business {
   riskScore          Int       @default(0) // 0–100, 100 is high risk
 
   settlementSchedule SettlementSchedule @default(WEEKLY)
-  webhookUrl          String? // Main webhook for business events
+  webhookUrl          String? // Main webhook for business events (legacy; prefer WebhookEndpoint)
+
+  /// Checkout / hosted pay page branding
+  brandColor        String?
+  buttonColor       String?
+  supportUrl        String?
+  termsOfServiceUrl String?
+  returnPolicyUrl   String?
 
   members       BusinessMember[]
+  memberInvites BusinessMemberInvite[]
   apiKeys       ApiKey[]
   transactions  Transaction[]    @relation("BusinessTransactions")
+  products      Product[]
+  paymentLinks  PaymentLink[]
+  invoices      Invoice[]
+  requests      Request[]
   payoutMethods PayoutMethod[]
   payouts       Payout[]
   feeSchedule   FeeSchedule?
+  merchantCustomers MerchantCustomer[]
+  webhookEndpoints WebhookEndpoint[]
+  refunds       Refund[]
+
+  gasAccount    BusinessGasAccount?
+  gasLedgerEntries GasLedgerEntry[]
+}
+
+/// Singleton row: platform-wide gas sponsorship policy (id = "default").
+model PlatformGasSettings {
+  id        String   @id @default("default")
+  updatedAt DateTime @updatedAt
+
+  sponsorshipEnabled Boolean  @default(false)
+  maxUsdPerTx          Decimal? @db.Decimal(18, 2)
+  notes                String?
+}
+
+/// Per-business prepaid gas balance and sponsorship toggle.
+model BusinessGasAccount {
+  businessId String @id
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  prepaidBalanceUsd    Decimal  @default(0) @db.Decimal(18, 2)
+  sponsorshipEnabled   Boolean  @default(false)
+  lowBalanceWarnUsd    Decimal? @db.Decimal(18, 2)
+
+  reservations GasReservation[]
+}
+
+/// Append-only ledger for gas credits/debits (business or platform when businessId is null).
+model GasLedgerEntry {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  businessId String?
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+
+  direction GasLedgerDirection
+  amountUsd Decimal          @db.Decimal(18, 2)
+  reason    GasLedgerReason
+  idempotencyKey String     @unique
+
+  metadata Json?
+
+  @@index([businessId, createdAt])
+}
+
+/// Holds prepaid amount until tx completes or TTL expires (prevents overspend).
+model GasReservation {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  businessId String
+  account    BusinessGasAccount @relation(fields: [businessId], references: [businessId], onDelete: Cascade)
+
+  amountUsd      Decimal @db.Decimal(18, 2)
+  idempotencyKey String  @unique
+
+  @@index([businessId])
+  @@index([expiresAt])
+}
+
+// --------------------------------------
+// Commerce (Merchant: catalog & pay pages)
+// --------------------------------------
+
+model Product {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  environment MerchantEnvironment @default(LIVE)
+
+  name        String
+  description String?
+  type        ProductType @default(DIGITAL)
+
+  price    Decimal @db.Decimal(18, 2)
+  currency String  @default("USD")
+
+  imageUrl   String?
+  isActive   Boolean @default(true)
+  isArchived Boolean @default(false)
+
+  paymentLinks PaymentLink[]
+  transactions Transaction[]
+
+  @@index([businessId])
+  @@index([businessId, environment])
+  @@index([isActive])
+}
+
+model PaymentLink {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  environment MerchantEnvironment @default(LIVE)
+
+  title       String
+  description String?
+  slug        String @unique
+  /// Opaque segment for /checkout/:code (not derived from title).
+  publicCode  String @unique
+
+  type PaymentLinkType @default(STANDARD)
+
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  amount   Decimal? @db.Decimal(18, 2)
+  currency String   @default("USD")
+
+  chargeKind PaymentLinkChargeKind @default(FIAT)
+  gasSponsorshipEnabled Boolean @default(false)
+  isOneTime Boolean @default(false)
+  paidAt DateTime?
+  paidByTransactionId String?
+  paidByWalletAddress String?
+
+  isActive Boolean @default(true)
+  views    Int     @default(0)
+
+  transactions Transaction[]
+
+  @@index([businessId])
+  @@index([businessId, environment])
+  @@index([slug])
+  @@index([publicCode])
+}
+
+/// Merchant-scoped CRM: one row per business × contact (email/phone/user).
+model MerchantCustomer {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  environment MerchantEnvironment @default(LIVE)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  email       String?
+  phone       String?
+  displayName String?
+  externalId  String? // Merchant's own reference id
+
+  totalSpend Decimal @default(0) @db.Decimal(18, 2)
+  orderCount Int     @default(0)
+
+  notes    String?
+  metadata Json?
+
+  firstSeenAt    DateTime?
+  lastActivityAt DateTime?
+
+  @@index([businessId])
+  @@index([businessId, environment])
+  @@index([email])
+  @@index([userId])
+}
+
+/// Pending team invite: user accepts via portal with matching email (see POST /api/business-auth/team/accept-invite).
+model BusinessMemberInvite {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  token     String   @unique
+
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  email     String
+  role      BusinessRole
+  invitedByUserId String?
+
+  acceptedAt DateTime?
+
+  @@index([businessId])
+  @@index([email])
 }
 
 model BusinessMember {
@@ -626,6 +1111,8 @@ model Payout {
   businessId String
   business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
+  environment MerchantEnvironment @default(LIVE)
+
   methodId  String
   method    PayoutMethod @relation(fields: [methodId], references: [id], onDelete: Restrict)
 
@@ -637,6 +1124,7 @@ model Payout {
   batchId   String?
 
   @@index([businessId])
+  @@index([businessId, environment])
   @@index([methodId])
   @@index([status])
 }
@@ -799,6 +1287,9 @@ model ApiKey {
   businessId String?  // If null: platform admin key; if set: merchant key
   business   Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
+  /// Merchant keys: TEST vs LIVE. Platform keys: null (use LIVE for all operations).
+  environment MerchantEnvironment?
+
   @@index([keyHash])
   @@index([isActive])
   @@index([businessId])
@@ -893,6 +1384,12 @@ model Invoice {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// Merchant scope (nullable until existing rows are backfilled).
+  businessId String?
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  environment MerchantEnvironment @default(LIVE)
+
   invoiceNumber String   @unique
   status        InvoiceStatus
   amount        Decimal  @db.Decimal(18, 2)
@@ -922,4 +1419,100 @@ model Invoice {
   @@index([status])
   @@index([billedTo])
   @@index([issued])
+  @@index([businessId])
+  @@index([businessId, environment])
+}
+
+// --------------------------------------
+// Merchant webhooks & refunds (B2B SaaS)
+// --------------------------------------
+
+model WebhookEndpoint {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  environment MerchantEnvironment @default(LIVE)
+
+  url    String
+  secret String?
+  events String[]
+  isActive Boolean @default(true)
+
+  deliveries WebhookDeliveryLog[]
+
+  @@index([businessId])
+  @@index([businessId, environment])
+}
+
+model WebhookDeliveryLog {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  endpointId String
+  endpoint   WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  eventType String
+  payload   Json
+
+  httpStatus   Int?
+  responseBody String? @db.Text
+  status       WebhookDeliveryStatus @default(PENDING)
+  attemptCount Int     @default(0)
+  lastAttemptAt DateTime?
+  nextRetryAt   DateTime?
+
+  transactionId String?
+  transaction   Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@index([endpointId])
+  @@index([createdAt])
+  @@index([transactionId])
+}
+
+model Refund {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  environment MerchantEnvironment @default(LIVE)
+
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+
+  amount   Decimal @db.Decimal(18, 8)
+  currency String
+  status   RefundStatus @default(PENDING)
+  reason   String?
+
+  requestedByUserId String?
+  cryptoTxHash      String?
+  failureReason     String?
+
+  @@index([businessId])
+  @@index([businessId, environment])
+  @@index([transactionId])
+}
+
+/// Audit: outbound share of a generated receive/payment link (email or SMS from Receive flow).
+model PaymentLinkDispatch {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  channel     String // EMAIL | SMS
+  destination String
+  linkUrl     String
+  amount      String?
+  tokenSymbol String?
+  chainId     String?
+  receiveMode String @default("CRYPTO") // CRYPTO | FIAT
+
+  @@index([createdAt])
 }

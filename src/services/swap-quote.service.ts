@@ -92,6 +92,67 @@ async function getZeroXQuoteNormalized(
 
 /** Competitive threshold: second quote is "alternative" if within this fraction of best to_amount. */
 const COMPETITIVE_PCT = 0.05; // 5%
+const NON_EVM_CHAIN_IDS = new Set([101, 148, 8332]);
+
+/** 0x often returns this for validation failures; prefer a more specific message from another provider when present. */
+const GENERIC_ZEROX_STYLE = /^the input is invalid$/i;
+
+type SwapQuoteAttemptResult = Awaited<ReturnType<typeof getSwapQuote>>;
+
+function collectSwapProviderFailures(
+  providers: readonly ("0x" | "squid" | "lifi")[],
+  results: PromiseSettledResult<SwapQuoteAttemptResult>[]
+): { provider: string; error: string }[] {
+  const out: { provider: string; error: string }[] = [];
+  providers.forEach((provider, i) => {
+    const r = results[i];
+    if (r == null) {
+      out.push({ provider, error: "(no result)" });
+      return;
+    }
+    if (r.status === "rejected") {
+      const err =
+        r.reason instanceof Error ? r.reason.message : String(r.reason ?? "rejected");
+      out.push({ provider, error: err || "(rejected)" });
+      return;
+    }
+    if (!r.value.ok) {
+      out.push({ provider, error: r.value.error });
+    }
+  });
+  return out;
+}
+
+function pickAggregateSwapError(failures: { provider: string; error: string }[]): string {
+  const nonGeneric = failures.find((f) => !GENERIC_ZEROX_STYLE.test(f.error.trim()));
+  if (nonGeneric) return nonGeneric.error;
+  if (failures.length === 0) return "No provider returned a quote";
+  return failures.map((f) => `${f.provider}: ${f.error}`).join("; ");
+}
+
+function logAllSwapProvidersFailed(
+  params: BestQuoteRequest,
+  failures: { provider: string; error: string }[]
+): void {
+  const fromTok =
+    params.from_token.length > 22
+      ? `${params.from_token.slice(0, 10)}…${params.from_token.slice(-8)}`
+      : params.from_token;
+  const toTok =
+    params.to_token.length > 22
+      ? `${params.to_token.slice(0, 10)}…${params.to_token.slice(-8)}`
+      : params.to_token;
+  console.warn(
+    "[swap:getBestQuotes] all providers failed",
+    JSON.stringify({
+      from_chain: params.from_chain,
+      to_chain: params.to_chain,
+      from_token: fromTok,
+      to_token: toTok,
+      failures,
+    })
+  );
+}
 
 /**
  * Get best quote(s) by calling all applicable providers (same-chain: 0x, Squid, LiFi; cross-chain: Squid, LiFi).
@@ -102,7 +163,16 @@ export async function getBestQuotes(
   params: BestQuoteRequest
 ): Promise<{ ok: true; data: BestQuoteResponse } | { ok: false; error: string }> {
   const sameChain = params.from_chain === params.to_chain;
-  const providers: ("0x" | "squid" | "lifi")[] = sameChain ? ["0x", "squid", "lifi"] : ["squid", "lifi"];
+  const isNonEvmPath =
+    NON_EVM_CHAIN_IDS.has(params.from_chain) ||
+    NON_EVM_CHAIN_IDS.has(params.to_chain);
+  const providers: ("0x" | "squid" | "lifi")[] = sameChain
+    ? isNonEvmPath
+      ? ["squid", "lifi"]
+      : ["0x", "squid", "lifi"]
+    : isNonEvmPath
+      ? ["squid", "lifi"]
+      : ["squid", "lifi"];
 
   const results = await Promise.allSettled(
     providers.map((provider) =>
@@ -121,14 +191,9 @@ export async function getBestQuotes(
   }
 
   if (quotes.length === 0) {
-    const firstRejection = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
-    const firstError = results.find(
-      (r) => r.status === "fulfilled" && !(r.value as { ok?: boolean }).ok
-    ) as PromiseFulfilledResult<{ ok: false; error: string }> | undefined;
-    const msg =
-      firstError?.value?.error ??
-      firstRejection?.reason?.message ??
-      "No provider returned a quote";
+    const failures = collectSwapProviderFailures(providers, results);
+    logAllSwapProvidersFailed(params, failures);
+    const msg = pickAggregateSwapError(failures);
     return { ok: false, error: msg };
   }
 
@@ -164,7 +229,14 @@ export async function getAllQuotes(
   params: AllQuotesRequest
 ): Promise<{ ok: true; data: AllQuotesResponse } | { ok: false; error: string }> {
   const sameChain = params.from_chain === params.to_chain;
-  const providers: ("0x" | "squid" | "lifi")[] = sameChain ? ["0x", "squid", "lifi"] : ["squid", "lifi"];
+  const isNonEvmPath =
+    NON_EVM_CHAIN_IDS.has(params.from_chain) ||
+    NON_EVM_CHAIN_IDS.has(params.to_chain);
+  const providers: ("0x" | "squid" | "lifi")[] = sameChain
+    ? isNonEvmPath
+      ? ["squid", "lifi"]
+      : ["0x", "squid", "lifi"]
+    : ["squid", "lifi"];
 
   const results = await Promise.allSettled(
     providers.map((provider) =>

@@ -113,7 +113,7 @@ describe("webhook order", () => {
     it("should return 400 and send order.rejected when provider validation fails (e.g. PayStack requires toIdentifier)", async () => {
       mockValidateOrder.mockResolvedValueOnce({
         valid: false,
-        error: "t_provider PAYSTACK requires toIdentifier (e.g. wallet address for Klyra, phone for PayStack)",
+        error: "t_provider PAYSTACK requires toIdentifier (e.g. wallet address for Morapay, phone for PayStack)",
         code: "MISSING_TO_IDENTIFIER",
       });
 

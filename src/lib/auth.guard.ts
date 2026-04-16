@@ -1,4 +1,5 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
+import type { MerchantEnvironment } from "../../prisma/generated/prisma/client.js";
 import {
   findApiKeyByRawKey,
   isOriginAllowed,
@@ -14,6 +15,8 @@ export type AuthenticatedApiKey = {
   expiresAt: Date | null;
   lastUsedAt: Date | null;
   businessId: string | null;
+  /** Merchant keys: TEST/LIVE pin; null = legacy (treated as LIVE). */
+  environment: MerchantEnvironment | null;
 };
 
 declare module "fastify" {
@@ -90,6 +93,7 @@ export async function requireApiKey(
     expiresAt: record.expiresAt,
     lastUsedAt: record.lastUsedAt,
     businessId: record.businessId ?? null,
+    environment: record.environment ?? null,
   };
 }
 
@@ -121,6 +125,7 @@ export async function resolveApiKeyIfPresent(request: FastifyRequest): Promise<v
     expiresAt: record.expiresAt,
     lastUsedAt: record.lastUsedAt,
     businessId: record.businessId ?? null,
+    environment: record.environment ?? null,
   };
 }
 

@@ -8,6 +8,7 @@
 import crypto from "node:crypto";
 import { getEnv } from "../config/env.js";
 import type { FonbnkQuoteRequest, FonbnkQuoteResponse } from "../lib/onramp-quote.types.js";
+import { prisma } from "../lib/prisma.js";
 
 /** Fonbnk-supported payout/deposit codes (NETWORK_ASSET). From https://docs.fonbnk.com/supported-countries-and-cryptocurrencies */
 const FONBNK_SUPPORTED_PAYOUT_CODES = new Set([
@@ -43,9 +44,173 @@ const FONBNK_SUPPORTED_PAYOUT_CODES = new Set([
   "XRP_RLUSD",
 ]);
 
+const CHAIN_ID_BY_NETWORK: Record<string, number> = {
+  ARBITRUM: 42161,
+  AVALANCHE: 43114,
+  BASE: 8453,
+  BNB: 56,
+  CELO: 42220,
+  ETHEREUM: 1,
+  LISK: 1135,
+  OPTIMISM: 10,
+  POLYGON: 137,
+  SOLANA: 101,
+  STELLAR: 148,
+  TON: 607,
+  TRON: 728126428,
+  XRP: 1440002,
+};
+
 export function isFonbnkSupportedPayoutCode(code: string): boolean {
   const normalized = code.trim().toUpperCase();
   return FONBNK_SUPPORTED_PAYOUT_CODES.has(normalized);
+}
+
+function parseSupportedCode(code: string): {
+  normalizedCode: string;
+  network: string | null;
+  asset: string | null;
+  chainId: bigint | null;
+} {
+  const normalizedCode = code.trim().toUpperCase();
+  if (!normalizedCode.includes("_")) {
+    return {
+      normalizedCode,
+      network: null,
+      asset: null,
+      chainId: null,
+    };
+  }
+  const [network, ...assetParts] = normalizedCode.split("_");
+  const asset = assetParts.join("_");
+  const chainId = CHAIN_ID_BY_NETWORK[network ?? ""] ?? null;
+  return {
+    normalizedCode,
+    network: network ?? null,
+    asset: asset || null,
+    chainId: chainId != null ? BigInt(chainId) : null,
+  };
+}
+
+/**
+ * Upsert `FonbnkSupportedAsset` from a maintained static list (see Fonbnk docs) or from `codes[]` in the request body.
+ * Fonbnk does not publish a stable public “list all NETWORK_ASSET codes” API for discovery; refresh codes via docs,
+ * this sync, or `POST /api/settings/quotes/fonbnk/sync` with `{ "codes": ["BASE_USDC", ...] }`.
+ */
+export async function syncFonbnkSupportedAssetsInDb(options?: {
+  codes?: string[];
+  source?: string;
+}): Promise<{ upserted: number }> {
+  const codes =
+    options?.codes?.map((value) => value.trim()).filter((value) => value.length > 0) ??
+    [...FONBNK_SUPPORTED_PAYOUT_CODES];
+  const source = options?.source?.trim() || "docs_sync";
+  const uniqueCodes = [...new Set(codes.map((value) => value.toUpperCase()))];
+  for (const code of uniqueCodes) {
+    const parsed = parseSupportedCode(code);
+    await prisma.fonbnkSupportedAsset.upsert({
+      where: { code: parsed.normalizedCode },
+      create: {
+        code: parsed.normalizedCode,
+        network: parsed.network,
+        asset: parsed.asset,
+        chainId: parsed.chainId,
+        source,
+        isActive: true,
+      },
+      update: {
+        network: parsed.network,
+        asset: parsed.asset,
+        chainId: parsed.chainId,
+        source,
+        isActive: true,
+      },
+    });
+  }
+  return { upserted: uniqueCodes.length };
+}
+
+export async function getActiveFonbnkSupportedPayoutCodesFromDb(): Promise<Set<string>> {
+  const rows = await prisma.fonbnkSupportedAsset.findMany({
+    where: { isActive: true },
+    select: { code: true },
+  });
+  return new Set(rows.map((row) => row.code.trim().toUpperCase()));
+}
+
+export async function isFonbnkSupportedPayoutCodeResolved(code: string): Promise<boolean> {
+  const normalizedCode = code.trim().toUpperCase();
+  const dbCodes = await getActiveFonbnkSupportedPayoutCodesFromDb();
+  if (dbCodes.size > 0) return dbCodes.has(normalizedCode);
+  return isFonbnkSupportedPayoutCode(normalizedCode);
+}
+
+export async function listFonbnkSupportedAssets(params?: {
+  limit?: number;
+  network?: string;
+}): Promise<
+  Array<{
+    code: string;
+    network: string | null;
+    asset: string | null;
+    chainId: string | null;
+    source: string | null;
+    isActive: boolean;
+    updatedAt: string;
+  }>
+> {
+  const limit = Math.min(Math.max(params?.limit ?? 100, 1), 500);
+  const rows = await prisma.fonbnkSupportedAsset.findMany({
+    where: {
+      ...(params?.network?.trim()
+        ? { network: params.network.trim().toUpperCase() }
+        : {}),
+    },
+    orderBy: { updatedAt: "desc" },
+    take: limit,
+  });
+  return rows.map((row) => ({
+    code: row.code,
+    network: row.network,
+    asset: row.asset,
+    chainId: row.chainId != null ? row.chainId.toString() : null,
+    source: row.source,
+    isActive: row.isActive,
+    updatedAt: row.updatedAt.toISOString(),
+  }));
+}
+
+/**
+ * When SupportedToken.fonbnkCode is null, infer Fonbnk NETWORK_ASSET from chain + symbol.
+ * Never use `${chainId}_${symbol}` for API calls — numeric prefixes are invalid for Fonbnk.
+ */
+const CHAIN_ID_SYMBOL_TO_FONBNK: Record<string, string> = {
+  "8453:USDC": "BASE_USDC",
+  "8453:ETH": "BASE_ETH",
+  "56:USDC": "BNB_USDC",
+  "56:USDT": "BNB_USDT",
+  "56:BNB": "BNB_NATIVE",
+  "1:USDC": "ETHEREUM_USDC",
+  "1:USDT": "ETHEREUM_USDT",
+  "1:ETH": "ETHEREUM_NATIVE",
+  "101:SOL": "SOLANA_NATIVE",
+  "101:USDC": "SOLANA_USDC",
+  "101:USDT": "SOLANA_USDT",
+  "42161:USDC": "ARBITRUM_USDC",
+  "42161:USDT": "ARBITRUM_USDT",
+  "43114:USDC": "AVALANCHE_USDC",
+  "43114:USDT": "AVALANCHE_USDT",
+  "10:USDC": "OPTIMISM_USDC",
+  "10:USDT": "OPTIMISM_USDT",
+  "137:USDC": "POLYGON_USDC",
+  "137:USDT": "POLYGON_USDT",
+};
+
+export function inferFonbnkCodeFromChainAndSymbol(chainId: number, symbol: string): string | null {
+  const key = `${chainId}:${symbol.trim().toUpperCase()}`;
+  const code = CHAIN_ID_SYMBOL_TO_FONBNK[key];
+  if (!code) return null;
+  return isFonbnkSupportedPayoutCode(code) ? code : null;
 }
 
 const COUNTRY_TO_CURRENCY: Record<string, string> = {
@@ -93,13 +258,16 @@ function signRequest(endpoint: string, timestamp: string, clientSecret: string):
 
 /**
  * Normalize token to Fonbnk payout currency code.
- * Fonbnk requires NETWORK_ASSET (chain + token, e.g. BASE_USDC, POLYGON_USDC, ETHEREUM_NATIVE).
- * Callers should pass the full code from pool-tokens (fonbnkCode). If token already contains "_", return as-is.
+ * Fonbnk requires NETWORK_ASSET (e.g. BASE_USDC, ETHEREUM_USDC). Never invent a network from a bare symbol.
  */
 export function toPayoutCurrencyCode(token: string): string {
   const normalized = token.trim().toUpperCase();
-  if (normalized.includes("_")) return normalized;
-  return `BASE_${normalized}`;
+  if (!normalized.includes("_")) {
+    throw new Error(
+      `Fonbnk requires NETWORK_ASSET (e.g. ETHEREUM_USDC), not a bare symbol: ${token}`
+    );
+  }
+  return normalized;
 }
 
 export function getCurrencyForCountry(countryCode: string): string {

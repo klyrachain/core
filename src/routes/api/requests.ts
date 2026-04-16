@@ -1,6 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { randomBytes } from "crypto";
 import { parseUnits } from "viem";
 import { Decimal } from "@prisma/client/runtime/client";
 import { prisma } from "../../lib/prisma.js";
@@ -13,14 +12,17 @@ import {
 } from "../../lib/api-helpers.js";
 import { requirePermission } from "../../lib/admin-auth.guard.js";
 import { PERMISSION_CONNECT_TRANSACTIONS } from "../../lib/permissions.js";
-import { normalizeNotificationChannels } from "../../lib/notification.types.js";
-import { sendPaymentRequestNotification, buildPaymentRequestLink } from "../../services/notification.service.js";
-import { generateClaimCode } from "../../utils/claim-code.js";
+import {
+  createPaymentRequest,
+  CreatePaymentRequestBodySchema,
+} from "../../services/payment-request-create.service.js";
 import { getLiquidityPoolWallet } from "../../services/liquidity-pool.service.js";
 import { findPoolTokenFromDb } from "../../services/supported-token.service.js";
 import { verifyTransactionByHash, transferMatches } from "../../services/transaction-verify.service.js";
 import { addInventory } from "../../services/inventory.service.js";
 import { onRequestPaymentSettled } from "../../services/request-settlement.service.js";
+import { getOptionalMerchantBusinessId } from "../../lib/business-portal-tenant.guard.js";
+import { getMerchantEnvironmentOrThrow } from "../../lib/merchant-environment.js";
 
 const CHAIN_NAME_TO_ID: Record<string, number> = {
   ETHEREUM: 1,
@@ -36,14 +38,20 @@ export async function requestsApiRoutes(app: FastifyInstance): Promise<void> {
     try {
       if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
       const { page, limit, skip } = parsePagination(req.query);
+      const merchantBid = getOptionalMerchantBusinessId(req);
+      const merchantEnv = getMerchantEnvironmentOrThrow(req);
+      const where = merchantBid
+        ? { businessId: merchantBid, environment: merchantEnv }
+        : {};
       const [items, total] = await Promise.all([
         prisma.request.findMany({
+          where,
           skip,
           take: limit,
           orderBy: { createdAt: "desc" },
           include: { transaction: true, claim: true },
         }),
-        prisma.request.count(),
+        prisma.request.count({ where }),
       ]);
       const data = items.map((r) => ({
         ...r,
@@ -99,8 +107,12 @@ export async function requestsApiRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/requests/:id", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
     try {
       if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
-      const request = await prisma.request.findUnique({
-        where: { id: req.params.id },
+      const merchantBid = getOptionalMerchantBusinessId(req);
+      const merchantEnv = getMerchantEnvironmentOrThrow(req);
+      const request = await prisma.request.findFirst({
+        where: merchantBid
+          ? { id: req.params.id, businessId: merchantBid, environment: merchantEnv }
+          : { id: req.params.id },
         include: { transaction: true, claim: true },
       });
       if (!request) return errorEnvelope(reply, "Request not found", 404);
@@ -129,139 +141,27 @@ export async function requestsApiRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  const PayoutFiatSchema = z.object({
-    type: z.enum(["nuban", "mobile_money"]),
-    account_name: z.string().min(1, "account_name is required (verified via Paystack resolve/validate)"),
-    account_number: z.string().min(1, "account_number is required"),
-    bank_code: z.string().min(1).optional(), // required for nuban; for mobile_money = provider code (e.g. MTN)
-    currency: z.string().min(1), // e.g. GHS
-  });
-
-  const CreateRequestSchema = z.object({
-    payerEmail: z.string().email(),
-    payerPhone: z.string().min(1).optional(),
-    channels: z.union([z.array(z.enum(["EMAIL", "SMS", "WHATSAPP"])), z.enum(["EMAIL", "SMS", "WHATSAPP"])]).optional(),
-    t_amount: z.coerce.number().positive(),
-    t_chain: z.string().min(1),
-    t_token: z.string().min(1),
-    toIdentifier: z.string().min(1),
-    receiveSummary: z.string().min(1),
-    /** When set, we auto-settle to this (crypto: 0x...). Requester does not claim. */
-    payoutTarget: z.string().min(1).optional(),
-    /** Verified fiat payout (use after Paystack resolve/validate so account_name is known). Required when t_chain is MOMO/BANK. */
-    payoutFiat: PayoutFiatSchema.optional(),
-    /** Make a payment (crypto): what sender sends. When set, payer sends this to platform; receiver gets t_chain/t_token/t_amount. */
-    f_chain: z.string().min(1).optional(),
-    f_token: z.string().min(1).optional(),
-    f_amount: z.coerce.number().positive().optional(),
-    /** When true (e.g. Make a payment): do not send "payment request - pay now" to payer; they complete payment via returned URL / flow. Emails go after payment is confirmed. */
-    skipPaymentRequestNotification: z.boolean().optional(),
-  });
-
   /** POST /api/requests — create payment request and notify payer (email/SMS/WhatsApp) with link to pay. */
   app.post<{ Body: unknown }>("/api/requests", async (req: FastifyRequest<{ Body: unknown }>, reply) => {
     try {
-      if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS)) return;
-      const parse = CreateRequestSchema.safeParse(req.body);
+      if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS, { allowMerchant: true })) return;
+      const parse = CreatePaymentRequestBodySchema.safeParse(req.body);
       if (!parse.success) {
         return reply.status(400).send({ success: false, error: "Validation failed", details: parse.error.flatten() });
       }
-      const body = parse.data;
-      const channels = normalizeNotificationChannels(body.channels);
-      const linkId = randomBytes(8).toString("hex");
-      const requestCode = `REQ${randomBytes(4).toString("hex").toUpperCase()}`;
-      const claimCode = generateClaimCode();
-
-      const isSenderPaysCrypto =
-        body.f_chain != null &&
-        body.f_token != null &&
-        body.f_amount != null &&
-        body.f_chain.toUpperCase() !== "MOMO" &&
-        body.f_chain.toUpperCase() !== "BANK";
-      const f_chain = isSenderPaysCrypto ? body.f_chain! : "MOMO";
-      const f_token = isSenderPaysCrypto ? body.f_token! : "GHS";
-      const f_amount = isSenderPaysCrypto ? body.f_amount! : 0;
-
-      const transaction = await prisma.transaction.create({
-        data: {
-          type: "REQUEST",
-          status: "PENDING",
-          f_amount,
-          t_amount: body.t_amount,
-          f_chain,
-          t_chain: body.t_chain,
-          f_token,
-          t_token: body.t_token,
-          f_provider: isSenderPaysCrypto ? "KLYRA" : "PAYSTACK",
-          t_provider: "KLYRA",
-          fromIdentifier: body.payerEmail,
-          fromType: "EMAIL",
-          toIdentifier: body.toIdentifier,
-          toType: body.toIdentifier.includes("@") ? "EMAIL" : "NUMBER",
-        },
-      });
-
-      const payoutFiatJson =
-        body.payoutFiat != null
-          ? JSON.parse(JSON.stringify(body.payoutFiat)) as object
-          : undefined;
-
-      const request = await prisma.request.create({
-        data: {
-          code: requestCode,
-          linkId,
-          transactionId: transaction.id,
-          payoutTarget: body.payoutTarget ?? undefined,
-          payoutFiat: payoutFiatJson ?? undefined,
-        },
-      });
-
-      await prisma.transaction.update({
-        where: { id: transaction.id },
-        data: { requestId: request.id },
-      });
-
-      const claim = await prisma.claim.create({
-        data: {
-          requestId: request.id,
-          status: "ACTIVE",
-          value: body.t_amount,
-          price: 1,
-          token: body.t_token,
-          payerIdentifier: body.payerEmail,
-          toIdentifier: body.toIdentifier,
-          code: claimCode,
-        },
-      });
-
-      const claimLinkUrl = buildPaymentRequestLink(linkId);
-      const results = body.skipPaymentRequestNotification
-        ? {}
-        : await sendPaymentRequestNotification({
-            channels,
-            toEmail: body.payerEmail,
-            toPhone: body.payerPhone,
-            entityRefId: request.id,
-            templateVars: {
-              requesterIdentifier: body.toIdentifier,
-              amount: String(body.t_amount),
-              currency: body.t_token,
-              receiveSummary: body.receiveSummary,
-              claimLinkUrl,
-            },
-          });
-
+      const merchantBid = getOptionalMerchantBusinessId(req) ?? null;
+      const data = await createPaymentRequest(parse.data, { businessId: merchantBid });
       return reply.status(201).send({
         success: true,
         data: {
-          id: request.id,
-          code: request.code,
-          linkId: request.linkId,
-          transactionId: transaction.id,
-          claimId: claim.id,
-          claimCode: claim.code,
-          payLink: claimLinkUrl,
-          notification: results,
+          id: data.id,
+          code: data.code,
+          linkId: data.linkId,
+          transactionId: data.transactionId,
+          claimId: data.claimId,
+          claimCode: data.claimCode,
+          payLink: data.payLink,
+          notification: data.notification,
         },
       });
     } catch (err) {
@@ -281,9 +181,26 @@ export async function requestsApiRoutes(app: FastifyInstance): Promise<void> {
       }
       const tx = await prisma.transaction.findUnique({
         where: { id: transaction_id },
-        select: { id: true, type: true, status: true, t_chain: true, t_token: true, t_amount: true, f_chain: true, f_token: true, f_amount: true },
+        select: {
+          id: true,
+          type: true,
+          status: true,
+          businessId: true,
+          environment: true,
+          t_chain: true,
+          t_token: true,
+          t_amount: true,
+          f_chain: true,
+          f_token: true,
+          f_amount: true,
+        },
       });
       if (!tx) return errorEnvelope(reply, "Transaction not found", 404);
+      const merchantBid = getOptionalMerchantBusinessId(req);
+      const merchantEnv = getMerchantEnvironmentOrThrow(req);
+      if (merchantBid && (tx.businessId !== merchantBid || tx.environment !== merchantEnv)) {
+        return reply.status(403).send({ success: false, error: "Forbidden", code: "TENANT_MISMATCH" });
+      }
       if (tx.type !== "REQUEST") return reply.status(400).send({ success: false, error: "Transaction must be REQUEST" });
       if (tx.status === "COMPLETED") return reply.status(400).send({ success: false, error: "Request already paid" });
 
@@ -334,6 +251,8 @@ export async function requestsApiRoutes(app: FastifyInstance): Promise<void> {
         id: true,
         type: true,
         status: true,
+        businessId: true,
+          environment: true,
         createdAt: true,
         t_chain: true,
         t_token: true,
@@ -345,6 +264,14 @@ export async function requestsApiRoutes(app: FastifyInstance): Promise<void> {
       },
     });
     if (!tx) return errorEnvelope(reply, "Transaction not found", 404);
+    const merchantBidConfirm = getOptionalMerchantBusinessId(req);
+    const merchantEnvConfirm = getMerchantEnvironmentOrThrow(req);
+    if (
+      merchantBidConfirm &&
+      (tx.businessId !== merchantBidConfirm || tx.environment !== merchantEnvConfirm)
+    ) {
+      return reply.status(403).send({ success: false, error: "Forbidden", code: "TENANT_MISMATCH" });
+    }
     if (tx.type !== "REQUEST") return reply.status(400).send({ success: false, error: "Transaction must be REQUEST" });
     if (tx.status === "COMPLETED") {
       return successEnvelope(reply, { confirmed: true, transaction_id, message: "Already completed" });

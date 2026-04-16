@@ -1,5 +1,5 @@
 {
-  "displayName": "Klyra Payment Request",
+  "displayName": "Morapay Payment Request",
   "category": "UTILITY",
   "language": "en_US",
   "submitForReview": false,
@@ -13,7 +13,7 @@
           { "id": 1, "name": "amount", "type": "variable", "props": { "variableType": "text", "sample": "50", "url": null, "shortUrl": null, "alt": null, "mediaType": null } },
           { "id": 2, "name": "currency", "type": "variable", "props": { "variableType": "text", "sample": "USDC", "url": null, "shortUrl": null, "alt": null, "mediaType": null } },
           { "id": 3, "name": "receiveSummary", "type": "variable", "props": { "variableType": "text", "sample": "25 USDC on Base", "url": null, "shortUrl": null, "alt": null, "mediaType": null } },
-          { "id": 4, "name": "link", "type": "variable", "props": { "variableType": "text", "sample": "https://app.klyra.com/pay/request/abc123", "url": null, "shortUrl": null, "alt": null, "mediaType": null } }
+          { "id": 4, "name": "link", "type": "variable", "props": { "variableType": "text", "sample": "https://app.morapay.com/pay/request/abc123", "url": null, "shortUrl": null, "alt": null, "mediaType": null } }
         ]
       },
       "sms": null,

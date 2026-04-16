@@ -11,6 +11,16 @@ import type { SwapQuoteRequest, SwapQuoteResponse, SwapQuoteTransaction } from "
 
 const SQUID_BASE = "https://v2.api.squidrouter.com/v2";
 
+const NATIVE_SQUID_LOWER = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+
+/** Squid accepts lowercase ERC-20 addresses; keep 0xeeee… for native. */
+function normalizeSquidTokenAddress(addr: string): string {
+  const t = toSquidNativeToken(addr.trim());
+  if (t.toLowerCase() === NATIVE_SQUID_LOWER) return t;
+  if (/^0x[a-fA-F0-9]{40}$/.test(t)) return t.toLowerCase();
+  return t;
+}
+
 function getIntegratorId(): string | null {
   const id = getEnv().SQUID_INTEGRATOR_ID;
   return id && id.length > 0 ? id : null;
@@ -41,7 +51,9 @@ type SquidRouteResponse = {
 };
 
 /**
- * Fetch swap/bridge quote from Squid. Returns normalized quote; includes transaction when quoteOnly is false.
+ * Fetch swap/bridge quote from Squid (v2 /route).
+ * Uses quoteOnly=true and empty toAddress when unset — matches Squid quote exploration; quoteOnly:false
+ * can return errors like "swaps unavailable" for routes that still return estimates with quoteOnly:true.
  */
 export async function getSquidQuote(
   params: SwapQuoteRequest
@@ -56,8 +68,10 @@ export async function getSquidQuote(
     return { ok: false, error: "from_address is required for Squid quotes" };
   }
 
-  const fromToken = toSquidNativeToken(params.from_token);
-  const toToken = toSquidNativeToken(params.to_token);
+  const fromToken = normalizeSquidTokenAddress(params.from_token);
+  const toToken = normalizeSquidTokenAddress(params.to_token);
+  const toAddrRaw = params.to_address?.trim();
+  const toAddress = toAddrRaw != null && toAddrRaw !== "" ? toAddrRaw : "";
 
   const body: Record<string, unknown> = {
     fromAddress,
@@ -66,10 +80,10 @@ export async function getSquidQuote(
     fromAmount: params.amount,
     toChain: String(params.to_chain),
     toToken,
-    toAddress: params.to_address?.trim() || fromAddress,
+    toAddress,
     slippage: params.slippage ?? 1,
     enableBoost: false,
-    quoteOnly: false, // get transaction so we can return calldata if present
+    quoteOnly: true,
   };
 
   const config = await getSwapFeeConfigForProvider();
@@ -120,8 +134,14 @@ export async function getSquidQuote(
   const sameToken = fromToken.toLowerCase() === toToken.toLowerCase();
 
   let transaction: SwapQuoteTransaction | null = null;
-  if (route.transactionRequest) {
-    const tr = route.transactionRequest;
+  const tr = route.transactionRequest;
+  if (
+    tr &&
+    typeof tr.target === "string" &&
+    tr.target.length > 0 &&
+    typeof tr.data === "string" &&
+    tr.data.length > 0
+  ) {
     transaction = {
       target: tr.target,
       data: tr.data,

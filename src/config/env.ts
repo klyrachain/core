@@ -38,6 +38,11 @@ const envSchema = z.object({
 
   /** Paystack secret key for account verification, banks, transfers. Optional; if missing, Paystack routes return 503. */
   PAYSTACK_SECRET_KEY: z.string().min(1).optional(),
+  /**
+   * Required for POST /api/paystack/payments/initialize: this address is sent to Paystack as the customer email
+   * so Paystack notifications go to your platform inbox; the payer’s email is stored on the transaction only.
+   */
+  PAYSTACK_PLATFORM_EMAIL: z.string().email().optional(),
 
   /** Fonbnk API for onramp fiat↔crypto quotes. Optional; if missing, onramp quote returns 503. */
   FONBNK_API_URL: z.string().optional(),
@@ -47,6 +52,8 @@ const envSchema = z.object({
 
   /** ExchangeRate-API key for fiat↔fiat (USD pivot). Optional; used for non–Fonbnk countries. */
   EXCHANGERATE_API_KEY: z.string().min(1).optional(),
+  /** TTL (ms) for cached `latest/USD` bulk table. Default 600000 (10 minutes). */
+  EXCHANGERATE_CACHE_TTL_MS: z.coerce.number().int().positive().optional(),
 
   /** WebAuthn (passkey) RP ID for admin dashboard. Default localhost for dev. */
   ADMIN_RP_ID: z.string().min(1).optional(),
@@ -83,8 +90,26 @@ const envSchema = z.object({
   /** Frontend app base URL for payment/claim links (e.g. https://app.example.com). Used in email/SMS templates. */
   FRONTEND_APP_URL: z.string().url().optional().default("http://localhost:3000"),
 
+  /** Payer checkout app origin (no trailing slash), e.g. https://pay.example.com. Exposed read-only via GET /api/meta/checkout-base-url. */
+  CHECKOUT_BASE_URL: z.string().url().optional(),
+
+  /** When true, periodically re-verify stale Paystack commerce pendings (requires PAYSTACK_SECRET_KEY). */
+  PAYSTACK_RECONCILE_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true" || v === "1"),
+  /** Interval for Paystack commerce reconciliation (ms). Default 5 minutes. */
+  PAYSTACK_RECONCILE_INTERVAL_MS: z.coerce.number().int().positive().optional().default(300_000),
+  /** Minimum age before a PENDING row is eligible (ms). Default 2 minutes to avoid racing initialize. */
+  PAYSTACK_RECONCILE_MIN_AGE_MS: z.coerce.number().int().positive().optional().default(120_000),
+  /** Max rows per reconciliation tick. */
+  PAYSTACK_RECONCILE_MAX_BATCH: z.coerce.number().int().min(1).max(200).optional().default(30),
+
   /** HMAC secret for business portal JWT (signup / dashboard session). Defaults to ENCRYPTION_KEY. */
   BUSINESS_PORTAL_JWT_SECRET: z.string().min(32).optional(),
+
+  /** HMAC for checkout gas-usage report tokens (defaults to ENCRYPTION_KEY if unset). */
+  GAS_REPORT_HMAC_SECRET: z.string().min(32).optional(),
 
   /** Google OAuth for business signup (optional; omit to disable “Continue with Google”). */
   GOOGLE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
@@ -95,13 +120,84 @@ const envSchema = z.object({
    */
   GOOGLE_OAUTH_REDIRECT_URI: z.string().url().optional(),
 
-  /** After Google OAuth, redirect here with ?portal_token= (e.g. https://app.example.com/business/signup). If unset, uses same host as the API + /signup/business. */
+  /**
+   * After Google OAuth, redirect here with ?portal_token= (dashboard route).
+   * Production: set explicitly (e.g. https://app.example.com/business/signup).
+   * Development: defaults to http://localhost:3001/business/signup when unset.
+   */
   BUSINESS_SIGNUP_LANDING_URL: z.string().url().optional(),
+
+  /**
+   * Optional: force magic-link emails to Core’s /signup/business (e.g. http://127.0.0.1:4003).
+   * Only used when BUSINESS_SIGNUP_LANDING_URL is unset. If landing URL is set, magic links use that instead.
+   */
+  BUSINESS_MAGIC_LINK_BASE_URL: z.string().url().optional(),
 
   /** WebAuthn RP ID for business portal passkeys (hostname only, e.g. localhost or app.example.com). */
   BUSINESS_WEBAUTHN_RP_ID: z.string().min(1).optional(),
   /** Comma-separated origins allowed for business portal WebAuthn (e.g. http://localhost:3000). */
   BUSINESS_WEBAUTHN_ORIGINS: z.string().optional(),
+
+  /**
+   * Optional: override swap quote `fromAddress` used for server-side route estimates
+   * when the user has not connected a wallet. Must be a valid EVM address.
+   */
+  QUOTE_ESTIMATE_FROM_ADDRESS: z.string().optional(),
+
+  /** When "1" or "true", core starts BullMQ worker for peer-ramp match queue (requires Redis). */
+  PEER_RAMP_WORKER_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true" || v === "1"),
+
+  /** Base Sepolia (test): platform USDC escrow address for peer offramp instructions (0x + 40 hex). */
+  PEER_RAMP_PLATFORM_ESCROW_ADDRESS: z.string().optional(),
+  /**
+   * Optional: private key for the escrow EOA (must match PEER_RAMP_PLATFORM_ESCROW_ADDRESS).
+   * Peer-ramp onramp USDC sends use this wallet so delivery txs are escrow→user. If unset, TESTNET_SEND_PRIVATE_KEY is used and must match the escrow address when both are set.
+   */
+  PEER_RAMP_ESCROW_SENDER_PRIVATE_KEY: z.string().min(1).optional(),
+
+  /** HMAC secret for peer-ramp app session JWT after email OTP (defaults to ENCRYPTION_KEY). */
+  PEER_RAMP_APP_JWT_SECRET: z.string().min(32).optional(),
+  /** Peer-ramp app session length in seconds (default 24h). */
+  PEER_RAMP_APP_SESSION_SECONDS: z.coerce.number().int().positive().optional().default(86_400),
+  /** Minimum seconds between OTP emails per address (default 60). */
+  PEER_RAMP_APP_OTP_COOLDOWN_SECONDS: z.coerce.number().int().min(10).optional().default(60),
+
+  // ── KYC providers ───────────────────────────────────────────────────────────
+
+  /** DIDIT: x-api-key for https://verification.didit.me/v3/ */
+  DIDIT_API_KEY: z.string().min(1).optional(),
+  /** DIDIT: Client ID from the Didit Console (identifies your application). */
+  DIDIT_CLIENT_ID: z.string().uuid().optional(),
+  /** DIDIT: Workflow ID from the Didit Console (required to create sessions). */
+  DIDIT_WORKFLOW_ID: z.string().uuid().optional(),
+  /** DIDIT: Webhook secret for X-Signature-V2 HMAC verification. */
+  DIDIT_WEBHOOK_SECRET: z.string().min(1).optional(),
+
+  /** Persona: Bearer API key (sandbox key starts with persona_sandbox_). */
+  PERSONA_API_KEY: z.string().min(1).optional(),
+  /** Persona: Inquiry template ID (itmpl_...). */
+  PERSONA_TEMPLATE_ID: z.string().min(1).optional(),
+  /** Persona: Environment ID (env_...) — returned to CDN client, not a secret. */
+  PERSONA_ENVIRONMENT_ID: z.string().min(1).optional(),
+  /** Persona: Webhook secret for Persona-Signature HMAC verification. */
+  PERSONA_WEBHOOK_SECRET: z.string().min(1).optional(),
+
+  /**
+   * KYC service routing map (JSON string).
+   * Maps opaque frontend service IDs to internal provider names.
+   * Example: {"svc_kyc_01":"didit","svc_kyc_02":"persona"}
+   */
+  KYC_SERVICE_MAP: z.string().optional(),
+
+  /**
+   * Default KYC service ID (must exist in KYC_SERVICE_MAP).
+   * When set, the x-kyc-service header becomes optional for /api/peer-ramp-app/kyc/init.
+   * Example: "svc_kyc_01"
+   */
+  DEFAULT_KYC_SERVICE: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -114,7 +210,13 @@ export function loadEnv(): Env {
     const msg = parsed.error.errors.map((e) => `${e.path.join(".")}: ${e.message}`).join("; ");
     throw new Error(`Invalid environment: ${msg}`);
   }
-  env = parsed.data;
+  const d = parsed.data;
+  env = {
+    ...d,
+    BUSINESS_SIGNUP_LANDING_URL:
+      d.BUSINESS_SIGNUP_LANDING_URL ??
+      (d.NODE_ENV === "development" ? "http://localhost:3001/business/signup" : undefined),
+  };
   return env;
 }
 

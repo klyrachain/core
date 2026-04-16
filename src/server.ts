@@ -2,7 +2,12 @@ import Fastify from "fastify";
 import { loadEnv, getEnv } from "./config/env.js";
 import { prisma, disconnectPrisma } from "./lib/prisma.js";
 import { getRedis, disconnectRedis } from "./lib/redis.js";
-import { createPollWorker, closeQueue } from "./lib/queue.js";
+import {
+  createPollWorker,
+  closeQueue,
+  createProviderCatalogWorker,
+  ensureProviderCatalogRepeatableJob,
+} from "./lib/queue.js";
 import { processPollJob } from "./workers/poll.worker.js";
 import { orderWebhookRoutes } from "./routes/webhook/order.js";
 import { adminWebhookRoutes } from "./routes/webhook/admin.js";
@@ -23,6 +28,7 @@ import { connectApiRoutes } from "./routes/api/connect.js";
 import { platformApiRoutes } from "./routes/api/platform.js";
 import { settingsApiRoutes } from "./routes/api/settings.js";
 import { providersApiRoutes } from "./routes/api/providers.js";
+import { providerMetadataApiRoutes } from "./routes/api/provider-metadata.js";
 import { validationApiRoutes } from "./routes/api/validation.js";
 import { notificationApiRoutes } from "./routes/api/notification.js";
 import { adminSentTemplatesRoutes } from "./routes/api/admin-sent-templates.js";
@@ -36,7 +42,20 @@ import { paystackPayoutsApiRoutes } from "./routes/api/paystack-payouts.js";
 import { paystackTransactionsApiRoutes } from "./routes/api/paystack-transactions.js";
 import { paystackTransfersApiRoutes } from "./routes/api/paystack-transfers.js";
 import { offrampApiRoutes } from "./routes/api/offramp.js";
+import { appTransferApiRoutes } from "./routes/api/app-transfer.js";
+import { paymentLinkDispatchApiRoutes } from "./routes/api/payment-link-dispatch.js";
 import { testApiRoutes } from "./routes/api/test.js";
+import { peerRampApiRoutes } from "./routes/api/peer-ramp.js";
+import { peerRampAppApiRoutes } from "./routes/api/peer-ramp-app.js";
+import { peerRampKycApiRoutes } from "./routes/api/peer-ramp-kyc.js";
+import { adminPeerRampKycApiRoutes } from "./routes/api/admin-peer-ramp-kyc.js";
+import { kycWebhookRoutes } from "./routes/webhook/kyc.js";
+import { metaApiRoutes } from "./routes/api/meta.js";
+import { publicPaymentLinksApiRoutes } from "./routes/api/public-payment-links.js";
+import { publicGasApiRoutes } from "./routes/api/public-gas.js";
+import { gasPlatformApiRoutes } from "./routes/api/gas-platform.js";
+import { publicCurrenciesApiRoutes } from "./routes/api/public-currencies.js";
+import { publicWrappedApiRoutes } from "./routes/api/public-wrapped.js";
 import { v1QuotesRoutes } from "./routes/api/v1/quotes.js";
 import { adminAuthRoutes } from "./routes/api/admin-auth.js";
 import { businessAuthRoutes } from "./routes/api/business-auth.js";
@@ -44,10 +63,15 @@ import { paystackWebhookRoutes } from "./routes/webhook/paystack.js";
 import { onRequestLog, onResponseLog } from "./lib/request-log-hooks.js";
 import { requireApiKeyOrSession, resolveApiKeyIfPresent } from "./lib/auth.guard.js";
 import { resolveAdminSessionIfPresent } from "./lib/admin-auth.guard.js";
-import { handleMerchantV1Auth } from "./lib/business-portal-tenant.guard.js";
+import {
+  handleMerchantV1Auth,
+  resolveInvoicesPortalTenantIfEligible,
+} from "./lib/business-portal-tenant.guard.js";
 import { merchantV1Routes } from "./routes/api/v1/merchant.js";
 import { ensureValidationCache, loadValidationCache } from "./services/validation-cache.service.js";
 import { processPendingEmails } from "./services/email.service.js";
+import { reconcileStaleCommercePaystackTransactions } from "./services/paystack-reconcile.service.js";
+import { runProviderCatalogSync } from "./services/provider-catalog-sync.service.js";
 
 loadEnv();
 
@@ -59,19 +83,24 @@ const app = Fastify({
   },
 });
 
-app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
-  (req as { rawBody?: string }).rawBody = typeof body === "string" ? body : "";
-  try {
-    done(null, body ? JSON.parse(body as string) : {});
-  } catch (e) {
-    done(e as Error, undefined);
+// Match `application/json`, `application/json; charset=utf-8`, etc. so webhooks keep `rawBody` for HMAC.
+app.addContentTypeParser(
+  /^application\/json(?:\s*;.*)?$/i,
+  { parseAs: "string" },
+  (req, body, done) => {
+    (req as { rawBody?: string }).rawBody = typeof body === "string" ? body : "";
+    try {
+      done(null, body ? JSON.parse(body as string) : {});
+    } catch (e) {
+      done(e as Error, undefined);
+    }
   }
-});
+);
 
 app.addHook("preValidation", onRequestLog);
 app.addHook("onResponse", onResponseLog);
 
-// Auth: only /api/health, /api/ready, /api/auth, /api/requests/by-link/:linkId (GET), and /webhook/paystack are public.
+// Auth: health/ready, auth routes, GET /api/requests/by-link/:linkId, GET /api/public/payment-links/:slug, GET /api/public/currencies, GET /api/meta/checkout-base-url, /webhook/paystack are public.
 app.addHook("preHandler", async (request, reply) => {
   const path = (request.url ?? "").split("?")[0];
   const method = (request.method ?? "").toUpperCase();
@@ -80,8 +109,22 @@ app.addHook("preHandler", async (request, reply) => {
   if (path.startsWith("/api/business-auth")) return;
   if (path === "/signup/business") return;
   if (path === "/webhook/paystack") return; // Paystack does not send x-api-key; we verify x-paystack-signature instead
+  if (path === "/webhook/didit" || path === "/webhooks/didit")
+    return; // DIDIT webhook: HMAC verified inside handler
+  if (path === "/webhook/persona") return; // Persona webhook: HMAC verified inside handler
   if (method === "GET" && path.startsWith("/api/requests/by-link/")) return; // Public pay link for request
+  if (method === "GET" && path === "/api/meta/checkout-base-url") return;
+  if (method === "GET" && path.startsWith("/api/public/")) return;
+  if (method === "POST" && path === "/api/public/gas-usage") return;
+  if (method === "GET" && path === "/api/chains") return;
+  if (
+    method === "GET" &&
+    (path === "/api/tokens" || path === "/api/tokens/list")
+  ) {
+    return;
+  }
   if (method === "OPTIONS") return;
+  if (path.startsWith("/api/peer-ramp-app/")) return;
 
   await resolveApiKeyIfPresent(request);
   await resolveAdminSessionIfPresent(request);
@@ -90,6 +133,11 @@ app.addHook("preHandler", async (request, reply) => {
     const merchantOk = await handleMerchantV1Auth(request, reply);
     if (!merchantOk) return;
     return;
+  }
+
+  if (path.startsWith("/api/invoices")) {
+    await resolveInvoicesPortalTenantIfEligible(request, reply);
+    if (reply.sent) return;
   }
 
   requireApiKeyOrSession(request, reply);
@@ -125,6 +173,12 @@ await app.register(v1QuotesRoutes, { prefix: "/api/v1" });
 await app.register(merchantV1Routes, { prefix: "/api/v1/merchant" });
 await app.register(adminAuthRoutes, { prefix: "" });
 await app.register(businessAuthRoutes, { prefix: "" });
+await app.register(metaApiRoutes, { prefix: "" });
+await app.register(publicPaymentLinksApiRoutes, { prefix: "" });
+await app.register(publicGasApiRoutes, { prefix: "" });
+await app.register(gasPlatformApiRoutes, { prefix: "" });
+await app.register(publicCurrenciesApiRoutes, { prefix: "" });
+await app.register(publicWrappedApiRoutes, { prefix: "" });
 await app.register(countriesApiRoutes, { prefix: "" });
 await app.register(chainsTokensApiRoutes, { prefix: "" });
 await app.register(invoicesApiRoutes, { prefix: "" });
@@ -133,6 +187,7 @@ await app.register(connectApiRoutes, { prefix: "" });
 await app.register(platformApiRoutes, { prefix: "" });
 await app.register(settingsApiRoutes, { prefix: "" });
 await app.register(providersApiRoutes, { prefix: "" });
+await app.register(providerMetadataApiRoutes, { prefix: "" });
 await app.register(validationApiRoutes, { prefix: "" });
 await app.register(notificationApiRoutes, { prefix: "" });
 await app.register(adminSentTemplatesRoutes, { prefix: "" });
@@ -146,16 +201,34 @@ await app.register(paystackPayoutsApiRoutes, { prefix: "" });
 await app.register(paystackTransactionsApiRoutes, { prefix: "" });
 await app.register(paystackTransfersApiRoutes, { prefix: "" });
 await app.register(offrampApiRoutes, { prefix: "" });
+await app.register(appTransferApiRoutes, { prefix: "" });
+await app.register(paymentLinkDispatchApiRoutes, { prefix: "" });
 await app.register(testApiRoutes, { prefix: "" });
+await app.register(peerRampApiRoutes, { prefix: "" });
+await app.register(peerRampAppApiRoutes, { prefix: "" });
+await app.register(peerRampKycApiRoutes, { prefix: "" });
+await app.register(adminPeerRampKycApiRoutes, { prefix: "" });
 await app.register(paystackWebhookRoutes, { prefix: "" });
+await app.register(kycWebhookRoutes, { prefix: "" });
 
 const pollWorker = createPollWorker(processPollJob);
 
-let validationCacheInterval: ReturnType<typeof setInterval> | null = null;
+const providerCatalogWorker = createProviderCatalogWorker(async () => {
+  await runProviderCatalogSync({ logger: app.log });
+});
 
+let validationCacheInterval: ReturnType<typeof setInterval> | null = null;
+let paystackReconcileInterval: ReturnType<typeof setInterval> | null = null;
+
+let shuttingDown = false;
 const shutdown = async () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
   if (validationCacheInterval) clearInterval(validationCacheInterval);
+  if (paystackReconcileInterval) clearInterval(paystackReconcileInterval);
   await pollWorker.close();
+  await providerCatalogWorker.close();
   await closeQueue();
   await disconnectRedis();
   await disconnectPrisma();
@@ -167,15 +240,58 @@ process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
 const port = getEnv().PORT;
-app.listen({ port, host: "0.0.0.0" }, async (err, address) => {
-  if (err) {
-    console.error(err);
+
+const startServer = async () => {
+  try {
+    const address = await app.listen({ port, host: "0.0.0.0" });
+    app.log.info(`Server listening at ${address}`);
+    await ensureValidationCache().catch((e) =>
+      app.log.warn("Validation cache initial load failed:", e)
+    );
+    processPendingEmails().catch((e) =>
+      app.log.warn("Pending emails processing failed:", e)
+    );
+    validationCacheInterval = setInterval(() => {
+      loadValidationCache().catch((e) =>
+        app.log.warn("Validation cache refresh failed:", e)
+      );
+    }, VALIDATION_CACHE_REFRESH_MS);
+
+    const env = getEnv();
+    await ensureProviderCatalogRepeatableJob().catch((e) =>
+      app.log.warn({ err: e }, "Provider catalog repeatable job registration failed")
+    );
+
+    if (env.PAYSTACK_RECONCILE_ENABLED) {
+      const tick = () => {
+        reconcileStaleCommercePaystackTransactions({
+          minAgeMs: env.PAYSTACK_RECONCILE_MIN_AGE_MS,
+          maxBatch: env.PAYSTACK_RECONCILE_MAX_BATCH,
+        })
+          .then((r) => {
+            if (
+              r.processed > 0 ||
+              r.settled > 0 ||
+              r.failedMarked > 0 ||
+              r.errors > 0
+            ) {
+              app.log.info(
+                {
+                  paystackReconcile: r,
+                },
+                "Paystack commerce reconciliation tick"
+              );
+            }
+          })
+          .catch((e) => app.log.warn({ err: e }, "Paystack reconciliation failed"));
+      };
+      paystackReconcileInterval = setInterval(tick, env.PAYSTACK_RECONCILE_INTERVAL_MS);
+      setImmediate(tick);
+    }
+  } catch (err) {
+    app.log.error(err, "Failed to start server");
     process.exit(1);
   }
-  console.log(`Server listening at ${address}`);
-  await ensureValidationCache().catch((e) => console.warn("Validation cache initial load failed:", e));
-  await processPendingEmails().catch((e) => console.warn("Pending emails processing failed:", e));
-  validationCacheInterval = setInterval(() => {
-    loadValidationCache().catch((e) => console.warn("Validation cache refresh failed:", e));
-  }, VALIDATION_CACHE_REFRESH_MS);
-});
+};
+
+startServer();

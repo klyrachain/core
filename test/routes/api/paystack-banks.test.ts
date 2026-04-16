@@ -21,6 +21,15 @@ describe("Paystack banks API", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     app = Fastify();
+    app.addHook("preHandler", (req, _reply, done) => {
+      (req as { apiKey?: { id: string; name: string; permissions: string[]; businessId: string | null } }).apiKey = {
+        id: "test-key",
+        name: "Test",
+        permissions: ["*"],
+        businessId: null,
+      };
+      done();
+    });
     app.addContentTypeParser("application/json", { parseAs: "string" }, (_, body, done) => {
       try {
         done(null, body ? JSON.parse(body as string) : {});

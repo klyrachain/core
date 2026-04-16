@@ -1,0 +1,2 @@
+ALTER TABLE "PaymentLink"
+ADD COLUMN IF NOT EXISTS "gasSponsorshipEnabled" BOOLEAN NOT NULL DEFAULT false;

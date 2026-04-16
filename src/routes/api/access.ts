@@ -51,6 +51,17 @@ export async function accessApiRoutes(app: FastifyInstance): Promise<void> {
         } satisfies AccessContext);
       }
 
+      if (req.businessPortalTenant) {
+        const business = await prisma.business.findUnique({
+          where: { id: req.businessPortalTenant.businessId },
+          select: { id: true, name: true, slug: true },
+        });
+        return successEnvelope(reply, {
+          type: "merchant",
+          business: business ?? undefined,
+        } satisfies AccessContext);
+      }
+
       const apiKey = req.apiKey;
       if (!apiKey) {
         return errorEnvelope(reply, "Not authenticated.", 401);

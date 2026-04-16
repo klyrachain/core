@@ -132,6 +132,16 @@ export function requirePermission(
   permission: string,
   options?: { allowMerchant?: boolean }
 ): boolean {
+  const authenticated =
+    !!req.apiKey || !!req.adminSession || !!req.businessPortalTenant;
+  if (!authenticated) {
+    reply.status(401).send({
+      success: false,
+      error: "Not authenticated.",
+      code: "UNAUTHORIZED",
+    });
+    return false;
+  }
   if (!requestHasPermission(req, permission, options)) {
     reply.status(403).send({
       success: false,

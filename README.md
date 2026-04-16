@@ -58,6 +58,7 @@ core/
 2. **DB**
    - `pnpm db:generate` — generate Prisma 7 client to `generated/prisma`
    - `pnpm db:push` or `pnpm db:migrate` — apply schema (uses `prisma.config.ts`; migrations use `DIRECT_URL`)
+   - **After pulling changes that add peer-ramp columns**, run `pnpm exec prisma migrate deploy` from `core` (or `db:migrate` in dev) so migrations such as `20260408120000_peer_ramp_accept_escrow` apply (`PeerRampOrder.escrowTxHash`, acceptance fields on fills). Without this, `POST /api/peer-ramp/orders/*` can return **500** for unknown columns.
    - `pnpm db:seed` — seed DB (no longer auto-runs after migrate in v7)
 
 3. **API Key (optional, for authenticating Backend / partners)**

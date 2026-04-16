@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import type { MerchantEnvironment } from "../../prisma/generated/prisma/client.js";
 import { prisma } from "../lib/prisma.js";
 
 const KEY_PREFIX = "sk_live_";
@@ -32,6 +33,8 @@ export type GenerateKeyOptions = {
   expiresAt?: Date | null;
   /** When set, key is scoped to this business (merchant key). */
   businessId?: string | null;
+  /** Merchant keys: pin to TEST or LIVE (default LIVE). Ignored for platform keys. */
+  environment?: MerchantEnvironment | null;
 };
 
 /**
@@ -40,7 +43,7 @@ export type GenerateKeyOptions = {
  * Uses raw SQL because prisma.apiKey delegate can be undefined with Prisma 7 + driver adapter.
  */
 export async function generateKey(options: GenerateKeyOptions): Promise<string> {
-  const { name, domains, permissions = [], expiresAt = null, businessId = null } = options;
+  const { name, domains, permissions = [], expiresAt = null, businessId = null, environment = null } = options;
 
   const secretPart = randomHex32();
   const rawKey = `${KEY_PREFIX}${secretPart}`;
@@ -50,10 +53,11 @@ export async function generateKey(options: GenerateKeyOptions): Promise<string> 
 
   const id = randomUUID();
   const now = new Date();
+  const merchantEnv: MerchantEnvironment | null = businessId ? environment ?? "LIVE" : null;
   if (businessId) {
     await prisma.$executeRaw`
-      INSERT INTO "ApiKey" ("id", "createdAt", "updatedAt", "keyHash", "keyPrefix", "name", "domains", "permissions", "isActive", "expiresAt", "businessId")
-      VALUES (${id}, ${now}, ${now}, ${keyHash}, ${keyPrefix}, ${name}, ${domains}, ${permissions}, true, ${expiresAt}, ${businessId})
+      INSERT INTO "ApiKey" ("id", "createdAt", "updatedAt", "keyHash", "keyPrefix", "name", "domains", "permissions", "isActive", "expiresAt", "businessId", "environment")
+      VALUES (${id}, ${now}, ${now}, ${keyHash}, ${keyPrefix}, ${name}, ${domains}, ${permissions}, true, ${expiresAt}, ${businessId}, ${merchantEnv})
     `;
   } else {
     await prisma.$executeRaw`
@@ -74,10 +78,11 @@ export async function listApiKeysForBusiness(businessId: string): Promise<
     isActive: boolean;
     lastUsedAt: Date | null;
     expiresAt: Date | null;
+    environment: MerchantEnvironment | null;
   }[]
 > {
   return prisma.$queryRaw`
-    SELECT id, name, domains, "keyPrefix", "isActive", "lastUsedAt", "expiresAt"
+    SELECT id, name, domains, "keyPrefix", "isActive", "lastUsedAt", "expiresAt", "environment"
     FROM "ApiKey"
     WHERE "businessId" = ${businessId}
     ORDER BY "createdAt" DESC
@@ -97,11 +102,22 @@ export async function findApiKeyByRawKey(rawKey: string): Promise<{
   expiresAt: Date | null;
   lastUsedAt: Date | null;
   businessId: string | null;
+  environment: MerchantEnvironment | null;
 } | null> {
   const keyHash = hashApiKey(rawKey);
   const rows = await prisma.$queryRaw<
-    { id: string; name: string; domains: string[]; permissions: string[]; isActive: boolean; expiresAt: Date | null; lastUsedAt: Date | null; businessId: string | null }[]
-  >`SELECT id, name, domains, permissions, "isActive", "expiresAt", "lastUsedAt", "businessId" FROM "ApiKey" WHERE "keyHash" = ${keyHash} LIMIT 1`;
+    {
+      id: string;
+      name: string;
+      domains: string[];
+      permissions: string[];
+      isActive: boolean;
+      expiresAt: Date | null;
+      lastUsedAt: Date | null;
+      businessId: string | null;
+      environment: MerchantEnvironment | null;
+    }[]
+  >`SELECT id, name, domains, permissions, "isActive", "expiresAt", "lastUsedAt", "businessId", "environment" FROM "ApiKey" WHERE "keyHash" = ${keyHash} LIMIT 1`;
   const row = rows[0];
   if (!row) return null;
   return {
@@ -113,6 +129,7 @@ export async function findApiKeyByRawKey(rawKey: string): Promise<{
     expiresAt: row.expiresAt,
     lastUsedAt: row.lastUsedAt,
     businessId: row.businessId ?? null,
+    environment: row.environment ?? null,
   };
 }
 
@@ -133,4 +150,15 @@ export function isOriginAllowed(domains: string[], origin: string | undefined): 
 export async function touchLastUsed(apiKeyId: string): Promise<void> {
   const now = new Date();
   await prisma.$executeRaw`UPDATE "ApiKey" SET "lastUsedAt" = ${now}, "updatedAt" = ${now} WHERE id = ${apiKeyId}`.catch(() => {});
+}
+
+/**
+ * Deactivate a merchant API key. Returns true if a row was updated.
+ */
+export async function deactivateApiKeyForBusiness(apiKeyId: string, businessId: string): Promise<boolean> {
+  const n = await prisma.$executeRaw`
+    UPDATE "ApiKey" SET "isActive" = false, "updatedAt" = NOW()
+    WHERE id = ${apiKeyId} AND "businessId" = ${businessId}
+  `;
+  return Number(n) > 0;
 }

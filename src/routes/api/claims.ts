@@ -12,6 +12,10 @@ import { requirePermission } from "../../lib/admin-auth.guard.js";
 import { PERMISSION_CONNECT_TRANSACTIONS } from "../../lib/permissions.js";
 import { getClaimOtp, deleteClaimOtp } from "../../lib/redis.js";
 import { executeRequestSettlementSend } from "../../services/onramp-execution.service.js";
+import {
+  executePaystackFiatTransfer,
+  type PayoutFiat,
+} from "../../services/request-settlement.service.js";
 
 export async function claimsApiRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/claims", async (req: FastifyRequest<{ Querystring: { page?: string; limit?: string; status?: string } }>, reply) => {
@@ -160,11 +164,39 @@ export async function claimsApiRoutes(app: FastifyInstance): Promise<void> {
     return successEnvelope(reply, { verified: true, message: "OTP verified; you can now claim" });
   });
 
-  const ClaimBodySchema = z.object({
-    code: z.string().length(6),
-    payout_type: z.enum(["crypto", "fiat"]),
-    payout_target: z.string().min(1),
+  const PayoutFiatClaimSchema = z.object({
+    type: z.enum(["nuban", "mobile_money"]),
+    account_name: z.string().min(1),
+    account_number: z.string().min(1),
+    bank_code: z.string().min(1),
+    currency: z.string().min(1),
   });
+
+  const ClaimBodySchema = z
+    .object({
+      code: z.string().length(6),
+      payout_type: z.enum(["crypto", "fiat"]),
+      payout_target: z.string().optional(),
+      payout_fiat: PayoutFiatClaimSchema.optional(),
+    })
+    .superRefine((data, ctx) => {
+      if (data.payout_type === "crypto") {
+        const t = data.payout_target?.trim() ?? "";
+        if (!t.startsWith("0x") || t.length !== 42) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "payout_target must be a valid 0x EVM address for crypto claims",
+            path: ["payout_target"],
+          });
+        }
+      } else if (!data.payout_fiat) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "payout_fiat is required for fiat claims",
+          path: ["payout_fiat"],
+        });
+      }
+    });
 
   /** Complete claim: recipient provides 6-char code and payout choice. Blocked if OTP not verified. */
   app.post<{ Body: unknown }>("/api/claims/claim", async (req: FastifyRequest<{ Body: unknown }>, reply) => {
@@ -188,7 +220,37 @@ export async function claimsApiRoutes(app: FastifyInstance): Promise<void> {
       });
     }
     const tx = claim.request?.transaction;
-    if (!tx) return errorEnvelope(reply, "Transaction not found", 500);
+    if (!tx || !claim.request) return errorEnvelope(reply, "Transaction not found", 500);
+
+    let sendResult: { ok: boolean; error?: string } = { ok: true };
+
+    if (payout_type === "crypto") {
+      const addr = parse.data.payout_target!.trim();
+      sendResult = await executeRequestSettlementSend(tx.id, addr);
+    } else {
+      const fiat = parse.data.payout_fiat as PayoutFiat;
+      await prisma.request.update({
+        where: { id: claim.request.id },
+        data: { payoutFiat: JSON.parse(JSON.stringify(fiat)) as object },
+      });
+      sendResult = await executePaystackFiatTransfer({
+        payoutFiat: fiat,
+        amountHuman: tx.t_amount.toString(),
+        referencePrefix: `claim_${claim.id.slice(0, 8)}`,
+      });
+    }
+
+    if (!sendResult.ok) {
+      req.log.warn(
+        { err: sendResult.error, transactionId: tx.id, payout_type },
+        "Claim payout failed"
+      );
+      return reply.status(502).send({
+        success: false,
+        error: sendResult.error ?? "Payout failed. Your claim is still active — try again or contact support.",
+        code: "PAYOUT_FAILED",
+      });
+    }
 
     await prisma.claim.update({
       where: { id: claim.id },
@@ -199,26 +261,16 @@ export async function claimsApiRoutes(app: FastifyInstance): Promise<void> {
       data: { status: "COMPLETED" },
     });
 
-    let sendResult: { ok: boolean; error?: string } = { ok: true };
-    if (payout_type === "crypto" && parse.data.payout_target.trim().startsWith("0x")) {
-      sendResult = await executeRequestSettlementSend(tx.id, parse.data.payout_target.trim());
-      if (!sendResult.ok) {
-        req.log.warn({ err: sendResult.error, transactionId: tx.id }, "Claim crypto send failed");
-      }
-    }
-
     return successEnvelope(reply, {
       claimed: true,
       claim_id: claim.id,
       transaction_id: tx.id,
       payout_type,
-      sent: payout_type === "crypto" ? sendResult.ok : undefined,
+      sent: true,
       message:
         payout_type === "crypto"
-          ? sendResult.ok
-            ? "Crypto sent to payout_target. Check receiving wallet."
-            : `Claim recorded but send failed: ${sendResult.error}. Retry or contact support.`
-          : "Settlement will initiate fiat payout to payout_target.",
+          ? "Crypto sent to your wallet."
+          : "Fiat transfer initiated to your account.",
     });
   });
 }

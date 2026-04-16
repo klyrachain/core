@@ -12,7 +12,7 @@ import {
   PERMISSION_CONNECT_PAYOUTS,
   PERMISSION_BUSINESS_READ,
 } from "../../lib/permissions.js";
-import type { Prisma } from "../../../prisma/generated/prisma/client.js";
+import type { MerchantEnvironment, Prisma } from "../../../prisma/generated/prisma/client.js";
 import { KybStatus, PayoutStatus } from "../../../prisma/generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import {
@@ -65,6 +65,8 @@ export async function getAccumulatedFees(options: {
   businessId?: string | null;
   /** When true, only transactions with a business (partner) are included. */
   partnerOnly?: boolean;
+  /** Tenant isolation for merchant dashboards (TEST vs LIVE). */
+  environment?: MerchantEnvironment;
 }): Promise<{ byCurrency: FeesByCurrency; totalConverted: number }> {
   const where: Prisma.TransactionWhereInput = {
     status: COMPLETED_STATUS,
@@ -73,6 +75,7 @@ export async function getAccumulatedFees(options: {
   if (options.since) where.createdAt = { gte: options.since };
   if (options.businessId != null && options.businessId !== "") where.businessId = options.businessId;
   if (options.partnerOnly) where.businessId = { not: null };
+  if (options.environment != null) where.environment = options.environment;
 
   const rows = await prisma.transaction.findMany({
     where,

@@ -9,6 +9,7 @@ import { z } from "zod";
 import { parseUnits } from "viem";
 import { Decimal } from "@prisma/client/runtime/client";
 import { prisma } from "../../lib/prisma.js";
+import { buildOfframpCalldataForTransaction } from "../../services/offramp-calldata.service.js";
 import { getLiquidityPoolWallet } from "../../services/liquidity-pool.service.js";
 import { findPoolTokenFromDb } from "../../services/supported-token.service.js";
 import { addInventory } from "../../services/inventory.service.js";
@@ -52,38 +53,14 @@ export async function offrampApiRoutes(app: FastifyInstance): Promise<void> {
           details: parse.error.flatten(),
         });
       }
-      const tx = await prisma.transaction.findUnique({
-        where: { id: parse.data.transaction_id },
-        select: { id: true, type: true, status: true, f_chain: true, f_token: true, f_amount: true },
-      });
-      if (!tx) return errorEnvelope(reply, "Transaction not found", 404);
-      if (tx.type !== "SELL") return reply.status(400).send({ success: false, error: "Transaction must be SELL" });
-      if (tx.status === "COMPLETED") {
-        return reply.status(400).send({ success: false, error: "Transaction already completed" });
+      const built = await buildOfframpCalldataForTransaction(parse.data.transaction_id);
+      if (!built.ok) {
+        return reply.status(built.status).send({ success: false, error: built.error });
       }
-
-      const pool = await getLiquidityPoolWallet(tx.f_chain);
-      if (!pool) {
-        return reply.status(503).send({
-          success: false,
-          error: `No liquidity pool wallet for chain "${tx.f_chain}". Add a Wallet with isLiquidityPool=true and supportedChains including "${tx.f_chain}" (e.g. BASE or BASE SEPOLIA). The pool is the Wallet that receives crypto, not an InventoryAsset.`,
-        });
-      }
-
-      const chainKey = tx.f_chain?.toUpperCase().replace(/-/g, " ") ?? "";
-      const chainId = CHAIN_NAME_TO_ID[chainKey] ?? CHAIN_NAME_TO_ID[tx.f_chain?.toUpperCase() ?? ""] ?? 8453;
-      const poolToken = await findPoolTokenFromDb(chainId, tx.f_token);
-      if (!poolToken) return errorEnvelope(reply, `Unsupported token ${tx.f_token}`, 400);
-
       return successEnvelope(reply, {
-        toAddress: pool.address,
-        chainId,
-        chain: tx.f_chain,
-        token: tx.f_token,
-        tokenAddress: poolToken.address,
-        amount: tx.f_amount.toString(),
-        decimals: poolToken.decimals ?? 18,
-        message: "User must send this amount of f_token to toAddress; then call POST /api/offramp/confirm with tx_hash",
+        ...built.data,
+        message:
+          "User must send this amount of f_token to toAddress; then call POST /api/offramp/confirm with tx_hash",
       });
     }
   );

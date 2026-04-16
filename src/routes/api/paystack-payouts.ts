@@ -33,10 +33,10 @@ const RequestBodySchema = z.object({
 const ExecuteBodySchema = z.object({
   code: z.string().min(1),
   amount: z.coerce.number().positive(), // in subunits (kobo/pesewas)
-  currency: z.string().min(1),
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, "currency must be a 3-letter code"),
   recipient_type: z.enum(["nuban", "mobile_money"]),
   name: z.string().min(1),
-  account_number: z.string().min(1),
+  account_number: z.string().trim().min(6),
   bank_code: z.string().optional(), // required for nuban; for mobile_money this is provider code (e.g. MTN)
   reason: z.string().optional(),
 });
