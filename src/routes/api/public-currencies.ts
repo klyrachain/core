@@ -8,6 +8,11 @@ const QuerySchema = z.object({
 
 type CurrencyItem = { code: string; name: string; kind: "fiat" | "crypto" };
 
+type FetchResponseLike = {
+  ok: boolean;
+  json(): Promise<unknown>;
+};
+
 const CRYPTO_ITEMS: CurrencyItem[] = [
   { code: "BTC", name: "Bitcoin", kind: "crypto" },
   { code: "ETH", name: "Ethereum", kind: "crypto" },
@@ -28,10 +33,10 @@ async function loadFiatCurrencies(): Promise<CurrencyItem[]> {
   if (fiatCache && Date.now() - fiatCache.loadedAt < FIAT_CACHE_TTL_MS) {
     return fiatCache.items;
   }
-  const res = await fetch(
+  const res = (await fetch(
     "https://restcountries.com/v3.1/all?fields=name,cca2,currencies",
     { signal: AbortSignal.timeout(20_000) }
-  );
+  )) as unknown as FetchResponseLike;
   if (!res.ok) {
     if (fiatCache?.items.length) return fiatCache.items;
     return fallbackFiat();

@@ -16,6 +16,7 @@
   },
   "scripts": {
     "build": "prisma generate && tsc",
+    "lint": "tsc --noEmit",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/src/server.js",
     "db:generate": "prisma generate",
