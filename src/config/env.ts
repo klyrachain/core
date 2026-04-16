@@ -227,7 +227,9 @@ let env: Env;
 export function loadEnv(): Env {
   const parsed = envSchema.safeParse(process.env);
   if (!parsed.success) {
-    const msg = parsed.error.errors.map((e) => `${e.path.join(".")}: ${e.message}`).join("; ");
+    const msg = parsed.error.errors
+      .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+      .join("; ");
     throw new Error(`Invalid environment: ${msg}`);
   }
   const d = parsed.data;

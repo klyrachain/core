@@ -672,16 +672,16 @@ export async function listTransfers(params: ListTransfersParams): Promise<ListTr
     page: 1,
     pageCount: 1,
   };
-  const normalized = list.map((d) => ({
-    id: d.id,
-    reference: d.reference,
-    transfer_code: d.transfer_code,
-    amount: d.amount,
-    currency: d.currency,
-    status: d.status,
-    reason: d.reason ?? null,
-    created_at: d.created_at ?? d.createdAt ?? "",
-    updated_at: d.updated_at ?? d.updatedAt ?? "",
+  const normalized = list.map((transfer) => ({
+    id: transfer.id,
+    reference: transfer.reference,
+    transfer_code: transfer.transfer_code,
+    amount: transfer.amount,
+    currency: transfer.currency,
+    status: transfer.status,
+    reason: transfer.reason ?? null,
+    created_at: transfer.created_at ?? transfer.createdAt ?? "",
+    updated_at: transfer.updated_at ?? transfer.updatedAt ?? "",
   }));
   return { data: normalized, meta };
 }

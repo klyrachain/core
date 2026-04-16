@@ -166,7 +166,7 @@ app.get("/api/ready", async (_, reply) => {
     await prisma.$queryRaw`SELECT 1`;
     const redis = getRedis();
     await redis.ping();
-  } catch (err) {
+  } catch (_err) {
     return reply.status(503).send({ ok: false, error: "Database or Redis unavailable" });
   }
   return reply.status(200).send({ ok: true });

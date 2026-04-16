@@ -111,13 +111,13 @@ export function registerMerchantGasRoutes(app: FastifyInstance): void {
             take: limit,
           }),
         ]);
-        const data = rows.map((r) => ({
-          id: r.id,
-          createdAt: r.createdAt.toISOString(),
-          direction: r.direction,
-          amountUsd: r.amountUsd.toString(),
-          reason: r.reason,
-          metadata: r.metadata,
+        const data = rows.map((ledgerRow) => ({
+          id: ledgerRow.id,
+          createdAt: ledgerRow.createdAt.toISOString(),
+          direction: ledgerRow.direction,
+          amountUsd: ledgerRow.amountUsd.toString(),
+          reason: ledgerRow.reason,
+          metadata: ledgerRow.metadata,
         }));
         return successEnvelopeWithMeta(reply, data, { page, limit, total });
       } catch (err) {

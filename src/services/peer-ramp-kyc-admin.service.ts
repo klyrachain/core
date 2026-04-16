@@ -52,19 +52,19 @@ export async function listPeerRampAppUsersForKycAdmin(
     },
   });
 
-  return users.map((u) => ({
-    email: u.email,
-    cliSessionId: u.cliSessionId,
-    kycStatus: u.kycStatus,
-    kycProvider: u.kycProvider,
-    kycVerifiedAt: u.kycVerifiedAt?.toISOString() ?? null,
-    profileCompletedAt: u.profileCompletedAt?.toISOString() ?? null,
-    updatedAt: u.updatedAt.toISOString(),
-    sessions: u.kycSessions.map((s) => ({
-      provider: s.provider,
-      status: s.status,
-      externalId: s.externalId,
-      updatedAt: s.updatedAt.toISOString(),
+  return users.map((user) => ({
+    email: user.email,
+    cliSessionId: user.cliSessionId,
+    kycStatus: user.kycStatus,
+    kycProvider: user.kycProvider,
+    kycVerifiedAt: user.kycVerifiedAt?.toISOString() ?? null,
+    profileCompletedAt: user.profileCompletedAt?.toISOString() ?? null,
+    updatedAt: user.updatedAt.toISOString(),
+    sessions: user.kycSessions.map((session) => ({
+      provider: session.provider,
+      status: session.status,
+      externalId: session.externalId,
+      updatedAt: session.updatedAt.toISOString(),
     })),
   }));
 }

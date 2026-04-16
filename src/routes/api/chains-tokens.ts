@@ -108,7 +108,7 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
       select: { chainId: true, tokenAddress: true, symbol: true, displaySymbol: true, logoUri: true },
     });
 
-    const chainIds = [...new Set(tokens.map((t) => t.chainId))];
+    const chainIds = [...new Set(tokens.map((supportedToken) => supportedToken.chainId))];
     const chains =
       chainIds.length > 0
         ? await prisma.chain.findMany({
@@ -116,15 +116,19 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
             select: { chainId: true, name: true },
           })
         : [];
-    const chainMap = new Map(chains.map((c) => [c.chainId, c.name]));
+    const chainMap = new Map(
+      chains.map((chainRecord) => [chainRecord.chainId, chainRecord.name])
+    );
 
-    const data = tokens.map((t) => ({
-      chainId: String(t.chainId),
+    const data = tokens.map((supportedToken) => ({
+      chainId: String(supportedToken.chainId),
       displaySymbol:
-        t.displaySymbol ?? (`${chainMap.get(t.chainId) ?? ""} ${t.symbol}`.trim() || t.symbol),
-      logoUri: t.logoUri ?? undefined,
-      tokenAddress: t.tokenAddress,
-      symbol: t.symbol,
+        supportedToken.displaySymbol ??
+        (`${chainMap.get(supportedToken.chainId) ?? ""} ${supportedToken.symbol}`.trim() ||
+          supportedToken.symbol),
+      logoUri: supportedToken.logoUri ?? undefined,
+      tokenAddress: supportedToken.tokenAddress,
+      symbol: supportedToken.symbol,
     }));
     return successEnvelope(reply, { tokens: data });
   });
@@ -159,27 +163,32 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
       },
     }) as TokenRow[];
 
-    const chainIds = [...new Set(tokens.map((t: TokenRow) => t.chainId))];
+    const chainIds = [...new Set(tokens.map((tokenRow: TokenRow) => tokenRow.chainId))];
     const chains = await prisma.chain.findMany({
       where: { chainId: { in: chainIds } },
       select: { chainId: true, name: true, iconUri: true },
     }) as Pick<ChainRow, "chainId" | "name" | "iconUri">[];
-    const chainMap = new Map(chains.map((c: Pick<ChainRow, "chainId" | "name" | "iconUri">) => [c.chainId, c]));
+    const chainMap = new Map(
+      chains.map((chainRecord: Pick<ChainRow, "chainId" | "name" | "iconUri">) => [
+        chainRecord.chainId,
+        chainRecord,
+      ])
+    );
 
-    const data = tokens.map((t: TokenRow) => {
-      const chain = chainMap.get(t.chainId);
+    const data = tokens.map((tokenRow: TokenRow) => {
+      const chain = chainMap.get(tokenRow.chainId);
       return {
-        id: t.id,
-        chainId: String(t.chainId),
+        id: tokenRow.id,
+        chainId: String(tokenRow.chainId),
         networkName: chain?.name,
         chainIconURI: chain?.iconUri ?? undefined,
-        address: t.tokenAddress,
-        symbol: t.symbol,
-        decimals: t.decimals,
-        name: t.name ?? undefined,
-        logoURI: t.logoUri ?? undefined,
-        fonbnkCode: t.fonbnkCode ?? undefined,
-        displaySymbol: t.displaySymbol ?? undefined,
+        address: tokenRow.tokenAddress,
+        symbol: tokenRow.symbol,
+        decimals: tokenRow.decimals,
+        name: tokenRow.name ?? undefined,
+        logoURI: tokenRow.logoUri ?? undefined,
+        fonbnkCode: tokenRow.fonbnkCode ?? undefined,
+        displaySymbol: tokenRow.displaySymbol ?? undefined,
       };
     });
     return successEnvelope(reply, { tokens: data });
@@ -193,7 +202,10 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
       select: { id: true, chainId: true, name: true, iconUri: true, rpcUrl: true, rpcUrls: true, createdAt: true, updatedAt: true },
     });
     return successEnvelope(reply, {
-      chains: chains.map((c) => ({ ...c, chainId: String(c.chainId) })),
+      chains: chains.map((chainRecord) => ({
+        ...chainRecord,
+        chainId: String(chainRecord.chainId),
+      })),
     });
   });
 
@@ -288,7 +300,10 @@ export async function chainsTokensApiRoutes(app: FastifyInstance): Promise<void>
       select: { id: true, chainId: true, tokenAddress: true, symbol: true, decimals: true, name: true, logoUri: true, fonbnkCode: true, displaySymbol: true, createdAt: true, updatedAt: true },
     });
     return successEnvelope(reply, {
-      tokens: tokens.map((t) => ({ ...t, chainId: String(t.chainId) })),
+      tokens: tokens.map((tokenRow) => ({
+        ...tokenRow,
+        chainId: String(tokenRow.chainId),
+      })),
     });
   });
 

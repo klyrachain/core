@@ -16,7 +16,9 @@
   },
   "scripts": {
     "build": "prisma generate && tsc",
-    "lint": "tsc --noEmit",
+    "lint": "prisma generate && eslint src && tsc --noEmit",
+    "lint:eslint": "eslint src",
+    "lint:types": "prisma generate && tsc --noEmit",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/src/server.js",
     "db:generate": "prisma generate",
@@ -64,9 +66,12 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
     "@prisma/client": "^7.4.0",
     "@types/node": "^22.0.0",
+    "eslint": "^9.39.2",
     "prisma": "^7.4.0",
+    "typescript-eslint": "^8.53.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.9"

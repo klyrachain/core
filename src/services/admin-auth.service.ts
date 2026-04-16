@@ -28,7 +28,7 @@ function getRpConfig(): { rpID: string; origin: string; allowedOrigins: string[]
   const rpID = env.ADMIN_RP_ID ?? "localhost";
   const origin = env.ADMIN_ORIGIN ?? `http://localhost:${env.PORT}`;
   const allowedOrigins = env.ADMIN_ALLOWED_ORIGINS
-    ? env.ADMIN_ALLOWED_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean)
+    ? env.ADMIN_ALLOWED_ORIGINS.split(",").map((part) => part.trim()).filter(Boolean)
     : [origin];
   return { rpID, origin, allowedOrigins };
 }
@@ -308,7 +308,7 @@ export async function getRegistrationOptionsForAdmin(adminId: string): Promise<A
     userName: admin.email,
     userDisplayName: admin.name ?? admin.email,
     attestationType: "none",
-    excludeCredentials: admin.passkeys.map((p) => ({ id: p.credentialId })),
+    excludeCredentials: admin.passkeys.map((passkey) => ({ id: passkey.credentialId })),
     authenticatorSelection: {
       residentKey: "preferred",
       userVerification: "preferred",
@@ -361,7 +361,7 @@ export async function getAuthenticationOptionsForEmail(email: string): Promise<{
   const { rpID } = getRpConfig();
   const options = await generateAuthenticationOptions({
     rpID,
-    allowCredentials: admin.passkeys.map((p) => ({ id: p.credentialId })),
+    allowCredentials: admin.passkeys.map((passkey) => ({ id: passkey.credentialId })),
     userVerification: "preferred",
     timeout: 60_000,
   });
@@ -383,7 +383,7 @@ export async function verifyPasskeyAssertion(
     include: { passkeys: true },
   });
   if (!admin || !admin.twoFaEnabled) return null;
-  const passkey = admin.passkeys.find((p) => p.credentialId === response.id);
+  const passkey = admin.passkeys.find((pk) => pk.credentialId === response.id);
   if (!passkey) return null;
   const { rpID } = getRpConfig();
   const credential = {

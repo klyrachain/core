@@ -144,13 +144,13 @@ export async function validationApiRoutes(app: FastifyInstance): Promise<void> {
           }),
           prisma.failedOrderValidation.count({ where }),
         ]);
-        const data = items.map((r) => ({
-          id: r.id,
-          createdAt: r.createdAt.toISOString(),
-          reason: r.reason,
-          code: r.code,
-          payload: r.payload,
-          requestId: r.requestId,
+        const data = items.map((failedValidation) => ({
+          id: failedValidation.id,
+          createdAt: failedValidation.createdAt.toISOString(),
+          reason: failedValidation.reason,
+          code: failedValidation.code,
+          payload: failedValidation.payload,
+          requestId: failedValidation.requestId,
         }));
         return successEnvelopeWithMeta(reply, data, { page, limit, total });
       } catch (err) {
@@ -172,11 +172,16 @@ export async function validationApiRoutes(app: FastifyInstance): Promise<void> {
         const limit = Math.min(parseInt(req.query.limit ?? "50", 10) || 50, 200);
         const r = getRedis();
         const raw = await r.lrange(VALIDATION_FAILED_LIST_KEY, 0, limit - 1);
-        const data = raw.map((s) => {
+        const data = raw.map((serializedEntry) => {
           try {
-            return JSON.parse(s) as { at: string; code: string; error: string; payload: Record<string, unknown> };
+            return JSON.parse(serializedEntry) as {
+              at: string;
+              code: string;
+              error: string;
+              payload: Record<string, unknown>;
+            };
           } catch {
-            return { raw: s };
+            return { raw: serializedEntry };
           }
         });
         return successEnvelope(reply, data);
@@ -234,9 +239,9 @@ export async function validationApiRoutes(app: FastifyInstance): Promise<void> {
           last24h,
           last7d,
           byCode,
-          daily: (dailyBuckets ?? []).map((r) => ({
-            date: r.date,
-            count: Number(r.count),
+          daily: (dailyBuckets ?? []).map((dayBucket) => ({
+            date: dayBucket.date,
+            count: Number(dayBucket.count),
           })),
           since: since.toISOString(),
           generatedAt: now.toISOString(),

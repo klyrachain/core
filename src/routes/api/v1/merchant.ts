@@ -237,17 +237,20 @@ export async function merchantV1Routes(app: FastifyInstance): Promise<void> {
           }),
           prisma.transaction.count({ where }),
         ]);
-        const data = items.map((t) => {
-          const { paymentLink, business, ...rest } = t;
+        const data = items.map((transactionRow) => {
+          const { paymentLink, business, ...rest } = transactionRow;
           return {
             ...rest,
-            f_amount: t.f_amount.toString(),
-            t_amount: t.t_amount.toString(),
-            ...serializeTransactionPrices(t),
-            fee: t.fee != null ? t.fee.toString() : null,
-            platformFee: t.platformFee != null ? t.platformFee.toString() : null,
-            merchantFee: t.merchantFee != null ? t.merchantFee.toString() : null,
-            providerPrice: t.providerPrice != null ? t.providerPrice.toString() : null,
+            f_amount: transactionRow.f_amount.toString(),
+            t_amount: transactionRow.t_amount.toString(),
+            ...serializeTransactionPrices(transactionRow),
+            fee: transactionRow.fee != null ? transactionRow.fee.toString() : null,
+            platformFee:
+              transactionRow.platformFee != null ? transactionRow.platformFee.toString() : null,
+            merchantFee:
+              transactionRow.merchantFee != null ? transactionRow.merchantFee.toString() : null,
+            providerPrice:
+              transactionRow.providerPrice != null ? transactionRow.providerPrice.toString() : null,
             paymentLinkPublicCode: paymentLink?.publicCode ?? "",
             businessName: business?.name?.trim() ?? "",
           };
@@ -325,19 +328,19 @@ export async function merchantV1Routes(app: FastifyInstance): Promise<void> {
           }),
           prisma.payout.count({ where }),
         ]);
-        const data = payouts.map((p) => ({
-          id: p.id,
-          batchId: p.batchId ?? p.id,
-          businessId: p.businessId,
-          businessName: p.business.name,
-          businessSlug: p.business.slug,
-          amount: toNum(p.amount),
-          fee: toNum(p.fee),
-          currency: p.currency,
-          status: p.status,
-          reference: p.reference ?? undefined,
-          createdAt: p.createdAt.toISOString(),
-          updatedAt: p.updatedAt.toISOString(),
+        const data = payouts.map((payoutRow) => ({
+          id: payoutRow.id,
+          batchId: payoutRow.batchId ?? payoutRow.id,
+          businessId: payoutRow.businessId,
+          businessName: payoutRow.business.name,
+          businessSlug: payoutRow.business.slug,
+          amount: toNum(payoutRow.amount),
+          fee: toNum(payoutRow.fee),
+          currency: payoutRow.currency,
+          status: payoutRow.status,
+          reference: payoutRow.reference ?? undefined,
+          createdAt: payoutRow.createdAt.toISOString(),
+          updatedAt: payoutRow.updatedAt.toISOString(),
         }));
         return successEnvelopeWithMeta(reply, data, { page, limit, total });
       } catch (err) {
@@ -493,15 +496,15 @@ export async function merchantV1Routes(app: FastifyInstance): Promise<void> {
       if (!requirePermission(req, reply, PERMISSION_BUSINESS_READ, { allowMerchant: true })) return;
       const businessId = getMerchantV1BusinessId(req);
       const rows = await listApiKeysForBusiness(businessId);
-      const data = rows.map((k) => ({
-        id: k.id,
-        name: k.name,
-        domains: k.domains ?? [],
-        keyPrefix: k.keyPrefix,
-        isActive: k.isActive,
-        lastUsedAt: k.lastUsedAt?.toISOString() ?? null,
-        expiresAt: k.expiresAt?.toISOString() ?? null,
-        environment: k.environment ?? null,
+      const data = rows.map((apiKeyRow) => ({
+        id: apiKeyRow.id,
+        name: apiKeyRow.name,
+        domains: apiKeyRow.domains ?? [],
+        keyPrefix: apiKeyRow.keyPrefix,
+        isActive: apiKeyRow.isActive,
+        lastUsedAt: apiKeyRow.lastUsedAt?.toISOString() ?? null,
+        expiresAt: apiKeyRow.expiresAt?.toISOString() ?? null,
+        environment: apiKeyRow.environment ?? null,
       }));
       return successEnvelope(reply, data);
     } catch (err) {

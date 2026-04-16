@@ -53,7 +53,7 @@ export async function tryMatchPeerRampOrder(orderId: string): Promise<{ fillsCre
 
       if (!best) break;
 
-      let peerRem = new Decimal(best.cryptoAmountRemaining);
+      const peerRem = new Decimal(best.cryptoAmountRemaining);
       if (peerRem.lte(0)) break;
 
       const trade = initRem.lessThanOrEqualTo(peerRem) ? initRem : peerRem;

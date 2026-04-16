@@ -102,10 +102,20 @@ export async function syncPaystackCatalogSnapshots(options?: {
     source,
   });
 
-  const currenciesByMarket = PAYSTACK_MARKETS.map((m) => {
-    const banks = banksByMarket[m.slug] ?? [];
-    const cur = [...new Set(banks.map((b) => String(b.currency).toUpperCase()).filter(Boolean))].sort();
-    return { slug: m.slug, code: m.code, name: m.name, banks: banks.length, currencies: cur };
+  const currenciesByMarket = PAYSTACK_MARKETS.map((market) => {
+    const banks = banksByMarket[market.slug] ?? [];
+    const cur = [
+      ...new Set(
+        banks.map((bank) => String(bank.currency).toUpperCase()).filter(Boolean)
+      ),
+    ].sort();
+    return {
+      slug: market.slug,
+      code: market.code,
+      name: market.name,
+      banks: banks.length,
+      currencies: cur,
+    };
   });
 
   await upsertSnapshot({
@@ -161,11 +171,11 @@ export async function syncPaystackCatalogSnapshots(options?: {
     ],
     banksTotal,
     mobileMoneyTotal,
-    markets: currenciesByMarket.map((x) => ({
-      slug: x.slug,
-      code: x.code,
-      banks: x.banks,
-      currencies: x.currencies,
+    markets: currenciesByMarket.map((marketSummary) => ({
+      slug: marketSummary.slug,
+      code: marketSummary.code,
+      banks: marketSummary.banks,
+      currencies: marketSummary.currencies,
     })),
     errors,
   };
@@ -241,13 +251,13 @@ export async function syncFonbnkCatalogSnapshots(options?: {
   await upsertSnapshot({
     provider: "FONBNK",
     snapshotKey: "fonbnk_supported_assets",
-    data: assets.map((a) => ({
-      code: a.code,
-      network: a.network,
-      asset: a.asset,
-      chainId: a.chainId != null ? a.chainId.toString() : null,
-      isActive: a.isActive,
-      source: a.source,
+    data: assets.map((assetRow) => ({
+      code: assetRow.code,
+      network: assetRow.network,
+      asset: assetRow.asset,
+      chainId: assetRow.chainId != null ? assetRow.chainId.toString() : null,
+      isActive: assetRow.isActive,
+      source: assetRow.source,
     })),
     rowCount: assets.length,
     source,
@@ -290,11 +300,13 @@ export async function syncFonbnkCatalogSnapshots(options?: {
     console.log("\n--- Fonbnk catalog (from DB after asset sync) ---");
     console.log(
       `NETWORK_ASSET codes: ${assets.length} (showing first 8):`,
-      assets.slice(0, 8).map((a) => a.code).join(", ")
+      assets.slice(0, 8).map((assetRow) => assetRow.code).join(", ")
     );
     console.log(`Fiat corridors (Country.supportedFonbnk): ${fiatRows.length}`);
-    for (const c of fiatRows.slice(0, 12)) {
-      console.log(`  ${c.code} ${c.currency} — ${c.name} (Paystack: ${c.supportedPaystack})`);
+    for (const fiatCorridor of fiatRows.slice(0, 12)) {
+      console.log(
+        `  ${fiatCorridor.code} ${fiatCorridor.currency} — ${fiatCorridor.name} (Paystack: ${fiatCorridor.supportedPaystack})`
+      );
     }
     if (fiatRows.length > 12) console.log(`  … +${fiatRows.length - 12} more`);
     console.log("Payment rails:", paymentRails.note);

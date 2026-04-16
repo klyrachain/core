@@ -137,8 +137,8 @@ function normalizeQuoteRequestCurrencies(
   outputCurrency: string,
   inputSide: InputSide
 ): { inputCurrency: string; outputCurrency: string } {
-  let ic = normalizeQuoteAssetField(inputCurrency);
-  let oc = normalizeQuoteAssetField(outputCurrency);
+  const ic = normalizeQuoteAssetField(inputCurrency);
+  const oc = normalizeQuoteAssetField(outputCurrency);
   if (inputSide !== "to") return { inputCurrency: ic, outputCurrency: oc };
 
   if (action === "ONRAMP") {
@@ -163,12 +163,12 @@ function resolveCachedChain(
 ): CachedChain | null {
   if (!chainCode?.trim() || !chains?.length) return null;
   const upper = chainCode.trim().toUpperCase();
-  const direct = chains.find((c) => c.code === upper) ?? null;
+  const direct = chains.find((chain) => chain.code === upper) ?? null;
   if (direct) return direct;
   if (upper === "BNB" || upper === "BSC") {
-    const byId = chains.find((c) => c.chainId === 56);
+    const byId = chains.find((chain) => chain.chainId === 56);
     if (byId) return byId;
-    return chains.find((c) => c.code === "BSC" || c.code === "BNB") ?? null;
+    return chains.find((chain) => chain.code === "BSC" || chain.code === "BNB") ?? null;
   }
   return null;
 }

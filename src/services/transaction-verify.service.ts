@@ -220,11 +220,11 @@ export function buildEscrowVerificationSnapshot(
     sumMatchingWei: sumWei.toString(),
     matched: sumWei >= expectedMinWei,
     erc20TransferEventCount: verify.transfers.length,
-    transferEvents: verify.transfers.map((t) => ({
-      token: t.token,
-      from: t.from,
-      to: t.to,
-      valueWei: t.valueRaw,
+    transferEvents: verify.transfers.map((transfer) => ({
+      token: transfer.token,
+      from: transfer.from,
+      to: transfer.to,
+      valueWei: transfer.valueRaw,
     })),
   };
 }

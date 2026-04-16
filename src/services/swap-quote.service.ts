@@ -124,10 +124,12 @@ function collectSwapProviderFailures(
 }
 
 function pickAggregateSwapError(failures: { provider: string; error: string }[]): string {
-  const nonGeneric = failures.find((f) => !GENERIC_ZEROX_STYLE.test(f.error.trim()));
+  const nonGeneric = failures.find(
+    (failure) => !GENERIC_ZEROX_STYLE.test(failure.error.trim())
+  );
   if (nonGeneric) return nonGeneric.error;
   if (failures.length === 0) return "No provider returned a quote";
-  return failures.map((f) => `${f.provider}: ${f.error}`).join("; ");
+  return failures.map((failure) => `${failure.provider}: ${failure.error}`).join("; ");
 }
 
 function logAllSwapProvidersFailed(

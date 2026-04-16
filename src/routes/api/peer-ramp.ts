@@ -114,19 +114,19 @@ function serializeOrder(order: {
     escrowTxHash: order.escrowTxHash ?? undefined,
     escrowVerifiedAt: order.escrowVerifiedAt ?? undefined,
     escrowVerifyLastAttempt: order.escrowVerifyLastAttempt ?? undefined,
-    fillsAsOnramp: order.fillsAsOnramp?.map((f) => ({
-      id: f.id,
-      offrampOrderId: f.offrampOrderId,
-      cryptoAmount: f.cryptoAmount.toString(),
-      onrampAcceptedAt: f.onrampAcceptedAt ?? undefined,
-      offrampAcceptedAt: f.offrampAcceptedAt ?? undefined,
+    fillsAsOnramp: order.fillsAsOnramp?.map((fill) => ({
+      id: fill.id,
+      offrampOrderId: fill.offrampOrderId,
+      cryptoAmount: fill.cryptoAmount.toString(),
+      onrampAcceptedAt: fill.onrampAcceptedAt ?? undefined,
+      offrampAcceptedAt: fill.offrampAcceptedAt ?? undefined,
     })),
-    fillsAsOfframp: order.fillsAsOfframp?.map((f) => ({
-      id: f.id,
-      onrampOrderId: f.onrampOrderId,
-      cryptoAmount: f.cryptoAmount.toString(),
-      onrampAcceptedAt: f.onrampAcceptedAt ?? undefined,
-      offrampAcceptedAt: f.offrampAcceptedAt ?? undefined,
+    fillsAsOfframp: order.fillsAsOfframp?.map((fill) => ({
+      id: fill.id,
+      onrampOrderId: fill.onrampOrderId,
+      cryptoAmount: fill.cryptoAmount.toString(),
+      onrampAcceptedAt: fill.onrampAcceptedAt ?? undefined,
+      offrampAcceptedAt: fill.offrampAcceptedAt ?? undefined,
     })),
     linkedTransaction: order.linkedTransaction ?? undefined,
   };

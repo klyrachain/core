@@ -98,21 +98,24 @@ export function registerMerchantExtendedRoutes(app: FastifyInstance): void {
           }),
           prisma.transaction.count({ where }),
         ]);
-        const data = txRows.map((t) => {
-          const payLink = t.request != null ? buildPaymentRequestLink(t.request.linkId) : undefined;
+        const data = txRows.map((paymentTxn) => {
+          const payLink =
+            paymentTxn.request != null
+              ? buildPaymentRequestLink(paymentTxn.request.linkId)
+              : undefined;
           return {
-            id: t.request?.id,
-            linkId: t.request?.linkId,
-            code: t.request?.code,
-            transactionId: t.id,
-            status: t.status,
+            id: paymentTxn.request?.id,
+            linkId: paymentTxn.request?.linkId,
+            code: paymentTxn.request?.code,
+            transactionId: paymentTxn.id,
+            status: paymentTxn.status,
             payLink,
-            createdAt: t.createdAt.toISOString(),
+            createdAt: paymentTxn.createdAt.toISOString(),
             transaction: {
-              ...t,
-              f_amount: t.f_amount.toString(),
-              t_amount: t.t_amount.toString(),
-              ...serializeTransactionPrices(t),
+              ...paymentTxn,
+              f_amount: paymentTxn.f_amount.toString(),
+              t_amount: paymentTxn.t_amount.toString(),
+              ...serializeTransactionPrices(paymentTxn),
             },
           };
         });
@@ -163,14 +166,14 @@ export function registerMerchantExtendedRoutes(app: FastifyInstance): void {
         include: { transaction: true, claim: true },
       });
       if (!requestRow) return errorEnvelope(reply, "Payment link not found.", 404);
-      const t = requestRow.transaction;
+      const transaction = requestRow.transaction;
       const data = {
         ...requestRow,
         transaction: {
-          ...t,
-          f_amount: t.f_amount.toString(),
-          t_amount: t.t_amount.toString(),
-          ...serializeTransactionPrices(t),
+          ...transaction,
+          f_amount: transaction.f_amount.toString(),
+          t_amount: transaction.t_amount.toString(),
+          ...serializeTransactionPrices(transaction),
         },
         claim: requestRow.claim
           ? {
@@ -227,11 +230,11 @@ export function registerMerchantExtendedRoutes(app: FastifyInstance): void {
           ) x
         `;
         const total = Number(countRows[0]?.c ?? 0);
-        const data = rows.map((r) => ({
-          identifier: r.fromIdentifier,
-          identityType: r.fromType,
-          transactionCount: Number(r.txCount),
-          lastActivityAt: r.lastActivityAt.toISOString(),
+        const data = rows.map((payerSummary) => ({
+          identifier: payerSummary.fromIdentifier,
+          identityType: payerSummary.fromType,
+          transactionCount: Number(payerSummary.txCount),
+          lastActivityAt: payerSummary.lastActivityAt.toISOString(),
         }));
         return successEnvelopeWithMeta(reply, data, { page, limit, total });
       } catch (err) {
@@ -349,13 +352,13 @@ export function registerMerchantExtendedRoutes(app: FastifyInstance): void {
         where: { businessId },
         orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
       });
-      const data = rows.map((m) => ({
-        id: m.id,
-        type: m.type,
-        currency: m.currency,
-        isPrimary: m.isPrimary,
-        isActive: m.isActive,
-        createdAt: m.createdAt.toISOString(),
+      const data = rows.map((payoutMethod) => ({
+        id: payoutMethod.id,
+        type: payoutMethod.type,
+        currency: payoutMethod.currency,
+        isPrimary: payoutMethod.isPrimary,
+        isActive: payoutMethod.isActive,
+        createdAt: payoutMethod.createdAt.toISOString(),
         details: { configured: true },
       }));
       return successEnvelope(reply, data);

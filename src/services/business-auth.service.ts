@@ -526,9 +526,9 @@ function getBusinessWebAuthnRpConfig(): {
     env.FRONTEND_APP_URL ||
     `http://localhost:${env.PORT}`;
   const allowedOrigins = env.BUSINESS_WEBAUTHN_ORIGINS
-    ? env.BUSINESS_WEBAUTHN_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean)
+    ? env.BUSINESS_WEBAUTHN_ORIGINS.split(",").map((part) => part.trim()).filter(Boolean)
     : env.ADMIN_ALLOWED_ORIGINS
-      ? env.ADMIN_ALLOWED_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean)
+      ? env.ADMIN_ALLOWED_ORIGINS.split(",").map((part) => part.trim()).filter(Boolean)
       : [defaultOrigin];
   return { rpID, defaultOrigin, allowedOrigins };
 }
@@ -649,7 +649,7 @@ export async function getPortalPasskeyAuthOptions(
   const { rpID } = getBusinessWebAuthnRpConfig();
   const options = await generateAuthenticationOptions({
     rpID,
-    allowCredentials: user.portalPasskeys.map((p) => ({ id: p.credentialId })),
+    allowCredentials: user.portalPasskeys.map((passkey) => ({ id: passkey.credentialId })),
   });
   return { options, challenge: options.challenge };
 }
@@ -666,7 +666,7 @@ export async function verifyPortalPasskeyLogin(
     include: { portalPasskeys: true },
   });
   if (!user) return null;
-  const passkey = user.portalPasskeys.find((p) => p.credentialId === response.id);
+  const passkey = user.portalPasskeys.find((pk) => pk.credentialId === response.id);
   if (!passkey) return null;
   const { rpID } = getBusinessWebAuthnRpConfig();
   const credential = {
@@ -768,11 +768,11 @@ export async function getBusinessPortalSession(userId: string): Promise<{
           primaryGoal: onboarding.primaryGoal,
         }
       : null,
-    businesses: user.members.map((m) => ({
-      id: m.business.id,
-      name: m.business.name,
-      slug: m.business.slug,
-      kybStatus: m.business.kybStatus,
+    businesses: user.members.map((membership) => ({
+      id: membership.business.id,
+      name: membership.business.name,
+      slug: membership.business.slug,
+      kybStatus: membership.business.kybStatus,
     })),
   };
 }

@@ -99,7 +99,7 @@ export async function quoteApiRoutes(app: FastifyInstance): Promise<void> {
       const q = parse.data;
       const fiatList = q.fiats
         .split(",")
-        .map((s) => s.trim().toUpperCase())
+        .map((fiatCode) => fiatCode.trim().toUpperCase())
         .filter(Boolean);
       if (fiatList.length === 0) {
         return reply.status(400).send({ success: false, error: "fiats must list at least one code." });

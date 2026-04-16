@@ -333,7 +333,7 @@ export async function getAggregateCostBasis(chain: string, symbol: string): Prom
     select: { id: true },
   });
   if (assets.length === 0) return null;
-  const assetIds = assets.map((a) => a.id);
+  const assetIds = assets.map((asset) => asset.id);
   const lots = await prisma.inventoryLot.findMany({
     where: { assetId: { in: assetIds }, status: "OPEN", remainingQuantity: { gt: 0 } },
   });

@@ -76,16 +76,16 @@ export async function loadValidationCache(): Promise<void> {
     }),
   ]);
 
-  const cachedProviders: CachedProvider[] = providers.map((p) => ({
-    code: p.code,
-    enabled: p.enabled,
-    operational: p.operational,
-    priority: p.priority,
-    fee: p.fee == null ? null : Number(p.fee),
+  const cachedProviders: CachedProvider[] = providers.map((providerRow) => ({
+    code: providerRow.code,
+    enabled: providerRow.enabled,
+    operational: providerRow.operational,
+    priority: providerRow.priority,
+    fee: providerRow.fee == null ? null : Number(providerRow.fee),
   }));
 
   // Include built-in provider codes that may not be in ProviderRouting (NONE, ANY, KLYRA)
-  const codesSet = new Set(cachedProviders.map((x) => x.code));
+  const codesSet = new Set(cachedProviders.map((cachedProvider) => cachedProvider.code));
   for (const code of PAYMENT_PROVIDER_CODES) {
     if (!codesSet.has(code)) {
       cachedProviders.push({
@@ -98,17 +98,17 @@ export async function loadValidationCache(): Promise<void> {
     }
   }
 
-  const cachedChains: CachedChain[] = chains.map((c) => ({
-    chainId: Number(c.chainId),
-    name: c.name,
-    code: c.name.toUpperCase(),
+  const cachedChains: CachedChain[] = chains.map((chainRecord) => ({
+    chainId: Number(chainRecord.chainId),
+    name: chainRecord.name,
+    code: chainRecord.name.toUpperCase(),
   }));
 
-  const cachedTokens: CachedToken[] = tokens.map((t) => ({
-    chainId: Number(t.chainId),
-    symbol: t.symbol,
-    tokenAddress: t.tokenAddress,
-    decimals: t.decimals ?? 18,
+  const cachedTokens: CachedToken[] = tokens.map((supportedToken) => ({
+    chainId: Number(supportedToken.chainId),
+    symbol: supportedToken.symbol,
+    tokenAddress: supportedToken.tokenAddress,
+    decimals: supportedToken.decimals ?? 18,
   }));
 
   // Base platform fee (%) from Settings → financials.baseFeePercent; load into cache for validation.

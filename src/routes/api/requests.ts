@@ -53,14 +53,14 @@ export async function requestsApiRoutes(app: FastifyInstance): Promise<void> {
         }),
         prisma.request.count({ where }),
       ]);
-      const data = items.map((r) => ({
-        ...r,
-        transaction: r.transaction
+      const data = items.map((requestRow) => ({
+        ...requestRow,
+        transaction: requestRow.transaction
           ? {
-            ...r.transaction,
-            f_amount: r.transaction.f_amount.toString(),
-            t_amount: r.transaction.t_amount.toString(),
-            ...serializeTransactionPrices(r.transaction),
+            ...requestRow.transaction,
+            f_amount: requestRow.transaction.f_amount.toString(),
+            t_amount: requestRow.transaction.t_amount.toString(),
+            ...serializeTransactionPrices(requestRow.transaction),
           }
           : null,
       }));

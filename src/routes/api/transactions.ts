@@ -73,17 +73,20 @@ export async function transactionsApiRoutes(app: FastifyInstance): Promise<void>
           }),
           prisma.transaction.count({ where }),
         ]);
-        const data = items.map((t) => {
-          const { peerRampEscrowFundingTxHash: _prEscrow, ...rest } = t;
+        const data = items.map((transactionRow) => {
+          const { peerRampEscrowFundingTxHash: _prEscrow, ...rest } = transactionRow;
           return {
             ...rest,
-            f_amount: t.f_amount.toString(),
-            t_amount: t.t_amount.toString(),
-            ...serializeTransactionPrices(t),
-            fee: t.fee != null ? t.fee.toString() : null,
-            platformFee: t.platformFee != null ? t.platformFee.toString() : null,
-            merchantFee: t.merchantFee != null ? t.merchantFee.toString() : null,
-            providerPrice: t.providerPrice != null ? t.providerPrice.toString() : null,
+            f_amount: transactionRow.f_amount.toString(),
+            t_amount: transactionRow.t_amount.toString(),
+            ...serializeTransactionPrices(transactionRow),
+            fee: transactionRow.fee != null ? transactionRow.fee.toString() : null,
+            platformFee:
+              transactionRow.platformFee != null ? transactionRow.platformFee.toString() : null,
+            merchantFee:
+              transactionRow.merchantFee != null ? transactionRow.merchantFee.toString() : null,
+            providerPrice:
+              transactionRow.providerPrice != null ? transactionRow.providerPrice.toString() : null,
           };
         });
         return successEnvelopeWithMeta(reply, data, { page, limit, total });
@@ -194,19 +197,19 @@ export async function transactionsApiRoutes(app: FastifyInstance): Promise<void>
         orderBy: { createdAt: "asc" },
         include: { lot: { select: { id: true, remainingQuantity: true, costPerTokenUsd: true, acquiredAt: true, assetId: true } } },
       });
-      const data = pnls.map((p) => ({
-        id: p.id,
-        transactionId: p.transactionId,
-        lotId: p.lotId,
-        quantity: p.quantity.toString(),
-        costPerTokenUsd: p.costPerTokenUsd.toString(),
-        feeAmountUsd: p.feeAmountUsd.toString(),
-        profitLossUsd: p.profitLossUsd.toString(),
-        lot: p.lot
+      const data = pnls.map((pnlRow) => ({
+        id: pnlRow.id,
+        transactionId: pnlRow.transactionId,
+        lotId: pnlRow.lotId,
+        quantity: pnlRow.quantity.toString(),
+        costPerTokenUsd: pnlRow.costPerTokenUsd.toString(),
+        feeAmountUsd: pnlRow.feeAmountUsd.toString(),
+        profitLossUsd: pnlRow.profitLossUsd.toString(),
+        lot: pnlRow.lot
           ? {
-            ...p.lot,
-            remainingQuantity: p.lot.remainingQuantity.toString(),
-            costPerTokenUsd: p.lot.costPerTokenUsd.toString(),
+            ...pnlRow.lot,
+            remainingQuantity: pnlRow.lot.remainingQuantity.toString(),
+            costPerTokenUsd: pnlRow.lot.costPerTokenUsd.toString(),
           }
           : null,
       }));
@@ -244,20 +247,20 @@ export async function transactionsApiRoutes(app: FastifyInstance): Promise<void>
           }),
           prisma.transactionPnL.count({ where }),
         ]);
-        const data = items.map((p) => ({
-          id: p.id,
-          transactionId: p.transactionId,
-          lotId: p.lotId,
-          quantity: p.quantity.toString(),
-          costPerTokenUsd: p.costPerTokenUsd.toString(),
-          feeAmountUsd: p.feeAmountUsd.toString(),
-          profitLossUsd: p.profitLossUsd.toString(),
-          transaction: p.transaction,
-          lot: p.lot
+        const data = items.map((pnlRow) => ({
+          id: pnlRow.id,
+          transactionId: pnlRow.transactionId,
+          lotId: pnlRow.lotId,
+          quantity: pnlRow.quantity.toString(),
+          costPerTokenUsd: pnlRow.costPerTokenUsd.toString(),
+          feeAmountUsd: pnlRow.feeAmountUsd.toString(),
+          profitLossUsd: pnlRow.profitLossUsd.toString(),
+          transaction: pnlRow.transaction,
+          lot: pnlRow.lot
             ? {
-              ...p.lot,
-              remainingQuantity: p.lot.remainingQuantity.toString(),
-              costPerTokenUsd: p.lot.costPerTokenUsd.toString(),
+              ...pnlRow.lot,
+              remainingQuantity: pnlRow.lot.remainingQuantity.toString(),
+              costPerTokenUsd: pnlRow.lot.costPerTokenUsd.toString(),
             }
             : null,
         }));
@@ -278,14 +281,14 @@ export async function transactionsApiRoutes(app: FastifyInstance): Promise<void>
         orderBy: { createdAt: "asc" },
         include: { asset: { select: { id: true, chain: true, chainId: true, symbol: true, tokenAddress: true, address: true } } },
       });
-      const data = snapshots.map((s) => ({
-        id: s.id,
-        transactionId: s.transactionId,
-        assetId: s.assetId,
-        balanceBefore: s.balanceBefore.toString(),
-        balanceAfter: s.balanceAfter.toString(),
-        createdAt: s.createdAt.toISOString(),
-        asset: s.asset,
+      const data = snapshots.map((snapshotRow) => ({
+        id: snapshotRow.id,
+        transactionId: snapshotRow.transactionId,
+        assetId: snapshotRow.assetId,
+        balanceBefore: snapshotRow.balanceBefore.toString(),
+        balanceAfter: snapshotRow.balanceAfter.toString(),
+        createdAt: snapshotRow.createdAt.toISOString(),
+        asset: snapshotRow.asset,
       }));
       return successEnvelope(reply, data);
     } catch (err) {

@@ -6,11 +6,8 @@
 import type { Prisma } from "../../prisma/generated/prisma/client.js";
 import { prisma } from "../lib/prisma.js";
 
-const PROVIDERS = ["0x", "squid", "lifi"] as const;
-const STATUSES = ["PENDING", "SUBMITTED", "CONFIRMED", "FAILED"] as const;
-
-export type CryptoTransactionProvider = (typeof PROVIDERS)[number];
-export type CryptoTransactionStatusDb = (typeof STATUSES)[number];
+export type CryptoTransactionProvider = "0x" | "squid" | "lifi";
+export type CryptoTransactionStatusDb = "PENDING" | "SUBMITTED" | "CONFIRMED" | "FAILED";
 
 export type CreateCryptoTransactionInput = {
   provider: CryptoTransactionProvider;

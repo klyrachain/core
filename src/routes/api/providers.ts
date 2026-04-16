@@ -55,7 +55,9 @@ export async function providersApiRoutes(app: FastifyInstance): Promise<void> {
       const list = await prisma.providerRouting.findMany({
         orderBy: [{ priority: "desc" }, { code: "asc" }],
       });
-      const data = list.map((p) => serializeProvider({ ...p, keyPrefix: p.keyPrefix }));
+      const data = list.map((providerRow) =>
+        serializeProvider({ ...providerRow, keyPrefix: providerRow.keyPrefix })
+      );
       return successEnvelope(reply, data);
     } catch (err) {
       req.log.error({ err }, "GET /api/providers");

@@ -6,8 +6,7 @@
 import type { Prisma } from "../../prisma/generated/prisma/client.js";
 import { prisma } from "../lib/prisma.js";
 
-const SETTING_KEYS = ["general", "financials", "providers", "risk", "api", "swapFee"] as const;
-export type PlatformSettingKey = (typeof SETTING_KEYS)[number];
+export type PlatformSettingKey = "general" | "financials" | "providers" | "risk" | "api" | "swapFee";
 
 /** Default swap-fee config. Fee recipient is never exposed to client; only set via admin. */
 const DEFAULT_SWAP_FEE: SwapFeeConfig = {

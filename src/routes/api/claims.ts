@@ -34,19 +34,19 @@ export async function claimsApiRoutes(app: FastifyInstance): Promise<void> {
         }),
         prisma.claim.count({ where }),
       ]);
-      const data = items.map((c) => ({
-        ...c,
-        value: c.value.toString(),
-        price: c.price.toString(),
-        request: c.request
+      const data = items.map((claimRow) => ({
+        ...claimRow,
+        value: claimRow.value.toString(),
+        price: claimRow.price.toString(),
+        request: claimRow.request
           ? {
-            ...c.request,
-            transaction: c.request.transaction
+            ...claimRow.request,
+            transaction: claimRow.request.transaction
               ? {
-                ...c.request.transaction,
-                f_amount: c.request.transaction.f_amount.toString(),
-                t_amount: c.request.transaction.t_amount.toString(),
-                ...serializeTransactionPrices(c.request.transaction),
+                ...claimRow.request.transaction,
+                f_amount: claimRow.request.transaction.f_amount.toString(),
+                t_amount: claimRow.request.transaction.t_amount.toString(),
+                ...serializeTransactionPrices(claimRow.request.transaction),
               }
               : null,
           }

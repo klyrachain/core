@@ -240,14 +240,14 @@ export function registerMerchantSaasRoutes(app: FastifyInstance): void {
         where: { businessId, environment },
         orderBy: { createdAt: "desc" },
       });
-      const data = rows.map((w) => ({
-        id: w.id,
-        url: w.url,
-        events: w.events,
-        isActive: w.isActive,
-        hasSecret: Boolean(w.secret),
-        createdAt: w.createdAt.toISOString(),
-        updatedAt: w.updatedAt.toISOString(),
+      const data = rows.map((webhookEndpoint) => ({
+        id: webhookEndpoint.id,
+        url: webhookEndpoint.url,
+        events: webhookEndpoint.events,
+        isActive: webhookEndpoint.isActive,
+        hasSecret: Boolean(webhookEndpoint.secret),
+        createdAt: webhookEndpoint.createdAt.toISOString(),
+        updatedAt: webhookEndpoint.updatedAt.toISOString(),
       }));
       return successEnvelope(reply, data);
     } catch (err) {
@@ -363,23 +363,23 @@ export function registerMerchantSaasRoutes(app: FastifyInstance): void {
           }),
           prisma.webhookDeliveryLog.count({ where: { endpoint: endpointWhere } }),
         ]);
-        const data = rows.map((d) => ({
-          id: d.id,
-          endpointId: d.endpointId,
-          endpointUrl: d.endpoint.url,
-          eventType: d.eventType,
-          status: d.status,
-          httpStatus: d.httpStatus,
-          attemptCount: d.attemptCount,
-          lastAttemptAt: d.lastAttemptAt?.toISOString() ?? null,
-          nextRetryAt: d.nextRetryAt?.toISOString() ?? null,
-          transactionId: d.transactionId,
-          createdAt: d.createdAt.toISOString(),
-          payload: d.payload,
+        const data = rows.map((deliveryLog) => ({
+          id: deliveryLog.id,
+          endpointId: deliveryLog.endpointId,
+          endpointUrl: deliveryLog.endpoint.url,
+          eventType: deliveryLog.eventType,
+          status: deliveryLog.status,
+          httpStatus: deliveryLog.httpStatus,
+          attemptCount: deliveryLog.attemptCount,
+          lastAttemptAt: deliveryLog.lastAttemptAt?.toISOString() ?? null,
+          nextRetryAt: deliveryLog.nextRetryAt?.toISOString() ?? null,
+          transactionId: deliveryLog.transactionId,
+          createdAt: deliveryLog.createdAt.toISOString(),
+          payload: deliveryLog.payload,
           responseBodyPreview:
-            d.responseBody != null && d.responseBody.length > 500
-              ? `${d.responseBody.slice(0, 500)}…`
-              : d.responseBody,
+            deliveryLog.responseBody != null && deliveryLog.responseBody.length > 500
+              ? `${deliveryLog.responseBody.slice(0, 500)}…`
+              : deliveryLog.responseBody,
         }));
         return successEnvelopeWithMeta(reply, data, { page, limit, total });
       } catch (err) {
@@ -451,21 +451,21 @@ export function registerMerchantSaasRoutes(app: FastifyInstance): void {
           }),
           prisma.merchantCustomer.count({ where }),
         ]);
-        const data = rows.map((c) => ({
-          id: c.id,
-          email: c.email,
-          phone: c.phone,
-          displayName: c.displayName,
-          externalId: c.externalId,
-          userId: c.userId,
-          totalSpend: c.totalSpend.toString(),
-          orderCount: c.orderCount,
-          notes: c.notes,
-          metadata: c.metadata,
-          firstSeenAt: c.firstSeenAt?.toISOString() ?? null,
-          lastActivityAt: c.lastActivityAt?.toISOString() ?? null,
-          createdAt: c.createdAt.toISOString(),
-          updatedAt: c.updatedAt.toISOString(),
+        const data = rows.map((crmCustomer) => ({
+          id: crmCustomer.id,
+          email: crmCustomer.email,
+          phone: crmCustomer.phone,
+          displayName: crmCustomer.displayName,
+          externalId: crmCustomer.externalId,
+          userId: crmCustomer.userId,
+          totalSpend: crmCustomer.totalSpend.toString(),
+          orderCount: crmCustomer.orderCount,
+          notes: crmCustomer.notes,
+          metadata: crmCustomer.metadata,
+          firstSeenAt: crmCustomer.firstSeenAt?.toISOString() ?? null,
+          lastActivityAt: crmCustomer.lastActivityAt?.toISOString() ?? null,
+          createdAt: crmCustomer.createdAt.toISOString(),
+          updatedAt: crmCustomer.updatedAt.toISOString(),
         }));
         return successEnvelopeWithMeta(reply, data, { page, limit, total });
       } catch (err) {

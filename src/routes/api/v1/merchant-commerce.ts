@@ -383,9 +383,14 @@ export function registerMerchantCommerceRoutes(app: FastifyInstance): void {
             }
           }
         }
-        const data = rows.map((r) => ({
-          ...serializePayPage({ ...r, usageCount: usageByLink.get(r.id) ?? 0 }),
-          product: r.product ? { id: r.product.id, name: r.product.name } : undefined,
+        const data = rows.map((payPageRow) => ({
+          ...serializePayPage({
+            ...payPageRow,
+            usageCount: usageByLink.get(payPageRow.id) ?? 0,
+          }),
+          product: payPageRow.product
+            ? { id: payPageRow.product.id, name: payPageRow.product.name }
+            : undefined,
         }));
         return successEnvelopeWithMeta(reply, data, { page, limit, total });
       } catch (err) {
