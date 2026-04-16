@@ -19,7 +19,9 @@ async function fonbnkCurrencySet(): Promise<Set<string>> {
     where: { supportedFonbnk: true },
     select: { currency: true },
   });
-  return new Set(rows.map((r) => r.currency.trim().toUpperCase()).filter(Boolean));
+  return new Set(
+    rows.map((countryRow) => countryRow.currency.trim().toUpperCase()).filter(Boolean)
+  );
 }
 
 function buildRequestForFiat(params: {
@@ -82,19 +84,18 @@ export async function runPeerRampQuoteStream(
   }
 ): Promise<void> {
   const crypto = params.crypto.trim() || "USDC";
-  const unique = [...new Set(params.fiats.map((f) => f.trim().toUpperCase()).filter(Boolean))].slice(
-    0,
-    MAX_FIATS
-  );
+  const unique = [
+    ...new Set(params.fiats.map((fiatCode) => fiatCode.trim().toUpperCase()).filter(Boolean)),
+  ].slice(0, MAX_FIATS);
   if (unique.length === 0) return;
 
   const fonbnk = await fonbnkCurrencySet();
   const priority = unique.includes("GHS")
     ? "GHS"
-    : unique.find((c) => fonbnk.has(c)) ?? unique[0];
-  const rest = unique.filter((c) => c !== priority);
-  const fonbnkBatch = rest.filter((c) => fonbnk.has(c));
-  const pivotBatch = rest.filter((c) => !fonbnk.has(c));
+    : unique.find((fiatCode) => fonbnk.has(fiatCode)) ?? unique[0];
+  const rest = unique.filter((fiatCode) => fiatCode !== priority);
+  const fonbnkBatch = rest.filter((fiatCode) => fonbnk.has(fiatCode));
+  const pivotBatch = rest.filter((fiatCode) => !fonbnk.has(fiatCode));
 
   const quoteOne = async (fiatCode: string) => {
     try {

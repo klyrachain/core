@@ -50,9 +50,9 @@ export async function walletsApiRoutes(app: FastifyInstance): Promise<void> {
         }),
         prisma.wallet.count(),
       ]);
-      const data = items.map((w) => ({
-        ...w,
-        encryptedKey: w.encryptedKey ? MASK : null,
+      const data = items.map((walletRow) => ({
+        ...walletRow,
+        encryptedKey: walletRow.encryptedKey ? MASK : null,
       }));
       return successEnvelopeWithMeta(reply, data, { page, limit, total });
     } catch (err) {

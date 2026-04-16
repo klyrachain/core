@@ -74,7 +74,7 @@ function formatFromRawUnits(raw: string, decimals: number): string {
     const whole = n / div;
     const frac = n % div;
     if (frac === zero) return whole.toString();
-    let fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
+    const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
     if (fracStr.length === 0) return whole.toString();
     return `${whole}.${fracStr}`;
   } catch {
@@ -438,7 +438,7 @@ export async function buildCheckoutPayoutQuotes(params: {
     params.rows != null && params.rows.length > 0
       ? params.rows
       : DEFAULT_CHECKOUT_ROWS;
-  const refetchIds = params.refetchRowIds?.filter((s) => s.trim().length > 0);
+  const refetchIds = params.refetchRowIds?.filter((rowId) => rowId.trim().length > 0);
   const partial = refetchIds != null && refetchIds.length > 0;
   const want = partial ? new Set(refetchIds) : null;
   const fiatMode = isFiatCurrency(inputCurrency);
@@ -448,38 +448,38 @@ export async function buildCheckoutPayoutQuotes(params: {
   const shouldCompute = (id: string): boolean => !want || want.has(id);
 
   const offrampSpecs = rows.filter(
-    (r): r is Extract<CheckoutRowSpec, { kind: "offramp" }> =>
-      r.kind === "offramp"
+    (row): row is Extract<CheckoutRowSpec, { kind: "offramp" }> =>
+      row.kind === "offramp"
   );
   const compositeSpecs = rows.filter(
-    (r): r is Extract<CheckoutRowSpec, { kind: "composite_wxrp" }> =>
-      r.kind === "composite_wxrp"
+    (row): row is Extract<CheckoutRowSpec, { kind: "composite_wxrp" }> =>
+      row.kind === "composite_wxrp"
   );
 
   const offrampToRun = partial
-    ? offrampSpecs.filter((r) => shouldCompute(r.id))
+    ? offrampSpecs.filter((spec) => shouldCompute(spec.id))
     : offrampSpecs;
 
   const offrampResults = await Promise.all(
-    offrampToRun.map((r) => {
+    offrampToRun.map((offrampSpec) => {
       if (fiatMode) {
         return quoteInvoiceOfframpRow(
-          r.id,
+          offrampSpec.id,
           inputAmount,
           inputCurrency,
-          r.chain,
-          r.symbol,
-          r.tokenAddress,
+          offrampSpec.chain,
+          offrampSpec.symbol,
+          offrampSpec.tokenAddress,
           fromAddress
         );
       }
-      return quoteCryptoRow(r.id, r, inputAmount, inputCurrency, fromAddress);
+      return quoteCryptoRow(offrampSpec.id, offrampSpec, inputAmount, inputCurrency, fromAddress);
     })
   );
-  const byId = new Map(offrampResults.map((r) => [r.id, r]));
+  const byId = new Map(offrampResults.map((quoteRow) => [quoteRow.id, quoteRow]));
 
   const compositeToRun = partial
-    ? compositeSpecs.filter((r) => shouldCompute(r.id))
+    ? compositeSpecs.filter((spec) => shouldCompute(spec.id))
     : compositeSpecs;
 
   let baseUsdcForWxrp: string | null = null;

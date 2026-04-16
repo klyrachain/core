@@ -45,13 +45,13 @@ export async function listBusinessMembers(businessId: string) {
     },
     orderBy: { joinedAt: "asc" },
   });
-  return rows.map((r) => ({
-    id: r.id,
-    userId: r.userId,
-    email: r.user.email,
-    displayName: r.user.portalDisplayName ?? undefined,
-    role: r.role,
-    joinedAt: r.joinedAt.toISOString(),
+  return rows.map((memberRow) => ({
+    id: memberRow.id,
+    userId: memberRow.userId,
+    email: memberRow.user.email,
+    displayName: memberRow.user.portalDisplayName ?? undefined,
+    role: memberRow.role,
+    joinedAt: memberRow.joinedAt.toISOString(),
   }));
 }
 
@@ -60,12 +60,12 @@ export async function listPendingInvites(businessId: string) {
     where: { businessId, acceptedAt: null },
     orderBy: { createdAt: "desc" },
   });
-  return rows.map((r) => ({
-    id: r.id,
-    email: r.email,
-    role: r.role,
-    expiresAt: r.expiresAt.toISOString(),
-    createdAt: r.createdAt.toISOString(),
+  return rows.map((inviteRow) => ({
+    id: inviteRow.id,
+    email: inviteRow.email,
+    role: inviteRow.role,
+    expiresAt: inviteRow.expiresAt.toISOString(),
+    createdAt: inviteRow.createdAt.toISOString(),
   }));
 }
 

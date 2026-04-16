@@ -23,8 +23,16 @@ export async function queueApiRoutes(app: FastifyInstance): Promise<void> {
           delayed: counts.delayed ?? 0,
           paused: counts.paused ?? 0,
         },
-        recentWaiting: waiting.map((j) => ({ id: j.id, data: j.data, timestamp: j.timestamp })),
-        recentActive: active.map((j) => ({ id: j.id, data: j.data, timestamp: j.timestamp })),
+        recentWaiting: waiting.map((job) => ({
+          id: job.id,
+          data: job.data,
+          timestamp: job.timestamp,
+        })),
+        recentActive: active.map((job) => ({
+          id: job.id,
+          data: job.data,
+          timestamp: job.timestamp,
+        })),
       };
       return successEnvelope(reply, data);
     } catch (err) {

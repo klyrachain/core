@@ -72,8 +72,15 @@ const DEFAULT_API = {
 };
 
 function parseBlacklist(input: unknown): string[] {
-  if (Array.isArray(input)) return input.filter((x) => typeof x === "string").map((s) => s.trim()).filter(Boolean);
-  if (typeof input === "string") return input.split(/\n/).map((s) => s.trim()).filter(Boolean);
+  if (Array.isArray(input)) {
+    return input
+      .filter((entry): entry is string => typeof entry === "string")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+  if (typeof input === "string") {
+    return input.split(/\n/).map((line) => line.trim()).filter(Boolean);
+  }
   return [];
 }
 
@@ -334,12 +341,12 @@ export async function settingsApiRoutes(app: FastifyInstance): Promise<void> {
         orderBy: { createdAt: "asc" },
         select: { id: true, name: true, email: true, role: true, twoFaEnabled: true },
       });
-      const data = admins.map((a) => ({
-        id: a.id,
-        name: a.name ?? "",
-        email: a.email,
-        role: a.role,
-        twoFaEnabled: a.twoFaEnabled,
+      const data = admins.map((admin) => ({
+        id: admin.id,
+        name: admin.name ?? "",
+        email: admin.email,
+        role: admin.role,
+        twoFaEnabled: admin.twoFaEnabled,
       }));
       return successEnvelope(reply, data);
     } catch (err) {

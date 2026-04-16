@@ -132,34 +132,42 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
         },
       });
 
-      const totalPlatformVolume = partnerTxns.reduce((sum, t) => {
-        const sideF = toNum(t.f_amount) * toNum(t.f_tokenPriceUsd);
-        const sideT = toNum(t.t_amount) * toNum(t.t_tokenPriceUsd);
+      const totalPlatformVolume = partnerTxns.reduce((sum, partnerTxn) => {
+        const sideF = toNum(partnerTxn.f_amount) * toNum(partnerTxn.f_tokenPriceUsd);
+        const sideT = toNum(partnerTxn.t_amount) * toNum(partnerTxn.t_tokenPriceUsd);
         if (sideF > 0 && sideT > 0) return sum + (sideF + sideT) / 2;
         return sum + sideF + sideT;
       }, 0);
 
-      const netRevenueFees = partnerTxns.reduce((sum, t) => sum + toNum(t.platformFee), 0);
+      const netRevenueFees = partnerTxns.reduce(
+        (sum, partnerTxn) => sum + toNum(partnerTxn.platformFee),
+        0
+      );
 
       const activeMerchants = new Set(
         partnerTxns
-          .filter((t) => t.createdAt && new Date(t.createdAt) >= since24h)
-          .map((t) => t.businessId)
+          .filter(
+            (partnerTxn) =>
+              partnerTxn.createdAt && new Date(partnerTxn.createdAt) >= since24h
+          )
+          .map((partnerTxn) => partnerTxn.businessId)
           .filter(Boolean)
       ).size;
 
       // Volume by partner (top 5 + others)
       const volumeByBusinessId = new Map<string, number>();
-      for (const t of partnerTxns) {
-        const bid = t.businessId ?? "_unknown";
-        const sideF = toNum(t.f_amount) * toNum(t.f_tokenPriceUsd);
-        const sideT = toNum(t.t_amount) * toNum(t.t_tokenPriceUsd);
+      for (const partnerTxn of partnerTxns) {
+        const bid = partnerTxn.businessId ?? "_unknown";
+        const sideF = toNum(partnerTxn.f_amount) * toNum(partnerTxn.f_tokenPriceUsd);
+        const sideT = toNum(partnerTxn.t_amount) * toNum(partnerTxn.t_tokenPriceUsd);
         const gross = sideF > 0 && sideT > 0 ? (sideF + sideT) / 2 : sideF + sideT;
         volumeByBusinessId.set(bid, (volumeByBusinessId.get(bid) ?? 0) + gross);
       }
-      const sorted = [...volumeByBusinessId.entries()].sort((a, b) => b[1] - a[1]);
+      const sorted = [...volumeByBusinessId.entries()].sort(
+        (entryA, entryB) => entryB[1] - entryA[1]
+      );
       const top5 = sorted.slice(0, 5);
-      const othersVolume = sorted.slice(5).reduce((s, [, v]) => s + v, 0);
+      const othersVolume = sorted.slice(5).reduce((total, [, volume]) => total + volume, 0);
 
       const businessIds = top5.map(([id]) => id).filter((id) => id !== "_unknown");
       const businesses =
@@ -169,7 +177,9 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
             select: { id: true, name: true },
           })
           : [];
-      const nameById = Object.fromEntries(businesses.map((b) => [b.id, b.name]));
+      const nameById = Object.fromEntries(
+        businesses.map((business) => [business.id, business.name])
+      );
 
       const volumeByPartner = top5.map(([businessId, volume]) => ({
         businessId,
@@ -190,7 +200,9 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
         select: { businessId: true, createdAt: true },
         distinct: ["businessId"],
       });
-      const recentBusinessIds = recentKeys.map((k) => k.businessId).filter(Boolean) as string[];
+      const recentBusinessIds = recentKeys
+        .map((apiKeyRow) => apiKeyRow.businessId)
+        .filter(Boolean) as string[];
       const recentBusinesses =
         recentBusinessIds.length > 0
           ? await prisma.business.findMany({
@@ -199,13 +211,15 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
           })
           : [];
       const recentOnboarding = recentBusinessIds
-        .map((id) => recentBusinesses.find((b) => b.id === id))
+        .map((businessId) =>
+          recentBusinesses.find((business) => business.id === businessId)
+        )
         .filter(Boolean)
-        .map((b) => ({
-          id: b!.id,
-          name: b!.name,
-          slug: b!.slug,
-          createdAt: b!.createdAt.toISOString(),
+        .map((business) => ({
+          id: business!.id,
+          name: business!.name,
+          slug: business!.slug,
+          createdAt: business!.createdAt.toISOString(),
         }));
 
       const { byCurrency: feesByCurrency } = await getAccumulatedFees({ partnerOnly: true });
@@ -369,10 +383,10 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
           where: { businessId: id, status: COMPLETED_STATUS, createdAt: { gte: since30d } },
           select: { f_amount: true, t_amount: true, f_tokenPriceUsd: true, t_tokenPriceUsd: true },
         });
-        const volume30d = txns.reduce((s, t) => {
-          const sideF = toNum(t.f_amount) * toNum(t.f_tokenPriceUsd);
-          const sideT = toNum(t.t_amount) * toNum(t.t_tokenPriceUsd);
-          return s + (sideF > 0 && sideT > 0 ? (sideF + sideT) / 2 : sideF + sideT);
+        const volume30d = txns.reduce((sum, txn) => {
+          const sideF = toNum(txn.f_amount) * toNum(txn.f_tokenPriceUsd);
+          const sideT = toNum(txn.t_amount) * toNum(txn.t_tokenPriceUsd);
+          return sum + (sideF > 0 && sideT > 0 ? (sideF + sideT) / 2 : sideF + sideT);
         }, 0);
 
         return successEnvelope(reply, {
@@ -387,12 +401,12 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
           riskScore: business.riskScore,
           webhookUrl: business.webhookUrl ?? undefined,
           createdAt: business.createdAt.toISOString(),
-          apiKeys: business.apiKeys.map((k) => ({
-            id: k.id,
-            keyPrefix: k.keyPrefix,
-            name: k.name,
-            lastUsedAt: k.lastUsedAt?.toISOString() ?? null,
-            isActive: k.isActive,
+          apiKeys: business.apiKeys.map((apiKey) => ({
+            id: apiKey.id,
+            keyPrefix: apiKey.keyPrefix,
+            name: apiKey.name,
+            lastUsedAt: apiKey.lastUsedAt?.toISOString() ?? null,
+            isActive: apiKey.isActive,
           })),
           transactionCount: business._count.transactions,
           volume30d,
@@ -440,19 +454,19 @@ export async function connectApiRoutes(app: FastifyInstance): Promise<void> {
           prisma.payout.count({ where }),
         ]);
 
-        const data = payouts.map((p) => ({
-          id: p.id,
-          batchId: p.batchId ?? p.id,
-          businessId: p.businessId,
-          businessName: (p as { business: { name: string; slug: string } }).business.name,
-          businessSlug: (p as { business: { name: string; slug: string } }).business.slug,
-          amount: toNum(p.amount),
-          fee: toNum(p.fee),
-          currency: p.currency,
-          status: p.status,
-          reference: p.reference ?? undefined,
-          createdAt: p.createdAt.toISOString(),
-          updatedAt: p.updatedAt.toISOString(),
+        const data = payouts.map((payout) => ({
+          id: payout.id,
+          batchId: payout.batchId ?? payout.id,
+          businessId: payout.businessId,
+          businessName: (payout as { business: { name: string; slug: string } }).business.name,
+          businessSlug: (payout as { business: { name: string; slug: string } }).business.slug,
+          amount: toNum(payout.amount),
+          fee: toNum(payout.fee),
+          currency: payout.currency,
+          status: payout.status,
+          reference: payout.reference ?? undefined,
+          createdAt: payout.createdAt.toISOString(),
+          updatedAt: payout.updatedAt.toISOString(),
         }));
 
         return successEnvelopeWithMeta(reply, data, { page, limit, total });

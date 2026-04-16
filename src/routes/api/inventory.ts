@@ -104,9 +104,9 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
           }),
           prisma.inventoryAsset.count({ where }),
         ]);
-        const data = items.map((a) => ({
-          ...a,
-          currentBalance: a.currentBalance.toString(),
+        const data = items.map((assetRow) => ({
+          ...assetRow,
+          currentBalance: assetRow.currentBalance.toString(),
         }));
         return successEnvelopeWithMeta(reply, data, { page, limit, total });
       } catch (err) {
@@ -142,11 +142,11 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
           }),
           prisma.inventoryLedger.count({ where }),
         ]);
-        const data = items.map((h) => ({
-          ...h,
-          quantity: h.quantity.toString(),
-          pricePerTokenUsd: h.pricePerTokenUsd.toString(),
-          totalValueUsd: h.totalValueUsd.toString(),
+        const data = items.map((ledgerEntry) => ({
+          ...ledgerEntry,
+          quantity: ledgerEntry.quantity.toString(),
+          pricePerTokenUsd: ledgerEntry.pricePerTokenUsd.toString(),
+          totalValueUsd: ledgerEntry.totalValueUsd.toString(),
         }));
         return successEnvelopeWithMeta(reply, data, { page, limit, total });
       } catch (err) {
@@ -204,18 +204,18 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
           }),
           prisma.inventoryLot.count({ where }),
         ]);
-        const data = items.map((l) => ({
-          id: l.id,
-          assetId: l.assetId,
-          originalQuantity: l.originalQuantity.toString(),
-          remainingQuantity: l.remainingQuantity.toString(),
-          costPerTokenUsd: l.costPerTokenUsd.toString(),
-          totalCostUsd: l.totalCostUsd.toString(),
-          status: l.status,
-          acquiredAt: l.acquiredAt.toISOString(),
-          sourceType: l.sourceType,
-          sourceTransactionId: l.sourceTransactionId,
-          asset: l.asset,
+        const data = items.map((lotRow) => ({
+          id: lotRow.id,
+          assetId: lotRow.assetId,
+          originalQuantity: lotRow.originalQuantity.toString(),
+          remainingQuantity: lotRow.remainingQuantity.toString(),
+          costPerTokenUsd: lotRow.costPerTokenUsd.toString(),
+          totalCostUsd: lotRow.totalCostUsd.toString(),
+          status: lotRow.status,
+          acquiredAt: lotRow.acquiredAt.toISOString(),
+          sourceType: lotRow.sourceType,
+          sourceTransactionId: lotRow.sourceTransactionId,
+          asset: lotRow.asset,
         }));
         return successEnvelopeWithMeta(reply, data, { page, limit, total });
       } catch (err) {
@@ -241,16 +241,16 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
         if (!asset) return errorEnvelope(reply, "Inventory asset not found", 404);
         const onlyAvailable = req.query.onlyAvailable === "true" || req.query.onlyAvailable === "1";
         const lots = await getLotsForAsset(req.params.id, { onlyAvailable });
-        const data = lots.map((l) => ({
-          id: l.id,
-          originalQuantity: l.originalQuantity.toString(),
-          remainingQuantity: l.remainingQuantity.toString(),
-          costPerTokenUsd: l.costPerTokenUsd.toString(),
-          totalCostUsd: l.totalCostUsd.toString(),
-          status: l.status,
-          acquiredAt: l.acquiredAt.toISOString(),
-          sourceType: l.sourceType,
-          sourceTransactionId: l.sourceTransactionId,
+        const data = lots.map((lotRow) => ({
+          id: lotRow.id,
+          originalQuantity: lotRow.originalQuantity.toString(),
+          remainingQuantity: lotRow.remainingQuantity.toString(),
+          costPerTokenUsd: lotRow.costPerTokenUsd.toString(),
+          totalCostUsd: lotRow.totalCostUsd.toString(),
+          status: lotRow.status,
+          acquiredAt: lotRow.acquiredAt.toISOString(),
+          sourceType: lotRow.sourceType,
+          sourceTransactionId: lotRow.sourceTransactionId,
         }));
         return successEnvelope(reply, data);
       } catch (err) {
@@ -387,11 +387,11 @@ export async function inventoryApiRoutes(app: FastifyInstance): Promise<void> {
         }),
         prisma.inventoryLedger.count({ where: { assetId: req.params.id } }),
       ]);
-      const data = items.map((h) => ({
-        ...h,
-        quantity: h.quantity.toString(),
-        pricePerTokenUsd: h.pricePerTokenUsd.toString(),
-        totalValueUsd: h.totalValueUsd.toString(),
+      const data = items.map((ledgerEntry) => ({
+        ...ledgerEntry,
+        quantity: ledgerEntry.quantity.toString(),
+        pricePerTokenUsd: ledgerEntry.pricePerTokenUsd.toString(),
+        totalValueUsd: ledgerEntry.totalValueUsd.toString(),
       }));
       return successEnvelopeWithMeta(reply, data, { page, limit, total });
     } catch (err) {

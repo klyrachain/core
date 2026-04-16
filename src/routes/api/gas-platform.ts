@@ -99,14 +99,17 @@ export async function gasPlatformApiRoutes(app: FastifyInstance): Promise<void> 
             },
           }),
         ]);
-        const data = rows.map((r) => ({
-          businessId: r.businessId,
-          businessName: r.business.name,
-          slug: r.business.slug,
-          prepaidBalanceUsd: r.prepaidBalanceUsd.toString(),
-          sponsorshipEnabled: r.sponsorshipEnabled,
-          lowBalanceWarnUsd: r.lowBalanceWarnUsd != null ? r.lowBalanceWarnUsd.toString() : null,
-          updatedAt: r.updatedAt.toISOString(),
+        const data = rows.map((gasBalanceRow) => ({
+          businessId: gasBalanceRow.businessId,
+          businessName: gasBalanceRow.business.name,
+          slug: gasBalanceRow.business.slug,
+          prepaidBalanceUsd: gasBalanceRow.prepaidBalanceUsd.toString(),
+          sponsorshipEnabled: gasBalanceRow.sponsorshipEnabled,
+          lowBalanceWarnUsd:
+            gasBalanceRow.lowBalanceWarnUsd != null
+              ? gasBalanceRow.lowBalanceWarnUsd.toString()
+              : null,
+          updatedAt: gasBalanceRow.updatedAt.toISOString(),
         }));
         return successEnvelopeWithMeta(reply, data, { page, limit, total });
       } catch (err) {
@@ -146,17 +149,17 @@ export async function gasPlatformApiRoutes(app: FastifyInstance): Promise<void> 
             },
           }),
         ]);
-        const data = rows.map((r) => ({
-          id: r.id,
-          createdAt: r.createdAt.toISOString(),
-          businessId: r.businessId,
-          businessName: r.business?.name ?? null,
-          slug: r.business?.slug ?? null,
-          direction: r.direction,
-          amountUsd: r.amountUsd.toString(),
-          reason: r.reason,
-          idempotencyKey: r.idempotencyKey,
-          metadata: r.metadata,
+        const data = rows.map((ledgerRow) => ({
+          id: ledgerRow.id,
+          createdAt: ledgerRow.createdAt.toISOString(),
+          businessId: ledgerRow.businessId,
+          businessName: ledgerRow.business?.name ?? null,
+          slug: ledgerRow.business?.slug ?? null,
+          direction: ledgerRow.direction,
+          amountUsd: ledgerRow.amountUsd.toString(),
+          reason: ledgerRow.reason,
+          idempotencyKey: ledgerRow.idempotencyKey,
+          metadata: ledgerRow.metadata,
         }));
         return successEnvelopeWithMeta(reply, data, { page, limit, total });
       } catch (err) {

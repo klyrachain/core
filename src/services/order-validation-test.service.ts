@@ -85,7 +85,9 @@ export async function validateOrderForTestnet(input: OrderValidationInput): Prom
   }
 
   const chains = await prisma.chain.findMany({ select: { chainId: true, name: true } });
-  const chainCodeToId = new Map(chains.map((c) => [normalizeChainCode(c.name), c.chainId]));
+  const chainCodeToId = new Map(
+    chains.map((chainRecord) => [normalizeChainCode(chainRecord.name), chainRecord.chainId])
+  );
 
   const fChainId = chainCodeToId.get(fChainNorm);
   const tChainId = chainCodeToId.get(tChainNorm);
@@ -111,7 +113,10 @@ export async function validateOrderForTestnet(input: OrderValidationInput): Prom
   const tokenExists = (chainId: bigint | undefined, symbol: string): boolean => {
     if (chainId == null) return true;
     const sym = symbol.trim().toUpperCase();
-    return tokens.some((t) => t.chainId === chainId && t.symbol.toUpperCase() === sym);
+    return tokens.some(
+      (supportedToken) =>
+        supportedToken.chainId === chainId && supportedToken.symbol.toUpperCase() === sym
+    );
   };
 
   if (fChainId != null && !tokenExists(fChainId, input.f_token)) {

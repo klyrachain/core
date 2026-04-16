@@ -121,7 +121,9 @@ function normalizeLineItems(items: unknown): LineItem[] {
     const productName = String(i.productName ?? "");
     const qty = Number(i.qty) || 0;
     const unitPrice = Number(i.unitPrice) || 0;
-    const amount = Number(i.amount) ?? qty * unitPrice;
+    const parsedAmount = Number(i.amount);
+    const amount =
+      Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount : qty * unitPrice;
     return { id, productName, qty, unitPrice, amount };
   });
 }
@@ -461,8 +463,8 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
           },
         ];
 
-        const lineItems = (row.lineItems as LineItem[]).map((i) => ({
-          ...i,
+        const lineItems = (row.lineItems as LineItem[]).map((lineItem) => ({
+          ...lineItem,
           id: randomUUID(),
         }));
 
@@ -631,8 +633,11 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
             ]);
           });
           const csv =
-            rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n") +
-            "\n";
+            rows
+              .map((csvRow) =>
+                csvRow.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")
+              )
+              .join("\n") + "\n";
           return reply
             .status(200)
             .header("Content-Type", "text/csv; charset=utf-8")
