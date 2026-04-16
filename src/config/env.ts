@@ -8,7 +8,24 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   DIRECT_URL: z.string().min(1, "DIRECT_URL is required"),
 
-  REDIS_URL: z.string().url().optional().default("redis://localhost:6379"),
+  /**
+   * Redis connection string. If unset, Core will build one from
+   * REDIS_HOST/REDIS_PORT/REDIS_USERNAME/REDIS_PASSWORD (+ REDIS_TLS).
+   */
+  REDIS_URL: z.string().url().optional(),
+  /** Redis host (used only when REDIS_URL is unset). */
+  REDIS_HOST: z.string().min(1).optional(),
+  /** Redis port (used only when REDIS_URL is unset). */
+  REDIS_PORT: z.coerce.number().int().min(1).max(65535).optional(),
+  /** Redis username (used only when REDIS_URL is unset). */
+  REDIS_USERNAME: z.string().min(1).optional(),
+  /** Redis password (used only when REDIS_URL is unset). */
+  REDIS_PASSWORD: z.string().min(1).optional(),
+  /** When true, use rediss:// (TLS) for the built Redis URL. */
+  REDIS_TLS: z
+    .string()
+    .optional()
+    .transform((v) => v === "true" || v === "1"),
 
   ENCRYPTION_KEY: z.string().min(32, "ENCRYPTION_KEY must be at least 32 characters"),
 
@@ -200,7 +217,10 @@ const envSchema = z.object({
   DEFAULT_KYC_SERVICE: z.string().optional(),
 });
 
-export type Env = z.infer<typeof envSchema>;
+type ParsedEnv = z.infer<typeof envSchema>;
+
+/** Runtime env after `loadEnv()` normalizes derived values (e.g. REDIS_URL). */
+export type Env = Omit<ParsedEnv, "REDIS_URL"> & { REDIS_URL: string };
 
 let env: Env;
 
@@ -211,8 +231,30 @@ export function loadEnv(): Env {
     throw new Error(`Invalid environment: ${msg}`);
   }
   const d = parsed.data;
+
+  const redisUrl =
+    d.REDIS_URL ??
+    (() => {
+      const host = d.REDIS_HOST?.trim();
+      const port = d.REDIS_PORT ?? 6379;
+      if (!host) return "redis://localhost:6379";
+      const scheme = d.REDIS_TLS ? "rediss" : "redis";
+      const username = d.REDIS_USERNAME?.trim();
+      const password = d.REDIS_PASSWORD?.trim();
+      const auth =
+        username && password
+          ? `${encodeURIComponent(username)}:${encodeURIComponent(password)}@`
+          : password
+            ? `:${encodeURIComponent(password)}@`
+            : username
+              ? `${encodeURIComponent(username)}@`
+              : "";
+      return `${scheme}://${auth}${host}:${port}`;
+    })();
+
   env = {
     ...d,
+    REDIS_URL: redisUrl,
     BUSINESS_SIGNUP_LANDING_URL:
       d.BUSINESS_SIGNUP_LANDING_URL ??
       (d.NODE_ENV === "development" ? "http://localhost:3001/business/signup" : undefined),
