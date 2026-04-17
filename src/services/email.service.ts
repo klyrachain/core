@@ -1,7 +1,9 @@
 /**
  * Email service via Resend. All sends include X-Entity-Ref-ID and idempotency key.
  * No-ops when RESEND_API_KEY is not set (log only).
- * Set RESEND_FROM_EMAIL to your verified domain (e.g. noreply@yourdomain.com) to send to any recipient.
+ * Set RESEND_FROM_EMAIL plus optional display names, or RESEND_FROM for a single fixed line.
+ * General sends default to `Morapay <email>`; business portal / team invites use
+ * `Morapay Business <email>` unless overridden via env or `fromPersona` on each call.
  * When unset, defaults to Resend testing sender (onboarding@resend.dev), which can only send to your own email.
  * Failed sends are retried once, then queued for processing on next server startup.
  */
@@ -14,6 +16,25 @@ import { pushPendingEmail, getNextPendingEmail } from "../lib/redis.js";
 /** Fallback when RESEND_FROM_EMAIL is unset (Resend testing; only sends to your own email). */
 const DEFAULT_FROM = "Morapay No-Reply <onboarding@resend.dev>";
 
+export type EmailFromPersona = "general" | "business";
+
+function resolveResendFromLine(
+  env: ReturnType<typeof getEnv>,
+  persona: EmailFromPersona = "general"
+): string {
+  const full = env.RESEND_FROM?.trim();
+  if (full) return full;
+  const email = env.RESEND_FROM_EMAIL?.trim();
+  if (email) {
+    const name =
+      persona === "business"
+        ? env.RESEND_FROM_BUSINESS_DISPLAY_NAME?.trim() || "Morapay Business"
+        : env.RESEND_FROM_DISPLAY_NAME?.trim() || "Morapay";
+    return `${name} <${email}>`;
+  }
+  return DEFAULT_FROM;
+}
+
 export type SendEmailParams = {
   to: string | string[];
   subject: string;
@@ -24,6 +45,11 @@ export type SendEmailParams = {
   /** Optional idempotency key; if not provided, one is generated. */
   idempotencyKey?: string;
   replyTo?: string;
+  /**
+   * Inbox "From" display name before `RESEND_FROM_EMAIL` (ignored when `RESEND_FROM` is set).
+   * `business` → Morapay Business (portal magic link, team invites); default `general` → Morapay.
+   */
+  fromPersona?: EmailFromPersona;
 };
 
 export type SendEmailResult =
@@ -74,7 +100,7 @@ const MAX_ATTEMPTS_PENDING = 3;
 
 export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
   const env = getEnv();
-  const from = env.RESEND_FROM_EMAIL?.trim() || DEFAULT_FROM;
+  const from = resolveResendFromLine(env, params.fromPersona ?? "general");
 
   let result = await sendEmailOnce(params, from);
 
@@ -97,7 +123,6 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
  */
 export async function processPendingEmails(): Promise<{ sent: number; failed: number; skipped: number }> {
   const env = getEnv();
-  const from = env.RESEND_FROM_EMAIL?.trim() || DEFAULT_FROM;
   if (!env.RESEND_API_KEY) {
     return { sent: 0, failed: 0, skipped: 0 };
   }
@@ -112,6 +137,7 @@ export async function processPendingEmails(): Promise<{ sent: number; failed: nu
 
     const { _attempts: _, ...params } = payload;
     const toSend: SendEmailParams = { ...params, entityRefId: payload.entityRefId };
+    const from = resolveResendFromLine(env, toSend.fromPersona ?? "general");
 
     const result = await sendEmailOnce(toSend, from);
     if (result.ok) {

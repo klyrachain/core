@@ -518,7 +518,8 @@ export async function businessAuthRoutes(app: FastifyInstance): Promise<void> {
     async (req: FastifyRequest, reply: FastifyReply) => {
       const userId = await requirePortalUser(req, reply);
       if (!userId) return;
-      const options = await getPortalPasskeyRegistrationOptions(userId);
+      const requestOrigin = (req.headers.origin as string) ?? undefined;
+      const options = await getPortalPasskeyRegistrationOptions(userId, requestOrigin);
       if (!options) {
         return reply.status(500).send({
           success: false,
@@ -579,7 +580,8 @@ export async function businessAuthRoutes(app: FastifyInstance): Promise<void> {
       if (!parsed.success) {
         return errorEnvelope(reply, parsed.error.message, 400);
       }
-      const result = await getPortalPasskeyAuthOptions(parsed.data.email);
+      const requestOrigin = (req.headers.origin as string) ?? undefined;
+      const result = await getPortalPasskeyAuthOptions(parsed.data.email, requestOrigin);
       if (!result) {
         return reply.status(400).send({
           success: false,
