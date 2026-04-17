@@ -49,7 +49,8 @@
     "key:generate": "tsx scripts/generate-backend-key.ts",
     "sent:push-templates": "tsx scripts/push-sent-templates.ts",
     "seed:merchant-dashboard-mock": "tsx scripts/seed-merchant-dashboard-mock.ts",
-    "sync:providers": "tsx scripts/sync-providers.ts"
+    "sync:providers": "tsx scripts/sync-providers.ts",
+    "redis:ping": "tsx scripts/redis-ping.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",
