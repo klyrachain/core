@@ -10,16 +10,30 @@ import type { KycInitResult, DiditWebhookPayload } from "./kyc.types.js";
 
 const DIDIT_API_BASE = "https://verification.didit.me/v3";
 
-function getDiditConfig() {
+/** Person KYC vs business KYB — different Didit workflow IDs from env. */
+export type DiditWorkflowKind = "kyc" | "kyb";
+
+export function getDiditWorkflowId(kind: DiditWorkflowKind): string {
+  const env = getEnv();
+  if (kind === "kyb") {
+    const id = env.DIDIT_KYB_WORKFLOW_ID?.trim();
+    if (!id) throw new Error("DIDIT_KYB_WORKFLOW_ID is not configured.");
+    return id;
+  }
+  const id = env.DIDIT_WORKFLOW_ID?.trim();
+  if (!id) throw new Error("DIDIT_WORKFLOW_ID is not configured.");
+  return id;
+}
+
+function getDiditConfig(kind: DiditWorkflowKind = "kyc") {
   const env = getEnv();
   if (!env.DIDIT_API_KEY) throw new Error("DIDIT_API_KEY is not configured.");
   if (!env.DIDIT_CLIENT_ID) throw new Error("DIDIT_CLIENT_ID is not configured.");
-  if (!env.DIDIT_WORKFLOW_ID)
-    throw new Error("DIDIT_WORKFLOW_ID is not configured.");
+  const workflowId = getDiditWorkflowId(kind);
   return {
     apiKey: env.DIDIT_API_KEY,
     clientId: env.DIDIT_CLIENT_ID,
-    workflowId: env.DIDIT_WORKFLOW_ID,
+    workflowId,
     webhookSecret: env.DIDIT_WEBHOOK_SECRET,
   };
 }
@@ -30,9 +44,11 @@ function getDiditConfig() {
  */
 export async function createDiditSession(
   email: string,
-  callbackUrl: string
+  callbackUrl: string,
+  options?: { workflowKind?: DiditWorkflowKind }
 ): Promise<KycInitResult> {
-  const { apiKey, clientId, workflowId } = getDiditConfig();
+  const kind = options?.workflowKind ?? "kyc";
+  const { apiKey, clientId, workflowId } = getDiditConfig(kind);
 
   const res = await fetch(`${DIDIT_API_BASE}/session/`, {
     method: "POST",

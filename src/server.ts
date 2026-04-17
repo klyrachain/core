@@ -49,6 +49,7 @@ import { peerRampApiRoutes } from "./routes/api/peer-ramp.js";
 import { peerRampAppApiRoutes } from "./routes/api/peer-ramp-app.js";
 import { peerRampKycApiRoutes } from "./routes/api/peer-ramp-kyc.js";
 import { adminPeerRampKycApiRoutes } from "./routes/api/admin-peer-ramp-kyc.js";
+import { adminBusinessKybApiRoutes } from "./routes/api/admin-business-kyb.js";
 import { kycWebhookRoutes } from "./routes/webhook/kyc.js";
 import { metaApiRoutes } from "./routes/api/meta.js";
 import { publicPaymentLinksApiRoutes } from "./routes/api/public-payment-links.js";
@@ -115,6 +116,7 @@ app.addHook("preHandler", async (request, reply) => {
   if (path === "/webhook/persona") return; // Persona webhook: HMAC verified inside handler
   if (method === "GET" && path.startsWith("/api/requests/by-link/")) return; // Public pay link for request
   if (method === "GET" && path === "/api/meta/checkout-base-url") return;
+  if (method === "GET" && path === "/api/meta/verification-webhooks") return;
   if (method === "GET" && path.startsWith("/api/public/")) return;
   if (method === "POST" && path === "/api/public/gas-usage") return;
   if (method === "GET" && path === "/api/chains") return;
@@ -222,6 +224,7 @@ await app.register(peerRampApiRoutes, { prefix: "" });
 await app.register(peerRampAppApiRoutes, { prefix: "" });
 await app.register(peerRampKycApiRoutes, { prefix: "" });
 await app.register(adminPeerRampKycApiRoutes, { prefix: "" });
+await app.register(adminBusinessKybApiRoutes, { prefix: "" });
 await app.register(paystackWebhookRoutes, { prefix: "" });
 await app.register(kycWebhookRoutes, { prefix: "" });
 
