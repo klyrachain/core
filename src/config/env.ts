@@ -95,6 +95,21 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().min(1).optional(),
   /** Resend: from address (e.g. noreply@mail.yourdomain.com). Use a verified domain at resend.com/domains to send to any recipient. When unset, uses Resend testing sender (onboarding@resend.dev), which can only send to your own email. */
   RESEND_FROM_EMAIL: z.string().min(1).optional(),
+  /**
+   * Optional full Resend `from` string, e.g. `"Morapay Business" <noreply@morapay.com>`.
+   * When set, overrides per-template display names and RESEND_FROM_*_DISPLAY_NAME.
+   */
+  RESEND_FROM: z.string().min(1).optional(),
+  /**
+   * Display name for **general** transactional mail (receipts, peer ramp, payment links, etc.).
+   * Default when unset: `Morapay`.
+   */
+  RESEND_FROM_DISPLAY_NAME: z.string().min(1).max(120).optional(),
+  /**
+   * Display name for **business** mail (portal magic link, team invites).
+   * Default when unset: `Morapay Business`.
+   */
+  RESEND_FROM_BUSINESS_DISPLAY_NAME: z.string().min(1).max(120).optional(),
 
   /** Sent.dm: API key for SMS/WhatsApp. Optional; if missing, messaging service no-ops. */
   SENT_DM_API_KEY: z.string().min(1).optional(),
@@ -151,7 +166,11 @@ const envSchema = z.object({
    */
   BUSINESS_MAGIC_LINK_BASE_URL: z.string().url().optional(),
 
-  /** WebAuthn RP ID for business portal passkeys (hostname only, e.g. localhost or app.example.com). */
+  /**
+   * WebAuthn RP ID for business portal passkeys (hostname only, e.g. `business.example.com`).
+   * When unset, Core derives RP ID from the request `Origin` hostname (so Vercel previews work).
+   * For strict control, set this and `BUSINESS_WEBAUTHN_ORIGINS` explicitly in production.
+   */
   BUSINESS_WEBAUTHN_RP_ID: z.string().min(1).optional(),
   /** Comma-separated origins allowed for business portal WebAuthn (e.g. http://localhost:3000). */
   BUSINESS_WEBAUTHN_ORIGINS: z.string().optional(),

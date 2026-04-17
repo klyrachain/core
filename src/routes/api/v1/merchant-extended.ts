@@ -203,30 +203,83 @@ export function registerMerchantExtendedRoutes(app: FastifyInstance): void {
           q && q.length > 0
             ? Prisma.sql`AND "fromIdentifier" ILIKE ${"%" + q.replace(/[%_\\]/g, "") + "%"}`
             : Prisma.empty;
+        /**
+         * Distinct payers: Transaction.fromIdentifier, plus Claim.payerIdentifier when the
+         * linked transaction has no payer id (legacy / edge REQUEST rows).
+         */
         const rows = await prisma.$queryRaw<
           { fromIdentifier: string; fromType: string | null; txCount: bigint; lastActivityAt: Date }[]
         >`
-          SELECT "fromIdentifier", "fromType"::text, COUNT(*)::bigint AS "txCount", MAX("createdAt") AS "lastActivityAt"
-          FROM "Transaction"
-          WHERE "businessId" = ${businessId}
-            AND "environment" = ${environment}::"MerchantEnvironment"
-            AND "fromIdentifier" IS NOT NULL
-            AND TRIM("fromIdentifier") <> ''
-            ${searchSql}
-          GROUP BY "fromIdentifier", "fromType"
-          ORDER BY MAX("createdAt") DESC
-          LIMIT ${limit} OFFSET ${skip}
-        `;
-        const countRows = await prisma.$queryRaw<{ c: bigint }[]>`
-          SELECT COUNT(*)::bigint AS c FROM (
-            SELECT 1
+          WITH "txPayers" AS (
+            SELECT "fromIdentifier", "fromType"::text AS "fromType", COUNT(*)::bigint AS "cnt", MAX("createdAt") AS "lastAt"
             FROM "Transaction"
             WHERE "businessId" = ${businessId}
               AND "environment" = ${environment}::"MerchantEnvironment"
               AND "fromIdentifier" IS NOT NULL
               AND TRIM("fromIdentifier") <> ''
-              ${searchSql}
             GROUP BY "fromIdentifier", "fromType"
+          ),
+          "claimPayers" AS (
+            SELECT TRIM(c."payerIdentifier") AS "fromIdentifier", 'EMAIL'::text AS "fromType", COUNT(*)::bigint AS "cnt", MAX(t."createdAt") AS "lastAt"
+            FROM "Claim" c
+            INNER JOIN "Request" r ON r."id" = c."requestId"
+            INNER JOIN "Transaction" t ON t."id" = r."transactionId"
+            WHERE r."businessId" = ${businessId}
+              AND r."environment" = ${environment}::"MerchantEnvironment"
+              AND TRIM(c."payerIdentifier") <> ''
+              AND (t."fromIdentifier" IS NULL OR TRIM(t."fromIdentifier") = '')
+            GROUP BY TRIM(c."payerIdentifier")
+          ),
+          "combined" AS (
+            SELECT * FROM "txPayers"
+            UNION ALL
+            SELECT * FROM "claimPayers"
+          ),
+          "rolled" AS (
+            SELECT "fromIdentifier", "fromType", SUM("cnt")::bigint AS "txCount", MAX("lastAt") AS "lastActivityAt"
+            FROM "combined"
+            GROUP BY "fromIdentifier", "fromType"
+          )
+          SELECT "fromIdentifier", "fromType", "txCount", "lastActivityAt"
+          FROM "rolled"
+          WHERE 1=1
+            ${searchSql}
+          ORDER BY "lastActivityAt" DESC
+          LIMIT ${limit} OFFSET ${skip}
+        `;
+        const countRows = await prisma.$queryRaw<{ c: bigint }[]>`
+          WITH "txPayers" AS (
+            SELECT "fromIdentifier", "fromType"::text AS "fromType", COUNT(*)::bigint AS "cnt", MAX("createdAt") AS "lastAt"
+            FROM "Transaction"
+            WHERE "businessId" = ${businessId}
+              AND "environment" = ${environment}::"MerchantEnvironment"
+              AND "fromIdentifier" IS NOT NULL
+              AND TRIM("fromIdentifier") <> ''
+            GROUP BY "fromIdentifier", "fromType"
+          ),
+          "claimPayers" AS (
+            SELECT TRIM(c."payerIdentifier") AS "fromIdentifier", 'EMAIL'::text AS "fromType", COUNT(*)::bigint AS "cnt", MAX(t."createdAt") AS "lastAt"
+            FROM "Claim" c
+            INNER JOIN "Request" r ON r."id" = c."requestId"
+            INNER JOIN "Transaction" t ON t."id" = r."transactionId"
+            WHERE r."businessId" = ${businessId}
+              AND r."environment" = ${environment}::"MerchantEnvironment"
+              AND TRIM(c."payerIdentifier") <> ''
+              AND (t."fromIdentifier" IS NULL OR TRIM(t."fromIdentifier") = '')
+            GROUP BY TRIM(c."payerIdentifier")
+          ),
+          "combined" AS (
+            SELECT * FROM "txPayers"
+            UNION ALL
+            SELECT * FROM "claimPayers"
+          ),
+          "rolled" AS (
+            SELECT "fromIdentifier", "fromType", SUM("cnt")::bigint AS "txCount", MAX("lastAt") AS "lastActivityAt"
+            FROM "combined"
+            GROUP BY "fromIdentifier", "fromType"
+          )
+          SELECT COUNT(*)::bigint AS c FROM (
+            SELECT 1 FROM "rolled" WHERE 1=1 ${searchSql}
           ) x
         `;
         const total = Number(countRows[0]?.c ?? 0);

@@ -291,6 +291,7 @@ export async function sendBusinessMagicLinkEmail(
     html: businessMagicLinkHtml({ magicLinkUrl }),
     text: businessMagicLinkText({ magicLinkUrl }),
     entityRefId: `business-magic-${email.slice(0, 20)}`,
+    fromPersona: "business",
   });
   if (!result.ok) {
     return {
@@ -511,32 +512,62 @@ export async function completeBusinessOnboarding(
   };
 }
 
-function getBusinessWebAuthnRpConfig(): {
+/**
+ * @param requestOrigin - Prefer `Origin` header from the HTTP request. When `BUSINESS_WEBAUTHN_RP_ID`
+ * is unset, hostname is derived from this URL so production (e.g. Vercel) is not stuck on `localhost`.
+ */
+function getBusinessWebAuthnRpConfig(requestOrigin?: string | null): {
   rpID: string;
   defaultOrigin: string;
   allowedOrigins: string[];
 } {
   const env = getEnv();
-  const rpID =
-    env.BUSINESS_WEBAUTHN_RP_ID?.trim() ||
-    env.ADMIN_RP_ID?.trim() ||
-    "localhost";
+  let rpID = env.BUSINESS_WEBAUTHN_RP_ID?.trim() || env.ADMIN_RP_ID?.trim() || "";
+  const originTrim = requestOrigin?.trim() ?? "";
+  if (!rpID && originTrim) {
+    try {
+      const host = new URL(originTrim).hostname;
+      if (host) rpID = host;
+    } catch {
+      /* ignore */
+    }
+  }
+  if (!rpID) {
+    rpID = "localhost";
+  }
+
   const defaultOrigin =
     env.BUSINESS_WEBAUTHN_ORIGINS?.split(",")[0]?.trim() ||
     env.FRONTEND_APP_URL ||
     `http://localhost:${env.PORT}`;
-  const allowedOrigins = env.BUSINESS_WEBAUTHN_ORIGINS
+
+  let allowedOrigins = env.BUSINESS_WEBAUTHN_ORIGINS
     ? env.BUSINESS_WEBAUTHN_ORIGINS.split(",").map((part) => part.trim()).filter(Boolean)
     : env.ADMIN_ALLOWED_ORIGINS
       ? env.ADMIN_ALLOWED_ORIGINS.split(",").map((part) => part.trim()).filter(Boolean)
       : [defaultOrigin];
+
+  if (
+    originTrim &&
+    !allowedOrigins.includes(originTrim) &&
+    env.BUSINESS_WEBAUTHN_ORIGINS?.trim() === undefined
+  ) {
+    try {
+      if (new URL(originTrim).hostname === rpID) {
+        allowedOrigins = [...allowedOrigins, originTrim];
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   return { rpID, defaultOrigin, allowedOrigins };
 }
 
 export function getExpectedBusinessPortalOrigin(
   requestOrigin: string | undefined
 ): string {
-  const { defaultOrigin, allowedOrigins } = getBusinessWebAuthnRpConfig();
+  const { defaultOrigin, allowedOrigins } = getBusinessWebAuthnRpConfig(requestOrigin);
   const list =
     allowedOrigins.length > 0 ? allowedOrigins : [defaultOrigin];
   if (requestOrigin && list.includes(requestOrigin)) return requestOrigin;
@@ -581,14 +612,15 @@ export async function setupPortalProfile(
 }
 
 export async function getPortalPasskeyRegistrationOptions(
-  userId: string
+  userId: string,
+  requestOrigin?: string | null
 ): Promise<Awaited<ReturnType<typeof generateRegistrationOptions>> | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: { portalPasskeys: true },
   });
   if (!user) return null;
-  const { rpID } = getBusinessWebAuthnRpConfig();
+  const { rpID } = getBusinessWebAuthnRpConfig(requestOrigin);
   const display =
     user.portalDisplayName?.trim() || user.email.split("@")[0] || user.email;
   return generateRegistrationOptions({
@@ -608,7 +640,7 @@ export async function verifyPortalPasskeyRegistration(
   expectedOrigin: string,
   passkeyName: string | undefined
 ): Promise<void> {
-  const { rpID } = getBusinessWebAuthnRpConfig();
+  const { rpID } = getBusinessWebAuthnRpConfig(expectedOrigin);
   const verification = await verifyRegistrationResponse({
     response,
     expectedChallenge,
@@ -635,7 +667,8 @@ export async function verifyPortalPasskeyRegistration(
 }
 
 export async function getPortalPasskeyAuthOptions(
-  email: string
+  email: string,
+  requestOrigin?: string | null
 ): Promise<{
   options: Awaited<ReturnType<typeof generateAuthenticationOptions>>;
   challenge: string;
@@ -646,7 +679,7 @@ export async function getPortalPasskeyAuthOptions(
     include: { portalPasskeys: true },
   });
   if (!user || user.portalPasskeys.length === 0) return null;
-  const { rpID } = getBusinessWebAuthnRpConfig();
+  const { rpID } = getBusinessWebAuthnRpConfig(requestOrigin);
   const options = await generateAuthenticationOptions({
     rpID,
     allowCredentials: user.portalPasskeys.map((passkey) => ({ id: passkey.credentialId })),
@@ -668,7 +701,7 @@ export async function verifyPortalPasskeyLogin(
   if (!user) return null;
   const passkey = user.portalPasskeys.find((pk) => pk.credentialId === response.id);
   if (!passkey) return null;
-  const { rpID } = getBusinessWebAuthnRpConfig();
+  const { rpID } = getBusinessWebAuthnRpConfig(expectedOrigin);
   const credential = {
     id: passkey.credentialId,
     publicKey: new Uint8Array(passkey.publicKey),
@@ -751,14 +784,16 @@ export async function getBusinessPortalSession(userId: string): Promise<{
   }
   const onboarding = user.merchantOnboarding;
   const hasPassword = Boolean(user.passwordHash);
+  const passkeyCount = user._count.portalPasskeys;
+  /** Display name plus password or at least one portal passkey (passkey-only sign-in is valid). */
   const profileComplete = Boolean(
-    user.portalDisplayName?.trim() && hasPassword
+    user.portalDisplayName?.trim() && (hasPassword || passkeyCount > 0)
   );
   return {
     email: user.email,
     portalDisplayName: user.portalDisplayName ?? null,
     hasPassword,
-    passkeyCount: user._count.portalPasskeys,
+    passkeyCount,
     profileComplete,
     onboarding: onboarding
       ? {

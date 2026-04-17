@@ -118,6 +118,7 @@ export async function createBusinessMemberInvite(opts: {
     html: businessTeamInviteHtml(templateVars),
     text: businessTeamInviteText(templateVars),
     entityRefId: invite.id,
+    fromPersona: "business",
   }).catch(() => {});
   return { id: invite.id, inviteUrl };
 }
