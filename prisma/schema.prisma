@@ -232,6 +232,11 @@ model User {
   portalDisplayName String?
   portalPasskeys    UserPortalPasskey[]
 
+  /// Business portal / invited member identity verification (person KYC), distinct from PeerRampAppUser.
+  portalKycStatus     String?
+  portalKycProvider   String?
+  portalKycVerifiedAt DateTime?
+
   transactionsFrom Transaction[] @relation("FromUser")
   transactionsTo   Transaction[] @relation("ToUser")
   members          BusinessMember[]
@@ -837,6 +842,7 @@ model Business {
   registrationNumber String? // Tax ID / EIN / RC Number
   country            String  // ISO code e.g. "GH", "US"
   kybStatus          KybStatus @default(NOT_STARTED)
+  kybDiditSessionId  String?
   riskScore          Int       @default(0) // 0–100, 100 is high risk
 
   settlementSchedule SettlementSchedule @default(WEEKLY)

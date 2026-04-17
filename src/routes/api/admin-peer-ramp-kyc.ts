@@ -10,7 +10,7 @@ import {
   PERMISSION_SETTINGS_WRITE,
 } from "../../lib/permissions.js";
 import {
-  listPeerRampAppUsersForKycAdmin,
+  listAdminKycUsers,
   resetPeerRampUserKyc,
   overridePeerRampUserKyc,
 } from "../../services/peer-ramp-kyc-admin.service.js";
@@ -25,11 +25,11 @@ export async function adminPeerRampKycApiRoutes(app: FastifyInstance): Promise<v
           ? Number((req.query as { limit?: string }).limit)
           : 50;
       const limit = Number.isFinite(limitRaw) ? limitRaw : 50;
-      const users = await listPeerRampAppUsersForKycAdmin(q || undefined, limit);
+      const users = await listAdminKycUsers(q || undefined, limit);
       return successEnvelope(reply, { users });
     } catch (err) {
       req.log.error({ err }, "GET /api/admin/peer-ramp-app/kyc/users");
-      return errorEnvelope(reply, "Could not list Peer Ramp KYC users.", 500);
+      return errorEnvelope(reply, "Could not list KYC users.", 500);
     }
   });
 

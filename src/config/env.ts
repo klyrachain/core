@@ -208,8 +208,16 @@ const envSchema = z.object({
   DIDIT_API_KEY: z.string().min(1).optional(),
   /** DIDIT: Client ID from the Didit Console (identifies your application). */
   DIDIT_CLIENT_ID: z.string().uuid().optional(),
-  /** DIDIT: Workflow ID from the Didit Console (required to create sessions). */
+  /**
+   * DIDIT: Workflow for **person / member KYC** (invited users and identity checks).
+   * Same stack as merchant dashboard KYC flows unless overridden per-call.
+   */
   DIDIT_WORKFLOW_ID: z.string().uuid().optional(),
+  /**
+   * DIDIT: Workflow for **business KYB** (company verification). Optional until you enable KYB in the product.
+   * Distinct from DIDIT_WORKFLOW_ID so you can use a stricter or business-specific flow in Didit.
+   */
+  DIDIT_KYB_WORKFLOW_ID: z.string().uuid().optional(),
   /** DIDIT: Webhook secret for X-Signature-V2 HMAC verification. */
   DIDIT_WEBHOOK_SECRET: z.string().min(1).optional(),
 
