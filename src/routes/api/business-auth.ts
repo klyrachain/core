@@ -4,6 +4,7 @@
  */
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { getWebAuthnRequestOrigin } from "../../lib/webauthn-request-origin.js";
 import { z } from "zod";
 import { errorEnvelope, successEnvelope } from "../../lib/api-helpers.js";
 import { verifyBusinessPortalToken } from "../../lib/business-session.js";
@@ -518,7 +519,7 @@ export async function businessAuthRoutes(app: FastifyInstance): Promise<void> {
     async (req: FastifyRequest, reply: FastifyReply) => {
       const userId = await requirePortalUser(req, reply);
       if (!userId) return;
-      const requestOrigin = (req.headers.origin as string) ?? undefined;
+      const requestOrigin = getWebAuthnRequestOrigin(req);
       const options = await getPortalPasskeyRegistrationOptions(userId, requestOrigin);
       if (!options) {
         return reply.status(500).send({
@@ -556,7 +557,7 @@ export async function businessAuthRoutes(app: FastifyInstance): Promise<void> {
         code: "CHALLENGE_EXPIRED",
       });
     }
-    const requestOrigin = (req.headers.origin as string) ?? undefined;
+    const requestOrigin = getWebAuthnRequestOrigin(req);
     const expectedOrigin = getExpectedBusinessPortalOrigin(requestOrigin);
     try {
       await verifyPortalPasskeyRegistration(
@@ -580,7 +581,7 @@ export async function businessAuthRoutes(app: FastifyInstance): Promise<void> {
       if (!parsed.success) {
         return errorEnvelope(reply, parsed.error.message, 400);
       }
-      const requestOrigin = (req.headers.origin as string) ?? undefined;
+      const requestOrigin = getWebAuthnRequestOrigin(req);
       const result = await getPortalPasskeyAuthOptions(parsed.data.email, requestOrigin);
       if (!result) {
         return reply.status(400).send({
@@ -610,7 +611,7 @@ export async function businessAuthRoutes(app: FastifyInstance): Promise<void> {
           code: "CHALLENGE_EXPIRED",
         });
       }
-      const requestOrigin = (req.headers.origin as string) ?? undefined;
+      const requestOrigin = getWebAuthnRequestOrigin(req);
       const expectedOrigin = getExpectedBusinessPortalOrigin(requestOrigin);
       const session = await verifyPortalPasskeyLogin(
         email,

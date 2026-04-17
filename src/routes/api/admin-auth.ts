@@ -36,6 +36,7 @@ import {
   ADMIN_AUTH_AUTH_CHALLENGE_TTL,
 } from "../../lib/redis.js";
 import { assertAdminPasskeyOptionsRateLimit } from "../../lib/admin-passkey-rate-limit.js";
+import { getWebAuthnRequestOrigin } from "../../lib/webauthn-request-origin.js";
 
 const bodyInvite = z.object({ email: z.string().email().transform((s) => s.trim().toLowerCase()), role: z.enum(["super_admin", "support", "developer", "viewer"]) });
 const bodySetup = z.object({ inviteToken: z.string().min(1), password: z.string().min(8) });
@@ -218,7 +219,7 @@ export async function adminAuthRoutes(app: FastifyInstance): Promise<void> {
     if (!expectedChallenge) {
       return reply.status(400).send({ success: false, error: "Challenge expired or missing. Request options again.", code: "CHALLENGE_EXPIRED" });
     }
-    const requestOrigin = (req.headers.origin as string) ?? undefined;
+    const requestOrigin = getWebAuthnRequestOrigin(req);
     const expectedOrigin = getExpectedWebAuthnOrigin(requestOrigin);
     const admin = await verifyPasskeyAssertion(
       parsed.data.email,
@@ -296,7 +297,7 @@ export async function adminAuthRoutes(app: FastifyInstance): Promise<void> {
     if (!expectedChallenge) {
       return reply.status(400).send({ success: false, error: "Challenge expired. Request options again.", code: "CHALLENGE_EXPIRED" });
     }
-    const requestOrigin = (req.headers.origin as string) ?? undefined;
+    const requestOrigin = getWebAuthnRequestOrigin(req);
     const expectedOrigin = getExpectedWebAuthnOrigin(requestOrigin);
     try {
       await verifyAndSavePasskey(

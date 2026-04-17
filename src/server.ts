@@ -57,6 +57,7 @@ import { publicGasApiRoutes } from "./routes/api/public-gas.js";
 import { gasPlatformApiRoutes } from "./routes/api/gas-platform.js";
 import { publicCurrenciesApiRoutes } from "./routes/api/public-currencies.js";
 import { publicWrappedApiRoutes } from "./routes/api/public-wrapped.js";
+import { publicContactApiRoutes } from "./routes/api/public-contact.js";
 import { v1QuotesRoutes } from "./routes/api/v1/quotes.js";
 import { adminAuthRoutes } from "./routes/api/admin-auth.js";
 import { businessAuthRoutes } from "./routes/api/business-auth.js";
@@ -119,6 +120,7 @@ app.addHook("preHandler", async (request, reply) => {
   if (method === "GET" && path === "/api/meta/verification-webhooks") return;
   if (method === "GET" && path.startsWith("/api/public/")) return;
   if (method === "POST" && path === "/api/public/gas-usage") return;
+  if (method === "POST" && path === "/api/public/contact") return;
   if (method === "GET" && path === "/api/chains") return;
   if (
     method === "GET" &&
@@ -195,6 +197,7 @@ await app.register(publicGasApiRoutes, { prefix: "" });
 await app.register(gasPlatformApiRoutes, { prefix: "" });
 await app.register(publicCurrenciesApiRoutes, { prefix: "" });
 await app.register(publicWrappedApiRoutes, { prefix: "" });
+await app.register(publicContactApiRoutes, { prefix: "" });
 await app.register(countriesApiRoutes, { prefix: "" });
 await app.register(chainsTokensApiRoutes, { prefix: "" });
 await app.register(invoicesApiRoutes, { prefix: "" });
