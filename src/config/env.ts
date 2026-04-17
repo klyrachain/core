@@ -123,6 +123,9 @@ const envSchema = z.object({
   /** Frontend app base URL for payment/claim links (e.g. https://app.example.com). Used in email/SMS templates. */
   FRONTEND_APP_URL: z.string().url().optional().default("http://localhost:3000"),
 
+  /** Inbox for POST /api/public/contact (marketing site). If unset, endpoint returns 503. */
+  CONTACT_INBOX_EMAIL: z.string().email().optional(),
+
   /** Payer checkout app origin (no trailing slash), e.g. https://pay.example.com. Exposed read-only via GET /api/meta/checkout-base-url. */
   CHECKOUT_BASE_URL: z.string().url().optional(),
 
