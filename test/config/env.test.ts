@@ -1,4 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+
+/** Avoid loading `core/.env` during tests (would inject REDIS_* and break expectations). */
+vi.mock("dotenv/config", () => ({}));
+
 import { loadEnv, getEnv } from "../../src/config/env.js";
 
 const requiredEnv = {
@@ -14,7 +18,11 @@ describe("env", () => {
 
   beforeEach(() => {
     vi.resetModules();
-    process.env = { ...originalEnv, ...requiredEnv };
+    const withoutRedis = { ...originalEnv };
+    for (const k of Object.keys(withoutRedis)) {
+      if (k.startsWith("REDIS")) delete withoutRedis[k];
+    }
+    process.env = { ...withoutRedis, ...requiredEnv };
   });
 
   afterEach(() => {
@@ -45,6 +53,64 @@ describe("env", () => {
       const mod = await import("../../src/config/env.js");
       expect(() => mod.loadEnv()).toThrow(/ENCRYPTION_KEY/);
       process.env.ENCRYPTION_KEY = requiredEnv.ENCRYPTION_KEY;
+    });
+
+    it("should merge REDIS_PASSWORD into host-only REDIS_URL (default ACL user)", async () => {
+      vi.resetModules();
+      process.env = {
+        ...requiredEnv,
+        REDIS_URL: "redis://cache.example:15912",
+        REDIS_PASSWORD: "mySecretPass",
+      };
+      const mod = await import("../../src/config/env.js");
+      const env = mod.loadEnv();
+      const u = new URL(env.REDIS_URL);
+      expect(u.username).toBe("default");
+      expect(u.password).toBe("mySecretPass");
+      expect(u.hostname).toBe("cache.example");
+      expect(u.port).toBe("15912");
+    });
+
+    it("should merge REDIS_USERNAME when set with host-only REDIS_URL", async () => {
+      vi.resetModules();
+      process.env = {
+        ...requiredEnv,
+        REDIS_URL: "redis://cache.example:6379",
+        REDIS_USERNAME: "appuser",
+        REDIS_PASSWORD: "pw",
+      };
+      const mod = await import("../../src/config/env.js");
+      const env = mod.loadEnv();
+      const u = new URL(env.REDIS_URL);
+      expect(u.username).toBe("appuser");
+      expect(u.password).toBe("pw");
+    });
+
+    it("should use rediss when REDIS_TLS and merging auth", async () => {
+      vi.resetModules();
+      process.env = {
+        ...requiredEnv,
+        REDIS_URL: "redis://cache.example:15912",
+        REDIS_PASSWORD: "pw",
+        REDIS_TLS: "true",
+      };
+      const mod = await import("../../src/config/env.js");
+      const env = mod.loadEnv();
+      expect(env.REDIS_URL.startsWith("rediss://")).toBe(true);
+    });
+
+    it("should not override userinfo already present in REDIS_URL", async () => {
+      vi.resetModules();
+      process.env = {
+        ...requiredEnv,
+        REDIS_URL: "redis://existing:existingpw@cache.example:6379",
+        REDIS_PASSWORD: "different",
+      };
+      const mod = await import("../../src/config/env.js");
+      const env = mod.loadEnv();
+      const u = new URL(env.REDIS_URL);
+      expect(u.username).toBe("existing");
+      expect(u.password).toBe("existingpw");
     });
   });
 

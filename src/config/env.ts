@@ -11,6 +11,7 @@ const envSchema = z.object({
   /**
    * Redis connection string. If unset, Core will build one from
    * REDIS_HOST/REDIS_PORT/REDIS_USERNAME/REDIS_PASSWORD (+ REDIS_TLS).
+   * If set without userinfo, `REDIS_PASSWORD` (and optional `REDIS_USERNAME`) are merged in (Redis Cloud).
    */
   REDIS_URL: z.string().url().optional(),
   /** Redis host (used only when REDIS_URL is unset). */
@@ -222,6 +223,38 @@ type ParsedEnv = z.infer<typeof envSchema>;
 /** Runtime env after `loadEnv()` normalizes derived values (e.g. REDIS_URL). */
 export type Env = Omit<ParsedEnv, "REDIS_URL"> & { REDIS_URL: string };
 
+/**
+ * Redis Cloud and similar often ship `REDIS_URL` as `redis://host:port` with the password only in a
+ * separate field. If the URL has no userinfo but `REDIS_PASSWORD` is set, inject ACL user + password.
+ * Default username is `default` (Redis Cloud default ACL user).
+ * When `REDIS_TLS` is true, upgrade `redis://` → `rediss://` for TLS endpoints.
+ */
+function mergeRedisAuthIntoUrl(redisUrl: string, d: ParsedEnv): string {
+  const pw = d.REDIS_PASSWORD?.trim();
+  if (!pw) return redisUrl;
+
+  let s = redisUrl.trim();
+  if (!s.startsWith("redis://") && !s.startsWith("rediss://")) {
+    const scheme = d.REDIS_TLS ? "rediss" : "redis";
+    s = `${scheme}://${s}`;
+  }
+
+  try {
+    const u = new URL(s);
+    if (u.username || u.password) return s;
+
+    u.username = d.REDIS_USERNAME?.trim() || "default";
+    u.password = pw;
+
+    if (d.REDIS_TLS && u.protocol === "redis:") {
+      u.protocol = "rediss:";
+    }
+    return u.href;
+  } catch {
+    return redisUrl;
+  }
+}
+
 let env: Env;
 
 export function loadEnv(): Env {
@@ -234,7 +267,7 @@ export function loadEnv(): Env {
   }
   const d = parsed.data;
 
-  const redisUrl =
+  const redisUrlRaw =
     d.REDIS_URL ??
     (() => {
       const host = d.REDIS_HOST?.trim();
@@ -253,6 +286,8 @@ export function loadEnv(): Env {
               : "";
       return `${scheme}://${auth}${host}:${port}`;
     })();
+
+  const redisUrl = mergeRedisAuthIntoUrl(redisUrlRaw, d);
 
   env = {
     ...d,
