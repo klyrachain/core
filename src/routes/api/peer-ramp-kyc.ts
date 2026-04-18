@@ -1,10 +1,12 @@
 /**
- * Peer-ramp KYC API routes (Bearer auth — same pattern as peer-ramp-app).
- * These routes are excluded from requireApiKeyOrSession (see server.ts bypass).
+ * **Peer Ramp consumer** KYC only (Bearer = peer-ramp app session).
+ * Not merchant/business-dashboard verification — that is portal `User` + separate APIs/UI.
  *
- * POST /api/peer-ramp-app/kyc/init    — create / resume a KYC session
- * POST /api/peer-ramp-app/kyc/sync    — pull Didit decision API and update DB (callback / manual refresh)
- * GET  /api/peer-ramp-app/kyc/status  — get current KYC status for the session user
+ * Excluded from requireApiKeyOrSession (see server.ts bypass).
+ *
+ * POST /api/peer-ramp-app/kyc/init  — create / resume session → `PeerRampAppUser`
+ * POST /api/peer-ramp-app/kyc/sync  — Didit decision sync
+ * GET  /api/peer-ramp-app/kyc/status
  */
 
 import type { FastifyInstance, FastifyRequest } from "fastify";

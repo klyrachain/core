@@ -1,5 +1,6 @@
 /**
- * Platform admin: list / reset / override KYB on `Business` (DB only; no Didit API calls).
+ * Platform admin **oversight** on `Business.kyb*`: list, reset session pointer, DB-only approve/decline.
+ * **Merchants** complete KYB in the business dashboard (founding flow); admins do not file KYB for them here.
  */
 
 import { KybStatus } from "../../prisma/generated/prisma/client.js";

@@ -232,7 +232,7 @@ model User {
   portalDisplayName String?
   portalPasskeys    UserPortalPasskey[]
 
-  /// Business portal / invited member identity verification (person KYC), distinct from PeerRampAppUser.
+  /// Business portal: **each member** completes their own person KYC (invited users included). Not PeerRampAppUser.
   portalKycStatus     String?
   portalKycProvider   String?
   portalKycVerifiedAt DateTime?
@@ -841,6 +841,7 @@ model Business {
   legalName          String? // Official registered name (KYB)
   registrationNumber String? // Tax ID / EIN / RC Number
   country            String  // ISO code e.g. "GH", "US"
+  /// Company KYB: completed in the **business dashboard** by the founding member when ready (not right after signup / not by platform admins).
   kybStatus          KybStatus @default(NOT_STARTED)
   kybDiditSessionId  String?
   riskScore          Int       @default(0) // 0–100, 100 is high risk

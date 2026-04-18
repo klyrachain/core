@@ -1,5 +1,7 @@
 /**
- * Platform admin: list / reset / manual override for KYC (Peer Ramp app users + portal User rows).
+ * Platform admin: unified **read / reset / DB override** list for two separate populations:
+ * - `peer_ramp`: ramp **consumer** KYC (`PeerRampAppUser` — same lifecycle as `/api/peer-ramp-app/kyc/*`).
+ * - `portal`: **business dashboard** signups / invited members (`User.portalKyc*`) — not driven by ramp KYC routes.
  */
 
 import { prisma } from "../lib/prisma.js";

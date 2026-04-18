@@ -309,8 +309,12 @@ export async function adminAuthRoutes(app: FastifyInstance): Promise<void> {
       );
       return successEnvelope(reply, { message: "Passkey added." });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Verification failed.";
-      return reply.status(400).send({ success: false, error: msg, code: "VERIFY_FAILED" });
+      req.log.warn({ err: e }, "admin passkey registration verify failed");
+      return reply.status(400).send({
+        success: false,
+        error: "Passkey verification failed. Try again or request new passkey options.",
+        code: "VERIFY_FAILED",
+      });
     }
   });
 }
