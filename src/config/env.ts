@@ -148,6 +148,20 @@ const envSchema = z.object({
   /** Max rows per reconciliation tick. */
   PAYSTACK_RECONCILE_MAX_BATCH: z.coerce.number().int().min(1).max(200).optional().default(30),
 
+  /**
+   * Infisical API host (no trailing slash), e.g. https://app.infisical.com or https://us.infisical.com.
+   * Optional; secret fetch is disabled unless INFISICAL_SERVICE_TOKEN and INFISICAL_PROJECT_ID are set.
+   */
+  INFISICAL_SITE_URL: z.string().url().optional().default("https://app.infisical.com"),
+  /** Infisical API v4: Bearer access token (machine identity / service token). */
+  INFISICAL_SERVICE_TOKEN: z.string().min(1).optional(),
+  /** Infisical: project ID (query param for GET /api/v4/secrets/{secretName}). */
+  INFISICAL_PROJECT_ID: z.string().min(1).optional(),
+  /** Infisical: environment slug (e.g. dev, staging, prod). */
+  INFISICAL_ENVIRONMENT_SLUG: z.string().min(1).optional().default("dev"),
+  /** In-memory cache TTL for Infisical secret values (ms). */
+  INFISICAL_CACHE_TTL_MS: z.coerce.number().int().min(5_000).max(3_600_000).optional().default(60_000),
+
   /** HMAC secret for business portal JWT (signup / dashboard session). Defaults to ENCRYPTION_KEY. */
   BUSINESS_PORTAL_JWT_SECRET: z.string().min(32).optional(),
 

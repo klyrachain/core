@@ -162,7 +162,23 @@ If Paystack is configured to send webhooks to **your** backend, your backend mus
 
 ---
 
-## 8. Security checklist (your backend)
+## 8. Payment instructions (multi-chain calldata)
+
+`GET /api/offramp/calldata`, `POST /api/app-transfer/intent`, and `GET /api/requests/calldata` return a **discriminated** payload on `data` (and intent nests it under `calldata`):
+
+| `kind` | Meaning |
+|--------|---------|
+| `evm_erc20_transfer` | Same as legacy: `toAddress`, `chainId`, `tokenAddress`, `amount`, `decimals`. Only this kind supports automatic `POST /api/offramp/confirm` / `confirm-crypto` today. |
+| `solana_spl_transfer` | `recipientAddress`, `mint`, `amountAtomic`, `decimals`. Confirm returns **501** until a Solana verifier exists. |
+| `stellar_payment` | `destination`, `amount`, `assetType`, optional `assetCode` / `assetIssuer`. Confirm **501**. |
+| `bitcoin_utxo` | `address`, `amountBtc`, `amountSats`. Confirm **501**. |
+| `unsupported` | `unsupportedReason` explains missing `PlatformPoolDestination` or config. |
+
+**Platform pool routing:** Configure rows via `GET/POST/PATCH/DELETE /api/platform-pool-destinations` (platform admin). Optional `infisicalSecretName` + `infisicalSecretPath` resolve the receive address from Infisical at runtime (Core env: `INFISICAL_SERVICE_TOKEN`, `INFISICAL_PROJECT_ID`, `INFISICAL_ENVIRONMENT_SLUG`, `INFISICAL_SITE_URL`).
+
+---
+
+## 9. Security checklist (your backend)
 
 - [ ] Store Core base URL and API key in server-side env only.
 - [ ] Never send `x-api-key` or Core URL to the frontend.
