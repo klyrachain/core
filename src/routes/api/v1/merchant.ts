@@ -17,6 +17,7 @@ import {
   PERMISSION_TRANSACTIONS_READ,
 } from "../../../lib/permissions.js";
 import { getMerchantV1BusinessId } from "../../../lib/business-portal-tenant.guard.js";
+import { isFirstActiveMemberOfBusiness } from "../../../lib/business-first-member.js";
 import { getMerchantEnvironmentOrThrow } from "../../../lib/merchant-environment.js";
 import { requireMerchantRole, OWNER_ADMIN, OWNER_ADMIN_DEV } from "../../../lib/merchant-rbac.js";
 import { generateKey, listApiKeysForBusiness } from "../../../services/api-key.service.js";
@@ -398,6 +399,7 @@ export async function merchantV1Routes(app: FastifyInstance): Promise<void> {
     try {
       if (!requirePermission(req, reply, PERMISSION_BUSINESS_READ, { allowMerchant: true })) return;
       const businessId = getMerchantV1BusinessId(req);
+      const tenant = req.businessPortalTenant;
       const business = await prisma.business.findUnique({
         where: { id: businessId },
         select: {
@@ -420,6 +422,30 @@ export async function merchantV1Routes(app: FastifyInstance): Promise<void> {
         },
       });
       if (!business) return errorEnvelope(reply, "Business not found.", 404);
+
+      let portalKycStatus: string | null = null;
+      let portalKycProvider: string | null = null;
+      let portalKycVerifiedAt: string | null = null;
+      let isFirstActiveMember = false;
+
+      if (tenant?.userId) {
+        const [userRow, firstMember] = await Promise.all([
+          prisma.user.findUnique({
+            where: { id: tenant.userId },
+            select: {
+              portalKycStatus: true,
+              portalKycProvider: true,
+              portalKycVerifiedAt: true,
+            },
+          }),
+          isFirstActiveMemberOfBusiness(tenant.userId, businessId),
+        ]);
+        portalKycStatus = userRow?.portalKycStatus ?? null;
+        portalKycProvider = userRow?.portalKycProvider ?? null;
+        portalKycVerifiedAt = userRow?.portalKycVerifiedAt?.toISOString() ?? null;
+        isFirstActiveMember = firstMember;
+      }
+
       return successEnvelope(reply, {
         ...business,
         logoUrl: business.logoUrl ?? undefined,
@@ -432,6 +458,10 @@ export async function merchantV1Routes(app: FastifyInstance): Promise<void> {
         termsOfServiceUrl: business.termsOfServiceUrl ?? undefined,
         returnPolicyUrl: business.returnPolicyUrl ?? undefined,
         createdAt: business.createdAt.toISOString(),
+        portalKycStatus,
+        portalKycProvider,
+        portalKycVerifiedAt,
+        isFirstActiveMember,
       });
     } catch (err) {
       req.log.error({ err }, "GET /api/v1/merchant/business");

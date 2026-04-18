@@ -15,7 +15,7 @@
     ]
   },
   "scripts": {
-    "build": "prisma generate && tsc",
+    "build": "pnpm run lint && tsc",
     "lint": "prisma generate && eslint src && tsc --noEmit",
     "lint:eslint": "eslint src",
     "lint:types": "prisma generate && tsc --noEmit",
