@@ -1,9 +1,11 @@
 /**
  * KYC router: maps opaque service IDs to providers, orchestrates session creation,
- * status queries, and webhook processing. All DB writes happen here.
+ * status queries, and webhook processing.
  *
- * The caller (route handler) never knows the real provider name — only the opaque ID.
- * Provider names only appear inside this service layer.
+ * **Scope:** Peer Ramp **consumer** identity only — persists to `PeerRampAppUser` / `PeerRampKycSession`.
+ * Business-portal merchant / invited-member KYC (`User.portalKyc*`) is a separate product path, not these writes.
+ *
+ * The HTTP caller only passes opaque service IDs; provider names stay inside this module.
  */
 
 import { getEnv } from "../../config/env.js";
@@ -107,8 +109,8 @@ export function resolveKycProvider(serviceId: string): KycProvider {
 }
 
 /**
- * Initialise (or resume) a KYC session for a user.
- * Upserts PeerRampKycSession and returns provider-specific init data.
+ * Initialise (or resume) a **Peer Ramp consumer** KYC session (email = `PeerRampAppUser`).
+ * Upserts `PeerRampKycSession` and returns provider-specific init data.
  */
 export async function initKycSession(
   email: string,
@@ -142,9 +144,7 @@ export async function initKycSession(
   return result;
 }
 
-/**
- * Get the current KYC status for a user (from PeerRampAppUser).
- */
+/** Current KYC status for a **Peer Ramp app** user (`PeerRampAppUser` by email). */
 export async function getKycStatus(email: string): Promise<KycStatusResult> {
   const user = await prisma.peerRampAppUser.findUnique({
     where: { email },
@@ -217,8 +217,7 @@ export async function syncPeerRampDiditFromDecisionApi(
 }
 
 /**
- * Process an incoming DIDIT webhook.
- * Verifies signature, updates PeerRampKycSession + PeerRampAppUser.
+ * DIDIT webhook: verifies signature, updates **Peer Ramp** `PeerRampKycSession` + `PeerRampAppUser` only.
  * Returns false if signature is invalid.
  */
 export async function processDiditWebhook(
@@ -251,8 +250,7 @@ export async function processDiditWebhook(
 }
 
 /**
- * Process an incoming Persona webhook.
- * Verifies signature, updates PeerRampKycSession + PeerRampAppUser.
+ * Persona webhook: verifies signature, updates **Peer Ramp** `PeerRampKycSession` + `PeerRampAppUser` only.
  * Returns false if signature is invalid.
  */
 export async function processPersonaWebhook(
@@ -275,7 +273,7 @@ export async function processPersonaWebhook(
 }
 
 /**
- * Shared: upsert the session record + update user KYC fields.
+ * Shared: upsert session + update **PeerRampAppUser** KYC fields (ramp consumers only).
  * Terminal statuses are never downgraded.
  */
 async function upsertKycResult(

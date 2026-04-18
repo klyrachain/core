@@ -1,5 +1,6 @@
 /**
- * Admin API: business KYB — list, reset (clear session id), manual approve/decline (DB only).
+ * Admin API: **oversight** on merchant KYB state — list, reset (clear session id), manual DB approve/decline.
+ * Merchant KYB completion is a **business-dashboard** responsibility (founding member), not this API alone.
  */
 
 import type { FastifyInstance, FastifyRequest } from "fastify";

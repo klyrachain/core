@@ -73,11 +73,18 @@ const envSchema = z.object({
   /** TTL (ms) for cached `latest/USD` bulk table. Default 600000 (10 minutes). */
   EXCHANGERATE_CACHE_TTL_MS: z.coerce.number().int().positive().optional(),
 
-  /** WebAuthn (passkey) RP ID for admin dashboard. Default localhost for dev. */
+  /**
+   * WebAuthn RP ID: hostname only (no port), e.g. `localhost` or `admin.example.com`.
+   * Must match the host you open the **admin dashboard** in (the RP ID is not the Core API host).
+   */
   ADMIN_RP_ID: z.string().min(1).optional(),
-  /** WebAuthn origin fallback when request Origin is not in allowlist. Default http://localhost:PORT. */
+  /** Default origin when building WebAuthn config if the request has no Origin. */
   ADMIN_ORIGIN: z.string().url().optional(),
-  /** Comma-separated allowed origins for WebAuthn (admin dashboard URL(s), e.g. http://localhost:3000,https://admin.example.com). */
+  /**
+   * Comma-separated full origins for the admin UI (scheme + host + port), e.g.
+   * `http://localhost:3001,http://127.0.0.1:3001` for klyra-admin on 3001.
+   * Must include the exact tab origin or passkey registration fails with SecurityError (logged server-side).
+   */
   ADMIN_ALLOWED_ORIGINS: z.string().optional(),
 
   /** Testnet-only: when set (e.g. "1"), onramp/request send uses Base Sepolia for orders where t_chain is "BASE SEPOLIA". Mainnet (BASE) is never affected. */
@@ -212,13 +219,13 @@ const envSchema = z.object({
   /** DIDIT: Client ID from the Didit Console (identifies your application). */
   DIDIT_CLIENT_ID: z.string().uuid().optional(),
   /**
-   * DIDIT: Workflow for **person / member KYC** (invited users and identity checks).
-   * Same stack as merchant dashboard KYC flows unless overridden per-call.
+   * DIDIT: Workflow for **Peer Ramp consumer person KYC** (ramp app users, `PeerRampAppUser`).
+   * Not the business-portal merchant flow — that uses `User.portalKyc*` and separate product surfaces.
    */
   DIDIT_WORKFLOW_ID: z.string().uuid().optional(),
   /**
-   * DIDIT: Workflow for **business KYB** (company verification). Optional until you enable KYB in the product.
-   * Distinct from DIDIT_WORKFLOW_ID so you can use a stricter or business-specific flow in Didit.
+   * DIDIT: Workflow for **merchant company KYB** when the **founding user** runs KYB from the business dashboard.
+   * Optional until KYB is enabled; distinct from `DIDIT_WORKFLOW_ID` (ramp consumer person KYC).
    */
   DIDIT_KYB_WORKFLOW_ID: z.string().uuid().optional(),
   /** DIDIT: Webhook secret for X-Signature-V2 HMAC verification. */
@@ -235,14 +242,14 @@ const envSchema = z.object({
 
   /**
    * KYC service routing map (JSON string).
-   * Maps opaque frontend service IDs to internal provider names.
+   * Used by **Peer Ramp** `/api/peer-ramp-app/kyc/*` only — maps opaque service IDs to didit|persona.
    * Example: {"svc_kyc_01":"didit","svc_kyc_02":"persona"}
    */
   KYC_SERVICE_MAP: z.string().optional(),
 
   /**
    * Default KYC service ID (must exist in KYC_SERVICE_MAP).
-   * When set, the x-kyc-service header becomes optional for /api/peer-ramp-app/kyc/init.
+   * When set, `x-kyc-service` is optional for **Peer Ramp** `POST /api/peer-ramp-app/kyc/init` only.
    * Example: "svc_kyc_01"
    */
   DEFAULT_KYC_SERVICE: z.string().optional(),

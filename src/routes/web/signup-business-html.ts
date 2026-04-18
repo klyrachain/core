@@ -558,7 +558,7 @@ export function signupBusinessPageHtml(): string {
       const optData = await optRes.json();
       if (!optData.success || !optData.data || !optData.data.options) {
         document.getElementById("passkey-status").textContent =
-          optData.error || "Passkey is not available. Check BUSINESS_WEBAUTHN_RP_ID and origins.";
+          optData.error || "Passkey setup is not available right now. Try again later.";
         return;
       }
       const mod = await import("https://esm.sh/@simplewebauthn/browser@13.2.2");

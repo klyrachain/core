@@ -1,5 +1,6 @@
 /**
- * Admin API: Peer Ramp app users — KYC listing, reset (redo verification), manual approve/decline (DB only).
+ * Admin API: person-KYC ops listing (ramp consumers + portal users). Path name is legacy;
+ * business verification is **portal** rows — ramp `/api/peer-ramp-app/kyc/*` does not apply there.
  */
 
 import type { FastifyInstance, FastifyRequest } from "fastify";

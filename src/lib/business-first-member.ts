@@ -1,6 +1,11 @@
 /**
- * KYB is typically completed by the first active member of a business (founding signup),
- * while other members complete person KYC (DIDIT_WORKFLOW_ID) before full access.
+ * Business verification model (product intent):
+ * - **User KYC** (`User.portalKyc*`): every member of the business completes their own person check.
+ * - **KYB** (`Business.kyb*`): the **founding** member (first registrant / business creator) completes company
+ *   verification **later on the dashboard** when the business is ready — not immediately chained after KYC,
+ *   and not performed by platform admins on behalf of the merchant.
+ *
+ * `isFirstActiveMemberOfBusiness` identifies who is eligible to drive KYB for that org (earliest active join).
  */
 import { prisma } from "./prisma.js";
 

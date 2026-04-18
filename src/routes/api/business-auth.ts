@@ -569,8 +569,12 @@ export async function businessAuthRoutes(app: FastifyInstance): Promise<void> {
       );
       return successEnvelope(reply, { message: "Passkey registered." });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Passkey verification failed.";
-      return reply.status(400).send({ success: false, error: msg, code: "PASSKEY_VERIFY_FAILED" });
+      req.log.warn({ err: e }, "business portal passkey registration verify failed");
+      return reply.status(400).send({
+        success: false,
+        error: "Passkey verification failed. Try again or request new registration options.",
+        code: "PASSKEY_VERIFY_FAILED",
+      });
     }
   });
 
