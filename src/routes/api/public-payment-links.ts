@@ -5,6 +5,7 @@ import { successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
 import { paymentLinkAmountIsOpen } from "../../lib/payment-link-amount-open.js";
 import { signGasReportToken } from "../../lib/gas-report-token.js";
 import { buildGasPolicyPublic } from "../../services/gas-policy.service.js";
+import { parsePaymentLinkPurpose } from "../../services/clearing-balance.service.js";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -89,6 +90,44 @@ async function findActiveCommerceByLookup(lookup: string) {
 }
 
 export async function publicPaymentLinksApiRoutes(app: FastifyInstance): Promise<void> {
+  app.get(
+    "/api/public/payment-links/gas-checkout/:publicCode",
+    async (req: FastifyRequest<{ Params: { publicCode: string } }>, reply) => {
+      try {
+        const raw = (req.params.publicCode ?? "").trim();
+        const lookup = decodeURIComponent(raw);
+        if (!lookup) {
+          return errorEnvelope(reply, "Invalid code.", 400);
+        }
+        const wallet = (req.query as { wallet?: string } | undefined)?.wallet ?? null;
+        const row = await prisma.paymentLink.findFirst({
+          where: { publicCode: lookup, isActive: true },
+          include: { business: { select: { name: true } } },
+        });
+        if (!row) {
+          return errorEnvelope(reply, "Not found.", 404);
+        }
+        const purpose = parsePaymentLinkPurpose(row.metadata ?? null);
+        if (purpose !== "GAS_TOPUP_FIAT" && purpose !== "GAS_TOPUP_CRYPTO") {
+          return errorEnvelope(reply, "Not found.", 404);
+        }
+
+        void prisma.paymentLink
+          .update({
+            where: { id: row.id },
+            data: { views: { increment: 1 } },
+          })
+          .catch(() => {});
+
+        const data = await commercePublicPayloadWithGas(row, wallet);
+        return successEnvelope(reply, data);
+      } catch (err) {
+        req.log.error({ err }, "GET /api/public/payment-links/gas-checkout/:publicCode");
+        return errorEnvelope(reply, "Something went wrong.", 500);
+      }
+    }
+  );
+
   app.get(
     "/api/public/payment-links/by-id/:id",
     async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {

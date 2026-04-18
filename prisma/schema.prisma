@@ -195,6 +195,19 @@ enum GasLedgerReason {
   REFUND
 }
 
+enum ClearingLedgerDirection {
+  CREDIT
+  DEBIT
+}
+
+enum ClearingLedgerReason {
+  SETTLEMENT_IN
+  PAYOUT_OUT
+  GAS_TOPUP_TRANSFER
+  ADJUSTMENT
+  OPENING_BALANCE
+}
+
 /// Peer-to-peer ramp book (CLOB-style matching); v1 same-chain same token.
 enum PeerRampOrderSide {
   ONRAMP
@@ -873,6 +886,8 @@ model Business {
 
   gasAccount    BusinessGasAccount?
   gasLedgerEntries GasLedgerEntry[]
+  clearingAccount BusinessClearingAccount?
+  clearingLedgerEntries ClearingLedgerEntry[]
 }
 
 /// Singleton row: platform-wide gas sponsorship policy (id = "default").
@@ -898,6 +913,35 @@ model BusinessGasAccount {
   lowBalanceWarnUsd    Decimal? @db.Decimal(18, 2)
 
   reservations GasReservation[]
+}
+
+/// USD (or platform primary) clearing balance: funds from settled commerce awaiting payout / gas allocation.
+model BusinessClearingAccount {
+  businessId String @id
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  balanceUsd Decimal @default(0) @db.Decimal(18, 2)
+}
+
+/// Append-only ledger for merchant clearing (settlement credits, payout debits, gas top-up transfers).
+model ClearingLedgerEntry {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  direction ClearingLedgerDirection
+  amountUsd Decimal               @db.Decimal(18, 2)
+  reason    ClearingLedgerReason
+  idempotencyKey String @unique
+
+  metadata Json?
+
+  @@index([businessId, createdAt])
 }
 
 /// Append-only ledger for gas credits/debits (business or platform when businessId is null).
@@ -1000,6 +1044,9 @@ model PaymentLink {
 
   isActive Boolean @default(true)
   views    Int     @default(0)
+
+  /// Optional JSON: `{ "purpose": "GAS_TOPUP_FIAT" | "GAS_TOPUP_CRYPTO" | ... }` for platform/merchant tooling.
+  metadata Json?
 
   transactions Transaction[]
 

@@ -25,6 +25,25 @@ const SLUG_TO_CHAIN: Record<string, string> = {
   matic: "POLYGON",
 };
 
+/** Numeric Squid / wallet chain id → Core `f_chain` / `t_chain` codes (matches checkout mapping). */
+const CHAIN_ID_TO_CORE: Record<string, string> = {
+  "1": "ETHEREUM",
+  "8453": "BASE",
+  "56": "BNB",
+  "137": "POLYGON",
+  "42161": "ARBITRUM",
+  "10": "OPTIMISM",
+  "43114": "AVALANCHE",
+  "250": "FANTOM",
+  "100": "GNOSIS",
+  "59144": "LINEA",
+  "534352": "SCROLL",
+  "81457": "BLAST",
+  "5000": "MANTLE",
+  "324": "ZKSYNC",
+  "1101": "POLYGON_ZKEVM",
+};
+
 const IntentBodySchema = z.object({
   f_chain_slug: z.string().min(1),
   f_token: z.string().min(1),
@@ -33,11 +52,15 @@ const IntentBodySchema = z.object({
   t_token: z.string().min(1),
   t_amount: z.string().min(1),
   receiver_address: z.string().min(1),
+  /** When set, links the SELL to a public commerce payment link (checkout / settlement). */
+  payment_link_id: z.string().uuid().optional(),
 });
 
 function slugToCoreChain(slug: string): string | null {
-  const k = slug.trim().toLowerCase();
-  return SLUG_TO_CHAIN[k] ?? null;
+  const trimmed = slug.trim();
+  const k = trimmed.toLowerCase();
+  if (SLUG_TO_CHAIN[k]) return SLUG_TO_CHAIN[k];
+  return CHAIN_ID_TO_CORE[trimmed] ?? null;
 }
 
 export async function appTransferApiRoutes(app: FastifyInstance): Promise<void> {
@@ -57,7 +80,8 @@ export async function appTransferApiRoutes(app: FastifyInstance): Promise<void> 
     if (!f_chain || !t_chain) {
       return reply.status(400).send({
         success: false,
-        error: "Unsupported chain slug. Use ethereum, base, optimism, arbitrum, polygon.",
+        error:
+          "Unsupported chain slug. Use name slugs (e.g. base, ethereum) or a supported numeric chain id (e.g. 8453).",
       });
     }
 
@@ -84,6 +108,22 @@ export async function appTransferApiRoutes(app: FastifyInstance): Promise<void> 
       });
     }
 
+    let paymentLinkId: string | undefined;
+    if (b.payment_link_id?.trim()) {
+      const link = await prisma.paymentLink.findFirst({
+        where: { id: b.payment_link_id.trim(), isActive: true },
+        select: { id: true },
+      });
+      if (!link) {
+        return reply.status(404).send({
+          success: false,
+          error: "Payment link not found or inactive.",
+          code: "PAYMENT_LINK_NOT_FOUND",
+        });
+      }
+      paymentLinkId = link.id;
+    }
+
     const tx = await prisma.transaction.create({
       data: {
         type: "SELL",
@@ -101,6 +141,7 @@ export async function appTransferApiRoutes(app: FastifyInstance): Promise<void> 
         t_provider: "NONE",
         toIdentifier: recv,
         toType: "ADDRESS",
+        paymentLinkId: paymentLinkId ?? undefined,
       },
     });
 

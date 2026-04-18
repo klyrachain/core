@@ -253,6 +253,20 @@ const envSchema = z.object({
    * Example: "svc_kyc_01"
    */
   DEFAULT_KYC_SERVICE: z.string().optional(),
+
+  /**
+   * When true, USD-denominated checkout offramp rows (non-stable pay assets) log server-side
+   * when implied token price vs CoinGecko reference diverges by more than
+   * `CHECKOUT_USD_REFERENCE_DEVIATION_RATIO`. Never sent to clients or shown in checkout UI.
+   */
+  CHECKOUT_USD_REFERENCE_PRICE_WARN: z.preprocess(
+    (val) => val === "true" || val === "1" || val === true,
+    z.boolean().default(false)
+  ),
+  /** Relative deviation (e.g. 0.12 = 12%) before logging. Default 0.12. */
+  CHECKOUT_USD_REFERENCE_DEVIATION_RATIO: z.coerce.number().min(0.02).max(0.6).optional().default(0.12),
+  /** Optional CoinGecko demo API key (raises rate limits). Public tier works without it. */
+  COINGECKO_API_KEY: z.string().min(1).optional(),
 });
 
 type ParsedEnv = z.infer<typeof envSchema>;
