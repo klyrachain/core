@@ -9,6 +9,12 @@ import { triggerTransactionStatusChange } from "./pusher.service.js";
 import { sendPaymentLinkPaystackSuccessEmails } from "./notification.service.js";
 import { getEnv } from "../config/env.js";
 import type { Transaction } from "../../prisma/generated/prisma/client.js";
+import {
+  commerceNetUsdForClearing,
+  parsePaymentLinkPurpose,
+  recordClearingCreditFromCommerceSettlement,
+} from "./clearing-balance.service.js";
+import { recordGasCredit } from "./gas-ledger.service.js";
 
 export type CommerceSettlementResult = {
   /** Rows updated (1 if we transitioned PENDING → COMPLETED, 0 if already settled or not applicable). */
@@ -54,6 +60,7 @@ export async function settleCommercePaystackTransaction(params: {
           title: true,
           publicCode: true,
           isOneTime: true,
+          metadata: true,
         },
       })
     : null;
@@ -94,6 +101,9 @@ export async function settleCommercePaystackTransaction(params: {
   const fiatAmount = Number(tx.f_amount);
   const fiatCurrency = (tx.f_token ?? "USD").toString();
   const env = getEnv();
+  const linkPurposeEarly = parsePaymentLinkPurpose(paymentLink?.metadata ?? null);
+  const isGasPaystackTopup =
+    linkPurposeEarly === "GAS_TOPUP_FIAT" || linkPurposeEarly === "GAS_TOPUP_CRYPTO";
 
   void sendPaymentLinkPaystackSuccessEmails({
     transactionId,
@@ -106,6 +116,7 @@ export async function settleCommercePaystackTransaction(params: {
     businessName: business?.name ?? "Your business",
     linkTitle: paymentLink!.title ?? "Payment link",
     linkPublicCode: paymentLink!.publicCode ?? "",
+    merchantGasPrepaidTopup: isGasPaystackTopup,
   }).catch(() => {});
 
   if (tx.paymentLinkId && paymentLink?.isOneTime) {
@@ -124,6 +135,29 @@ export async function settleCommercePaystackTransaction(params: {
     status: "COMPLETED",
     type: "BUY",
   }).catch(() => {});
+
+  const linkPurpose = linkPurposeEarly;
+  if (tx.businessId && (linkPurpose === "GAS_TOPUP_FIAT" || linkPurpose === "GAS_TOPUP_CRYPTO")) {
+    const fiatUsd = Number(tx.f_amount);
+    if (Number.isFinite(fiatUsd) && fiatUsd > 0) {
+      void recordGasCredit({
+        businessId: tx.businessId,
+        amountUsd: fiatUsd,
+        idempotencyKey: `gas-topup-commerce:${transactionId}`,
+        reason: "TOPUP",
+        metadata: { source: "PAYSTACK_CHECKOUT", purpose: linkPurpose, transactionId },
+      }).catch(() => {});
+    }
+  } else if (tx.businessId && paymentLink) {
+    const net = commerceNetUsdForClearing(tx);
+    if (net != null && net > 0) {
+      void recordClearingCreditFromCommerceSettlement({
+        businessId: tx.businessId,
+        transactionId,
+        netUsd: net,
+      }).catch(() => {});
+    }
+  }
 
   return { updatedCount: updateResult.count, notApplicable: false };
 }

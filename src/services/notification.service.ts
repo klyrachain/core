@@ -204,6 +204,8 @@ export async function sendPaymentLinkPaystackSuccessEmails(opts: {
   businessName: string;
   linkTitle: string;
   linkPublicCode: string;
+  /** When true, merchant receives gas prepaid copy instead of generic commerce receipt. */
+  merchantGasPrepaidTopup?: boolean;
 }): Promise<void> {
   const amountLabel = `${opts.fiatAmount} ${opts.fiatCurrency}`.trim();
   const platform = opts.platformPaystackEmail?.trim().toLowerCase() ?? "";
@@ -231,21 +233,54 @@ export async function sendPaymentLinkPaystackSuccessEmails(opts: {
 
   const merchantTo = opts.merchantSupportEmail?.trim() ?? "";
   if (merchantTo.includes("@")) {
-    const mVars: PaymentLinkMerchantReceiptVars = {
-      businessName: opts.businessName,
-      amountLabel,
-      linkLabel: `${opts.linkTitle} (${opts.linkPublicCode})`,
-      transactionId: opts.transactionId,
-    };
-    await sendEmail({
-      to: merchantTo,
-      subject: paymentLinkMerchantReceiptSubject(mVars),
-      html: paymentLinkMerchantReceiptHtml(mVars),
-      text: paymentLinkMerchantReceiptText(mVars),
-      entityRefId: `${opts.transactionId}:merchant-fiat-success`,
-      idempotencyKey: `${opts.transactionId}:merchant-fiat-success`,
-    }).catch(() => {});
+    if (opts.merchantGasPrepaidTopup) {
+      const subject = `Prepaid gas credited — ${amountLabel}`;
+      const text = [
+        `Hi ${opts.businessName},`,
+        "",
+        `Your prepaid gas balance was increased by ${amountLabel} after Paystack reference ${opts.paystackReference}.`,
+        `Transaction id: ${opts.transactionId}.`,
+        "",
+        "If you did not initiate this top-up, contact support immediately.",
+      ].join("\n");
+      const html = `<p>Hi ${escapeHtml(opts.businessName)},</p><p>Your <strong>prepaid gas</strong> balance was increased by <strong>${escapeHtml(
+        amountLabel
+      )}</strong> after Paystack reference <code>${escapeHtml(opts.paystackReference)}</code>.</p><p>Transaction id: <code>${escapeHtml(
+        opts.transactionId
+      )}</code>.</p><p>If you did not initiate this top-up, contact support immediately.</p>`;
+      await sendEmail({
+        to: merchantTo,
+        subject,
+        html,
+        text,
+        entityRefId: `${opts.transactionId}:merchant-gas-prepaid-topup`,
+        idempotencyKey: `${opts.transactionId}:merchant-gas-prepaid-topup`,
+      }).catch(() => {});
+    } else {
+      const mVars: PaymentLinkMerchantReceiptVars = {
+        businessName: opts.businessName,
+        amountLabel,
+        linkLabel: `${opts.linkTitle} (${opts.linkPublicCode})`,
+        transactionId: opts.transactionId,
+      };
+      await sendEmail({
+        to: merchantTo,
+        subject: paymentLinkMerchantReceiptSubject(mVars),
+        html: paymentLinkMerchantReceiptHtml(mVars),
+        text: paymentLinkMerchantReceiptText(mVars),
+        entityRefId: `${opts.transactionId}:merchant-fiat-success`,
+        idempotencyKey: `${opts.transactionId}:merchant-fiat-success`,
+      }).catch(() => {});
+    }
   }
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 /** Build frontend URL for payment request (payer pays here). */

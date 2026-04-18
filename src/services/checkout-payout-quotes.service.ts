@@ -4,6 +4,7 @@
  */
 
 import { buildPublicQuote } from "./public-quote.service.js";
+import { logCheckoutUsdReferenceVsSpotIfNeeded } from "./checkout-usd-reference-price.service.js";
 import { getBestQuotes } from "./swap-quote.service.js";
 import { getSwapQuoteEstimateFromAddress } from "../lib/swap-quote-from-address.js";
 import { prisma } from "../lib/prisma.js";
@@ -262,6 +263,20 @@ async function quoteInvoiceOfframpRow(
   /** EVM address for indirect swap legs; defaults inside buildPublicQuote when omitted. */
   fromAddress?: string
 ): Promise<CheckoutQuoteRowResult> {
+  const fiat = fiatCurrency.trim().toUpperCase();
+  const sym = cryptoSymbol.trim().toUpperCase();
+  /**
+   * USD invoices paying with USDC: treat as 1:1 for payer display (offramp provider rates otherwise skew ~1%).
+   */
+  if (fiat === "USD" && sym === "USDC" && !tokenAddress?.trim()) {
+    return {
+      id,
+      cryptoAmount: formatCheckoutCryptoDisplay(fiatAmount.trim()),
+      cryptoSymbol: "USDC",
+      error: null,
+    };
+  }
+
   const outputToken = tokenAddress?.trim() || cryptoSymbol;
   const r = await buildPublicQuote({
     action: "OFFRAMP",
@@ -280,10 +295,22 @@ async function quoteInvoiceOfframpRow(
       error: mapCheckoutQuoteError(r.error ?? "Quote unavailable", "offramp"),
     };
   }
+  const cryptoAmount = formatCheckoutCryptoDisplay(r.data.input.amount);
+  const cryptoSym = r.data.input.currency;
+  if (fiat === "USD") {
+    const inv = Number.parseFloat(fiatAmount.trim());
+    void logCheckoutUsdReferenceVsSpotIfNeeded({
+      invoiceUsd: inv,
+      cryptoAmountStr: cryptoAmount,
+      cryptoSymbol: cryptoSym,
+      chainSlug: chain.trim().toUpperCase(),
+      tokenAddress: tokenAddress ?? null,
+    });
+  }
   return {
     id,
-    cryptoAmount: formatCheckoutCryptoDisplay(r.data.input.amount),
-    cryptoSymbol: r.data.input.currency,
+    cryptoAmount,
+    cryptoSymbol: cryptoSym,
     error: null,
   };
 }
@@ -415,6 +442,14 @@ async function quoteCompositeWxrpRow(
       cryptoSymbol: null,
       error: lastSwapErr,
     };
+  } else if (wxrp.cryptoAmount && fiatCurrency.trim().toUpperCase() === "USD") {
+    void logCheckoutUsdReferenceVsSpotIfNeeded({
+      invoiceUsd: Number.parseFloat(fiatAmount.trim()),
+      cryptoAmountStr: wxrp.cryptoAmount,
+      cryptoSymbol: "WXRP",
+      chainSlug: "ETHEREUM",
+      tokenAddress: ETH_WXRP,
+    });
   }
   return wxrp;
 }
