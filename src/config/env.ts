@@ -130,6 +130,12 @@ const envSchema = z.object({
   /** Frontend app base URL for payment/claim links (e.g. https://app.example.com). Used in email/SMS templates. */
   FRONTEND_APP_URL: z.string().url().optional().default("http://localhost:3000"),
 
+  /**
+   * Public URL of the merchant business dashboard (klyra-admin), no trailing slash.
+   * Used for portal KYC return URLs when the client does not send callbackUrl.
+   */
+  MERCHANT_DASHBOARD_URL: z.string().url().optional(),
+
   /** Inbox for POST /api/public/contact (marketing site). If unset, endpoint returns 503. */
   CONTACT_INBOX_EMAIL: z.string().email().optional(),
 
@@ -234,9 +240,14 @@ const envSchema = z.object({
   DIDIT_CLIENT_ID: z.string().uuid().optional(),
   /**
    * DIDIT: Workflow for **Peer Ramp consumer person KYC** (ramp app users, `PeerRampAppUser`).
-   * Not the business-portal merchant flow — that uses `User.portalKyc*` and separate product surfaces.
+   * Business-portal member KYC uses `DIDIT_PORTAL_KYC_WORKFLOW_ID` when set, else falls back to this id.
    */
   DIDIT_WORKFLOW_ID: z.string().uuid().optional(),
+  /**
+   * DIDIT: Workflow for **business dashboard** member identity (`User.portalKyc*`).
+   * When unset, portal KYC init uses `DIDIT_WORKFLOW_ID`.
+   */
+  DIDIT_PORTAL_KYC_WORKFLOW_ID: z.string().uuid().optional(),
   /**
    * DIDIT: Workflow for **merchant company KYB** when the **founding user** runs KYB from the business dashboard.
    * Optional until KYB is enabled; distinct from `DIDIT_WORKFLOW_ID` (ramp consumer person KYC).

@@ -246,9 +246,11 @@ model User {
   portalPasskeys    UserPortalPasskey[]
 
   /// Business portal: **each member** completes their own person KYC (invited users included). Not PeerRampAppUser.
-  portalKycStatus     String?
-  portalKycProvider   String?
-  portalKycVerifiedAt DateTime?
+  portalKycStatus         String?
+  portalKycProvider       String?
+  portalKycVerifiedAt     DateTime?
+  /// Last Didit verification session id (for sync when webhooks miss localhost).
+  portalKycDiditSessionId String?
 
   transactionsFrom Transaction[] @relation("FromUser")
   transactionsTo   Transaction[] @relation("ToUser")

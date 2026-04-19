@@ -10,14 +10,23 @@ import type { KycInitResult, DiditWebhookPayload } from "./kyc.types.js";
 
 const DIDIT_API_BASE = "https://verification.didit.me/v3";
 
-/** Person KYC vs business KYB — different Didit workflow IDs from env. */
-export type DiditWorkflowKind = "kyc" | "kyb";
+/** Person KYC vs business KYB vs portal member KYC — different Didit workflow IDs from env. */
+export type DiditWorkflowKind = "kyc" | "kyb" | "portal_kyc";
 
 export function getDiditWorkflowId(kind: DiditWorkflowKind): string {
   const env = getEnv();
   if (kind === "kyb") {
     const id = env.DIDIT_KYB_WORKFLOW_ID?.trim();
     if (!id) throw new Error("DIDIT_KYB_WORKFLOW_ID is not configured.");
+    return id;
+  }
+  if (kind === "portal_kyc") {
+    const id = env.DIDIT_PORTAL_KYC_WORKFLOW_ID?.trim() || env.DIDIT_WORKFLOW_ID?.trim();
+    if (!id) {
+      throw new Error(
+        "DIDIT_PORTAL_KYC_WORKFLOW_ID or DIDIT_WORKFLOW_ID is not configured for portal KYC."
+      );
+    }
     return id;
   }
   const id = env.DIDIT_WORKFLOW_ID?.trim();
