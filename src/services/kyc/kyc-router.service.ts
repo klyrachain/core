@@ -28,6 +28,7 @@ import {
   fetchDiditSessionDecision,
 } from "./didit.service.js";
 import { upsertPortalUserFromDiditWebhook } from "./portal-kyc.service.js";
+import { upsertBusinessKybFromDiditWebhook } from "./portal-kyb.service.js";
 import {
   createOrResumePersonaInquiry,
   mapPersonaStatus,
@@ -242,10 +243,19 @@ export async function processDiditWebhook(
   // Only process status updates
   if (webhook_type !== "status.updated" || !session_id || !status) return true;
 
+  const normalised = mapDiditStatus(status);
+
+  /** Company KYB sessions tag Didit `vendor_data` with the business id (UUID). */
+  const vendorRaw = String(vendor_data ?? "").trim();
+  const businessVendorUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (vendorRaw && businessVendorUuid.test(vendorRaw)) {
+    await upsertBusinessKybFromDiditWebhook(vendorRaw, session_id, normalised, status, payload);
+    return true;
+  }
+
   const email = vendor_data?.trim();
   if (!email || !email.includes("@")) return true;
-
-  const normalised = mapDiditStatus(status);
 
   const rampUser = await prisma.peerRampAppUser.findUnique({
     where: { email },

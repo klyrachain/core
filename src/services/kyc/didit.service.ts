@@ -54,10 +54,14 @@ function getDiditConfig(kind: DiditWorkflowKind = "kyc") {
 export async function createDiditSession(
   email: string,
   callbackUrl: string,
-  options?: { workflowKind?: DiditWorkflowKind }
+  options?: { workflowKind?: DiditWorkflowKind; vendorData?: string }
 ): Promise<KycInitResult> {
   const kind = options?.workflowKind ?? "kyc";
   const { apiKey, clientId, workflowId } = getDiditConfig(kind);
+  const vendorPayload =
+    typeof options?.vendorData === "string" && options.vendorData.trim()
+      ? options.vendorData.trim()
+      : email.trim().toLowerCase();
 
   const res = await fetch(`${DIDIT_API_BASE}/session/`, {
     method: "POST",
@@ -69,7 +73,7 @@ export async function createDiditSession(
       client_id: clientId,
       workflow_id: workflowId,
       callback: callbackUrl,
-      vendor_data: email,
+      vendor_data: vendorPayload,
     }),
   });
 
