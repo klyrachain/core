@@ -11,6 +11,9 @@ import { successEnvelope } from "../../lib/api-helpers.js";
 import { requirePermission } from "../../lib/admin-auth.guard.js";
 import { PERMISSION_CONNECT_TRANSACTIONS } from "../../lib/permissions.js";
 import { buildOfframpCalldataForTransaction } from "../../services/offramp-calldata.service.js";
+import type { PaymentInstruction } from "../../services/payment-instruction.service.js";
+import { ecosystemFromCoreChain } from "../../lib/payment-chain-routing.js";
+import { isValidReceiverForEcosystem } from "../../lib/payment-address-validation.js";
 
 const SLUG_TO_CHAIN: Record<string, string> = {
   ethereum: "ETHEREUM",
@@ -23,6 +26,13 @@ const SLUG_TO_CHAIN: Record<string, string> = {
   arb: "ARBITRUM",
   polygon: "POLYGON",
   matic: "POLYGON",
+  solana: "SOLANA",
+  stellar: "STELLAR",
+  bitcoin: "BITCOIN",
+  btc: "BITCOIN",
+  sui: "SUI",
+  tron: "TRON",
+  aptos: "APTOS",
 };
 
 /** Numeric Squid / wallet chain id → Core `f_chain` / `t_chain` codes (matches checkout mapping). */
@@ -42,6 +52,9 @@ const CHAIN_ID_TO_CORE: Record<string, string> = {
   "5000": "MANTLE",
   "324": "ZKSYNC",
   "1101": "POLYGON_ZKEVM",
+  "101": "SOLANA",
+  "148": "STELLAR",
+  "8332": "BITCOIN",
 };
 
 const IntentBodySchema = z.object({
@@ -61,6 +74,23 @@ function slugToCoreChain(slug: string): string | null {
   const k = trimmed.toLowerCase();
   if (SLUG_TO_CHAIN[k]) return SLUG_TO_CHAIN[k];
   return CHAIN_ID_TO_CORE[trimmed] ?? null;
+}
+
+function nextStepForInstruction(inst: PaymentInstruction): string {
+  switch (inst.kind) {
+    case "evm_erc20_transfer":
+      return "Sign and send ERC20 transfer to pool, then POST /api/offramp/confirm with tx_hash";
+    case "solana_spl_transfer":
+      return "Send SPL transfer per calldata; automatic POST /api/offramp/confirm is not available for Solana yet.";
+    case "stellar_payment":
+      return "Submit Stellar payment per calldata; automatic confirm is not available for Stellar yet.";
+    case "bitcoin_utxo":
+      return "Send native BTC per calldata; automatic confirm is not available for Bitcoin yet.";
+    case "unsupported":
+      return "Unsupported instruction: adjust chain/token or add PlatformPoolDestination + Infisical config.";
+    default:
+      return "Complete payment using the returned calldata/instruction payload.";
+  }
 }
 
 export async function appTransferApiRoutes(app: FastifyInstance): Promise<void> {
@@ -101,10 +131,11 @@ export async function appTransferApiRoutes(app: FastifyInstance): Promise<void> 
       fAmount.gt(0) && tAmount.gt(0) ? tAmount.div(fAmount).toNumber() : 1;
 
     const recv = b.receiver_address.trim();
-    if (!recv.startsWith("0x") || recv.length !== 42) {
+    const recvEcosystem = ecosystemFromCoreChain(f_chain);
+    if (!isValidReceiverForEcosystem(recvEcosystem, recv)) {
       return reply.status(400).send({
         success: false,
-        error: "receiver_address must be a valid 0x EVM address for this flow.",
+        error: `receiver_address is not valid for ecosystem ${recvEcosystem} (f_chain ${f_chain}).`,
       });
     }
 
@@ -154,7 +185,7 @@ export async function appTransferApiRoutes(app: FastifyInstance): Promise<void> 
     return successEnvelope(reply, {
       transaction_id: tx.id,
       calldata: built.data,
-      next_step: "Sign and send ERC20 transfer to pool, then POST /api/offramp/confirm with tx_hash",
+      next_step: nextStepForInstruction(built.data),
     });
   });
 }

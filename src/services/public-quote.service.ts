@@ -41,6 +41,11 @@ export type QuoteRequestDto = {
   outputCurrency: string;
   chain?: string;
   /**
+   * SWAP only: chain for the **output** asset. When omitted, defaults to `chain` (same-chain swap).
+   * Use Squid-style numeric ids (e.g. 8453, 1) or cached chain codes (e.g. BASE, ETHEREUM).
+   */
+  toChain?: string;
+  /**
    * Which side `inputAmount` refers to. Default "from".
    * ONRAMP "to": amount = **crypto to receive**; use `inputCurrency` = crypto, `outputCurrency` = fiat (or swap order — we normalize).
    * OFFRAMP "to": amount = **fiat to receive**; use `inputCurrency` = fiat, `outputCurrency` = crypto (or swap order — we normalize).
@@ -69,7 +74,7 @@ export type QuoteResponseDto = {
     sellingPrice: string;
     avgBuyPrice?: string;
   };
-  input: { amount: string; currency: string };
+  input: { amount: string; currency: string; chain?: string };
   output: { amount: string; currency: string; chain?: string };
   fees: {
     networkFee: string;
@@ -162,9 +167,20 @@ function resolveCachedChain(
   chainCode: string | undefined
 ): CachedChain | null {
   if (!chainCode?.trim() || !chains?.length) return null;
-  const upper = chainCode.trim().toUpperCase();
+  const trimmed = chainCode.trim();
+  const upper = trimmed.toUpperCase();
   const direct = chains.find((chain) => chain.code === upper) ?? null;
   if (direct) return direct;
+
+  /** Squid / viem numeric chain id (e.g. "8453", "1") */
+  if (/^\d+$/.test(trimmed)) {
+    const id = Number(trimmed);
+    if (Number.isFinite(id)) {
+      const byId = chains.find((c) => c.chainId === id) ?? null;
+      if (byId) return byId;
+    }
+  }
+
   if (upper === "BNB" || upper === "BSC") {
     const byId = chains.find((chain) => chain.chainId === 56);
     if (byId) return byId;
@@ -340,6 +356,8 @@ async function getRawRate(params: {
   inputCurrency: string;
   outputCurrency: string;
   chain?: string;
+  /** SWAP: output token chain; defaults to `chain`. */
+  toChain?: string;
   /** For SWAP only: from-token amount in human form. Converted to wei and sent to swap provider. If omitted, 1 is used (rate quote). */
   fromAmountHuman?: number;
   /** Passed to getOnrampQuote swap legs; defaults to server estimate address. */
@@ -348,7 +366,7 @@ async function getRawRate(params: {
   | { basePrice: number; providerCode: string; ok: true }
   | RawRateFailure
 > {
-  const { action, inputCurrency, outputCurrency, chain, fromAmountHuman, fromAddress } = params;
+  const { action, inputCurrency, outputCurrency, chain, toChain, fromAmountHuman, fromAddress } = params;
   const swapFrom = fromAddress?.trim() || getSwapQuoteEstimateFromAddress();
   await ensureValidationCache();
   const chains = await getCachedChains();
@@ -460,11 +478,19 @@ async function getRawRate(params: {
   }
 
   if (action === "SWAP") {
-    if (!chainRecord) return { ok: false, error: "chain is required for SWAP", status: 400 };
+    const toChainEffective = toChain?.trim() || chain;
+    const toChainRecord = resolveCachedChain(chains, toChainEffective);
+    if (!chainRecord || !toChainRecord) {
+      return {
+        ok: false,
+        error: "chain is required for SWAP (use a numeric chain id, e.g. 8453, or a code from validation cache)",
+        status: 400,
+      };
+    }
     const tokensList = await getCachedTokens();
     if (!tokensList) return { ok: false, error: "Token list not available" };
     const fromTokenRecord = resolveTokenForSwap(tokensList, chainRecord.chainId, inputCurrency);
-    const toTokenRecord = resolveTokenForSwap(tokensList, chainRecord.chainId, outputCurrency);
+    const toTokenRecord = resolveTokenForSwap(tokensList, toChainRecord.chainId, outputCurrency);
     if (!fromTokenRecord || !toTokenRecord) {
       const missing = [
         !fromTokenRecord ? inputCurrency : null,
@@ -473,7 +499,7 @@ async function getRawRate(params: {
 
       return {
         ok: false,
-        error: `Unsupported token pair for SWAP: ${missing.join(" and ")} not found for chain ${chain?.toLowerCase() ?? "?"}. Use a symbol from SupportedToken or a token address (0x + 40 hex).`,
+        error: `Unsupported token pair for SWAP: ${missing.join(" and ")} not found (from chain ${chainRecord.chainId}, to chain ${toChainRecord.chainId}). Use a symbol from SupportedToken or a token address (0x + 40 hex).`,
         status: 400,
       };
     }
@@ -482,7 +508,7 @@ async function getRawRate(params: {
     const amountWei = String(Math.round(fromAmount * 10 ** decimals));
     const bestResult = await getBestQuotes({
       from_chain: chainRecord.chainId,
-      to_chain: chainRecord.chainId,
+      to_chain: toChainRecord.chainId,
       from_token: fromTokenRecord.tokenAddress,
       to_token: toTokenRecord.tokenAddress,
       from_address: swapFrom,
@@ -528,7 +554,7 @@ export async function buildPublicQuote(
   request: QuoteRequestDto,
   options?: { includeDebug?: boolean }
 ): Promise<PublicQuoteResult> {
-  const { action, inputAmount, chain, inputSide: inputSideRaw, fromAddress } = request;
+  const { action, inputAmount, chain, toChain, inputSide: inputSideRaw, fromAddress } = request;
   const inputSide: InputSide = inputSideRaw === "to" ? "to" : "from";
   const rateFromAddress = fromAddress?.trim();
   const { inputCurrency, outputCurrency } = normalizeQuoteRequestCurrencies(
@@ -559,6 +585,7 @@ export async function buildPublicQuote(
       inputCurrency: fromCurrency,
       outputCurrency: toCurrency,
       chain,
+      toChain,
       fromAmountHuman: 1,
       fromAddress: rateFromAddress,
     });
@@ -569,6 +596,7 @@ export async function buildPublicQuote(
       inputCurrency: fromCurrency,
       outputCurrency: toCurrency,
       chain,
+      toChain,
       fromAmountHuman: fromAmountForQuote,
       fromAddress: rateFromAddress,
     });
@@ -578,6 +606,7 @@ export async function buildPublicQuote(
       inputCurrency: fromCurrency,
       outputCurrency: toCurrency,
       chain,
+      toChain,
       fromAmountHuman: inputAmountNum,
       fromAddress: rateFromAddress,
     });
@@ -587,6 +616,7 @@ export async function buildPublicQuote(
       inputCurrency: fromCurrency,
       outputCurrency: toCurrency,
       chain,
+      toChain,
       fromAddress: rateFromAddress,
     });
   }
@@ -607,6 +637,7 @@ export async function buildPublicQuote(
   const feeCapability = getProviderFeeCapability(providerCode);
 
   await ensureValidationCache();
+  const chainsMeta = await getCachedChains();
   const volatility = DEFAULT_VOLATILITY;
   // Auto base profit (plan §7.2): inventory + velocity + volatility → [1%, 4.5%]. Use defaults until we have real inventory ratio / tradesPerHour.
   const baseProfit = calculateBaseProfit({
@@ -734,18 +765,54 @@ export async function buildPublicQuote(
     ...(avgBuyPriceForPrices != null ? { avgBuyPrice: avgBuyPriceForPrices.toFixed(2) } : {}),
   };
 
+  const fromChainResolved =
+    action === "SWAP" && chain?.trim()
+      ? resolveCachedChain(chainsMeta, chain)
+      : null;
+  const toChainResolved =
+    action === "SWAP"
+      ? resolveCachedChain(chainsMeta, (toChain?.trim() || chain)?.trim() || "")
+      : null;
+
+  const inputForResponse: QuoteResponseDto["input"] =
+    action === "SWAP"
+      ? {
+          amount: fromAmount.toFixed(2),
+          currency: fromCurrency,
+          ...(fromChainResolved
+            ? { chain: String(fromChainResolved.chainId) }
+            : chain?.trim()
+              ? { chain: chain.trim() }
+              : {}),
+        }
+      : { amount: fromAmount.toFixed(2), currency: fromCurrency };
+
+  const toChainSlug = (toChain?.trim() || chain)?.trim();
+  const outputForResponse: QuoteResponseDto["output"] =
+    action === "SWAP"
+      ? {
+          amount: toAmount.toFixed(2),
+          currency: toCurrency,
+          ...(toChainResolved
+            ? { chain: String(toChainResolved.chainId) }
+            : toChainSlug
+              ? { chain: toChainSlug }
+              : {}),
+        }
+      : {
+          amount: toAmount.toFixed(2),
+          currency: toCurrency,
+          ...(chain ? { chain } : {}),
+        };
+
   const data: QuoteResponseDto = {
     quoteId: randomUUID(),
     expiresAt,
     exchangeRate: exchangeRate.toFixed(2),
     basePrice: basePrice.toFixed(2),
     prices,
-    input: { amount: fromAmount.toFixed(2), currency: fromCurrency },
-    output: {
-      amount: toAmount.toFixed(2),
-      currency: toCurrency,
-      ...(chain ? { chain } : {}),
-    },
+    input: inputForResponse,
+    output: outputForResponse,
     fees: {
       networkFee: networkFeeStub,
       platformFee: platformFeeDisplay,

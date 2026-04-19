@@ -16,22 +16,15 @@ import {
   createPaymentRequest,
   CreatePaymentRequestBodySchema,
 } from "../../services/payment-request-create.service.js";
-import { getLiquidityPoolWallet } from "../../services/liquidity-pool.service.js";
-import { findPoolTokenFromDb } from "../../services/supported-token.service.js";
+import {
+  buildPaymentInstructionForPoolDeposit,
+  isEvmConfirmableInstruction,
+} from "../../services/payment-instruction.service.js";
 import { verifyTransactionByHash, transferMatches } from "../../services/transaction-verify.service.js";
 import { addInventory } from "../../services/inventory.service.js";
 import { onRequestPaymentSettled } from "../../services/request-settlement.service.js";
 import { getOptionalMerchantBusinessId } from "../../lib/business-portal-tenant.guard.js";
 import { getMerchantEnvironmentOrThrow } from "../../lib/merchant-environment.js";
-
-const CHAIN_NAME_TO_ID: Record<string, number> = {
-  ETHEREUM: 1,
-  BASE: 8453,
-  "BASE SEPOLIA": 84532,
-  BNB: 56,
-  POLYGON: 137,
-  ARBITRUM: 42161,
-};
 
 export async function requestsApiRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/requests", async (req: FastifyRequest<{ Querystring: { page?: string; limit?: string } }>, reply) => {
@@ -210,28 +203,20 @@ export async function requestsApiRoutes(app: FastifyInstance): Promise<void> {
       const tokenForPool = useFromSide ? tx.f_token! : tx.t_token;
       const amountForPool = useFromSide ? tx.f_amount! : tx.t_amount;
 
-      const pool = await getLiquidityPoolWallet(chainForPool);
-      if (!pool) {
-        return reply.status(503).send({
-          success: false,
-          error: `No liquidity pool for "${chainForPool}". Add a Wallet with isLiquidityPool=true.`,
-        });
-      }
-      const chainKey = chainForPool?.toUpperCase().replace(/-/g, " ") ?? "";
-      const chainId = CHAIN_NAME_TO_ID[chainKey] ?? CHAIN_NAME_TO_ID[chainForPool?.toUpperCase() ?? ""] ?? 8453;
-      const poolToken = await findPoolTokenFromDb(chainId, tokenForPool);
-      if (!poolToken) return errorEnvelope(reply, `Unsupported token ${tokenForPool}`, 400);
-
-      return successEnvelope(reply, {
-        toAddress: pool.address,
-        chainId,
-        chain: chainForPool,
-        token: tokenForPool,
-        tokenAddress: poolToken.address,
-        amount: amountForPool.toString(),
-        decimals: poolToken.decimals ?? 18,
-        message: "Send this amount of token to toAddress; then POST /api/requests/confirm-crypto with tx_hash",
+      const built = await buildPaymentInstructionForPoolDeposit({
+        f_chain: chainForPool,
+        f_token: tokenForPool,
+        f_amount: amountForPool.toString(),
       });
+      if (!built.ok) {
+        return reply.status(built.status).send({ success: false, error: built.error });
+      }
+      const data = built.data;
+      const message =
+        data.kind === "evm_erc20_transfer"
+          ? "Send this amount of token to toAddress; then POST /api/requests/confirm-crypto with tx_hash"
+          : "Follow the instruction for this chain. Automatic confirm-crypto is EVM-only today.";
+      return successEnvelope(reply, { ...data, message });
     }
   );
 
@@ -283,22 +268,38 @@ export async function requestsApiRoutes(app: FastifyInstance): Promise<void> {
     const tokenForPool = useFromSide ? tx.f_token! : tx.t_token;
     const amountForPool = useFromSide ? tx.f_amount! : tx.t_amount;
 
-    const pool = await getLiquidityPoolWallet(chainForPool);
-    if (!pool) return reply.status(503).send({ success: false, error: `No liquidity pool for ${chainForPool}` });
-    const chainKey = chainForPool?.toUpperCase().replace(/-/g, " ") ?? "";
-    const chainId = CHAIN_NAME_TO_ID[chainKey] ?? CHAIN_NAME_TO_ID[chainForPool?.toUpperCase() ?? ""] ?? 8453;
-    const poolToken = await findPoolTokenFromDb(chainId, tokenForPool);
-    if (!poolToken) return errorEnvelope(reply, `Unsupported token ${tokenForPool}`, 400);
+    const builtInst = await buildPaymentInstructionForPoolDeposit({
+      f_chain: chainForPool,
+      f_token: tokenForPool,
+      f_amount: amountForPool.toString(),
+    });
+    if (!builtInst.ok) {
+      return reply.status(builtInst.status).send({ success: false, error: builtInst.error });
+    }
+    const instruction = builtInst.data;
+    if (!isEvmConfirmableInstruction(instruction)) {
+      return reply.status(501).send({
+        success: false,
+        error:
+          "Automatic confirm-crypto is only implemented for EVM ERC-20 transfers. Use manual settlement for this instruction kind.",
+        code: "REQUEST_CONFIRM_NOT_IMPLEMENTED",
+        kind: instruction.kind,
+      });
+    }
+
+    const chainId = instruction.chainId;
+    const poolAddress = instruction.toAddress;
+    const poolTokenAddress = instruction.tokenAddress;
+    const decimals = instruction.decimals ?? 18;
 
     const verify = await verifyTransactionByHash(chainId, tx_hash);
     if (!verify.ok) return reply.status(400).send({ success: false, error: `Verification failed: ${verify.error}` });
     if (verify.status !== "success") return reply.status(400).send({ success: false, error: "Transaction reverted" });
-    const decimals = poolToken.decimals ?? 18;
     const expectedAmountWei = parseUnits(amountForPool.toString(), decimals);
-    if (!transferMatches(verify.transfers, poolToken.address, pool.address, expectedAmountWei)) {
+    if (!transferMatches(verify.transfers, poolTokenAddress, poolAddress, expectedAmountWei)) {
       return reply.status(400).send({
         success: false,
-        error: `No transfer to pool ${pool.address} for amount >= ${amountForPool} ${tokenForPool}. Check tx_hash and toAddress from calldata.`,
+        error: `No transfer to pool ${poolAddress} for amount >= ${amountForPool} ${tokenForPool}. Check tx_hash and toAddress from calldata.`,
       });
     }
     const orderCreatedAtSeconds = Math.floor(tx.createdAt.getTime() / 1000);
@@ -313,10 +314,10 @@ export async function requestsApiRoutes(app: FastifyInstance): Promise<void> {
       await addInventory({
         chain: chainForPool,
         chainId,
-        tokenAddress: poolToken.address,
+        tokenAddress: poolTokenAddress,
         symbol: tokenForPool,
         amount,
-        address: pool.address.toLowerCase(),
+        address: poolAddress.toLowerCase(),
         type: "PURCHASE",
         costPerTokenUsd,
         sourceTransactionId: transaction_id,

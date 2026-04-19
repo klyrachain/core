@@ -26,6 +26,7 @@ import { registerMerchantExtendedRoutes } from "./merchant-extended.js";
 import { registerMerchantCommerceRoutes } from "./merchant-commerce.js";
 import { registerMerchantSaasRoutes } from "./merchant-saas.js";
 import { registerMerchantGasRoutes } from "./merchant-gas.js";
+import { registerMerchantPortalKycRoutes } from "./merchant-portal-kyc.js";
 
 type PayoutStatus = "SCHEDULED" | "PROCESSING" | "PAID" | "FAILED" | "REVERSED";
 
@@ -578,4 +579,5 @@ export async function merchantV1Routes(app: FastifyInstance): Promise<void> {
   registerMerchantExtendedRoutes(app);
   registerMerchantCommerceRoutes(app);
   registerMerchantGasRoutes(app);
+  registerMerchantPortalKycRoutes(app);
 }

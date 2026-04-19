@@ -130,6 +130,12 @@ const envSchema = z.object({
   /** Frontend app base URL for payment/claim links (e.g. https://app.example.com). Used in email/SMS templates. */
   FRONTEND_APP_URL: z.string().url().optional().default("http://localhost:3000"),
 
+  /**
+   * Public URL of the merchant business dashboard (klyra-admin), no trailing slash.
+   * Used for portal KYC return URLs when the client does not send callbackUrl.
+   */
+  MERCHANT_DASHBOARD_URL: z.string().url().optional(),
+
   /** Inbox for POST /api/public/contact (marketing site). If unset, endpoint returns 503. */
   CONTACT_INBOX_EMAIL: z.string().email().optional(),
 
@@ -147,6 +153,20 @@ const envSchema = z.object({
   PAYSTACK_RECONCILE_MIN_AGE_MS: z.coerce.number().int().positive().optional().default(120_000),
   /** Max rows per reconciliation tick. */
   PAYSTACK_RECONCILE_MAX_BATCH: z.coerce.number().int().min(1).max(200).optional().default(30),
+
+  /**
+   * Infisical API host (no trailing slash), e.g. https://app.infisical.com or https://us.infisical.com.
+   * Optional; secret fetch is disabled unless INFISICAL_SERVICE_TOKEN and INFISICAL_PROJECT_ID are set.
+   */
+  INFISICAL_SITE_URL: z.string().url().optional().default("https://app.infisical.com"),
+  /** Infisical API v4: Bearer access token (machine identity / service token). */
+  INFISICAL_SERVICE_TOKEN: z.string().min(1).optional(),
+  /** Infisical: project ID (query param for GET /api/v4/secrets/{secretName}). */
+  INFISICAL_PROJECT_ID: z.string().min(1).optional(),
+  /** Infisical: environment slug (e.g. dev, staging, prod). */
+  INFISICAL_ENVIRONMENT_SLUG: z.string().min(1).optional().default("dev"),
+  /** In-memory cache TTL for Infisical secret values (ms). */
+  INFISICAL_CACHE_TTL_MS: z.coerce.number().int().min(5_000).max(3_600_000).optional().default(60_000),
 
   /** HMAC secret for business portal JWT (signup / dashboard session). Defaults to ENCRYPTION_KEY. */
   BUSINESS_PORTAL_JWT_SECRET: z.string().min(32).optional(),
@@ -220,9 +240,14 @@ const envSchema = z.object({
   DIDIT_CLIENT_ID: z.string().uuid().optional(),
   /**
    * DIDIT: Workflow for **Peer Ramp consumer person KYC** (ramp app users, `PeerRampAppUser`).
-   * Not the business-portal merchant flow — that uses `User.portalKyc*` and separate product surfaces.
+   * Business-portal member KYC uses `DIDIT_PORTAL_KYC_WORKFLOW_ID` when set, else falls back to this id.
    */
   DIDIT_WORKFLOW_ID: z.string().uuid().optional(),
+  /**
+   * DIDIT: Workflow for **business dashboard** member identity (`User.portalKyc*`).
+   * When unset, portal KYC init uses `DIDIT_WORKFLOW_ID`.
+   */
+  DIDIT_PORTAL_KYC_WORKFLOW_ID: z.string().uuid().optional(),
   /**
    * DIDIT: Workflow for **merchant company KYB** when the **founding user** runs KYB from the business dashboard.
    * Optional until KYB is enabled; distinct from `DIDIT_WORKFLOW_ID` (ramp consumer person KYC).

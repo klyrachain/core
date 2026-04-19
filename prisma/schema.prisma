@@ -246,9 +246,11 @@ model User {
   portalPasskeys    UserPortalPasskey[]
 
   /// Business portal: **each member** completes their own person KYC (invited users included). Not PeerRampAppUser.
-  portalKycStatus     String?
-  portalKycProvider   String?
-  portalKycVerifiedAt DateTime?
+  portalKycStatus         String?
+  portalKycProvider       String?
+  portalKycVerifiedAt     DateTime?
+  /// Last Didit verification session id (for sync when webhooks miss localhost).
+  portalKycDiditSessionId String?
 
   transactionsFrom Transaction[] @relation("FromUser")
   transactionsTo   Transaction[] @relation("ToUser")
@@ -641,6 +643,31 @@ model Wallet {
   collectFees Boolean @default(false)
 
   inventoryAssets InventoryAsset[]
+}
+
+/// Platform receive / pool routing for multi-chain payouts. When rows exist for a networkKey+tokenSymbol,
+/// they take precedence over `Wallet.isLiquidityPool` for payment instructions. Optional Infisical secret name resolves receiveAddress at runtime.
+model PlatformPoolDestination {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ecosystem   String
+  networkKey  String
+  tokenSymbol String
+
+  receiveAddress       String?
+  infisicalSecretName  String?
+  infisicalSecretPath  String  @default("/")
+  tokenContractAddress String?
+
+  stellarAssetCode   String?
+  stellarAssetIssuer String?
+
+  priority Int     @default(0)
+  enabled  Boolean @default(true)
+
+  @@index([ecosystem, networkKey, tokenSymbol, enabled])
 }
 
 model InventoryAsset {

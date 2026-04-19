@@ -21,6 +21,8 @@ const QuoteRequestBodySchema = z.object({
   inputCurrency: z.string().min(1),
   outputCurrency: z.string().min(1),
   chain: z.string().optional(),
+  /** Output chain for SWAP (Squid / viem id or cache code). Defaults to `chain` when omitted. */
+  toChain: z.string().optional(),
   /** "from" = amount is paying side (default). "to" = amount is receiving side (e.g. "I want X crypto"). */
   inputSide: z.enum(["from", "to"]).optional().default("from"),
   /** EVM address for swap legs in indirect onramp/offramp quotes. */
@@ -114,6 +116,7 @@ export async function v1QuotesRoutes(app: FastifyInstance): Promise<void> {
         inputCurrency: normalizeQuoteAssetForRequest(body.inputCurrency),
         outputCurrency: normalizeQuoteAssetForRequest(body.outputCurrency),
         chain: body.chain?.trim(),
+        toChain: body.toChain?.trim(),
         inputSide: body.inputSide === "to" ? "to" : "from",
         fromAddress: body.fromAddress?.trim(),
       };

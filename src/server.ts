@@ -43,6 +43,7 @@ import { paystackTransactionsApiRoutes } from "./routes/api/paystack-transaction
 import { paystackTransfersApiRoutes } from "./routes/api/paystack-transfers.js";
 import { offrampApiRoutes } from "./routes/api/offramp.js";
 import { appTransferApiRoutes } from "./routes/api/app-transfer.js";
+import { platformPoolDestinationsApiRoutes } from "./routes/api/platform-pool-destinations.js";
 import { paymentLinkDispatchApiRoutes } from "./routes/api/payment-link-dispatch.js";
 import { testApiRoutes } from "./routes/api/test.js";
 import { peerRampApiRoutes } from "./routes/api/peer-ramp.js";
@@ -221,6 +222,7 @@ await app.register(paystackTransactionsApiRoutes, { prefix: "" });
 await app.register(paystackTransfersApiRoutes, { prefix: "" });
 await app.register(offrampApiRoutes, { prefix: "" });
 await app.register(appTransferApiRoutes, { prefix: "" });
+await app.register(platformPoolDestinationsApiRoutes, { prefix: "" });
 await app.register(paymentLinkDispatchApiRoutes, { prefix: "" });
 await app.register(testApiRoutes, { prefix: "" });
 await app.register(peerRampApiRoutes, { prefix: "" });

@@ -27,6 +27,7 @@ import {
   parseDiditWebhook,
   fetchDiditSessionDecision,
 } from "./didit.service.js";
+import { upsertPortalUserFromDiditWebhook } from "./portal-kyc.service.js";
 import {
   createOrResumePersonaInquiry,
   mapPersonaStatus,
@@ -245,7 +246,17 @@ export async function processDiditWebhook(
   if (!email || !email.includes("@")) return true;
 
   const normalised = mapDiditStatus(status);
-  await upsertKycResult(email, "didit", session_id, normalised, status, payload);
+
+  const rampUser = await prisma.peerRampAppUser.findUnique({
+    where: { email },
+    select: { email: true },
+  });
+  if (rampUser) {
+    await upsertKycResult(email, "didit", session_id, normalised, status, payload);
+    return true;
+  }
+
+  await upsertPortalUserFromDiditWebhook(email, session_id, normalised, status, payload);
   return true;
 }
 

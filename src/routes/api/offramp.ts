@@ -10,22 +10,12 @@ import { parseUnits } from "viem";
 import { Decimal } from "@prisma/client/runtime/client";
 import { prisma } from "../../lib/prisma.js";
 import { buildOfframpCalldataForTransaction } from "../../services/offramp-calldata.service.js";
-import { getLiquidityPoolWallet } from "../../services/liquidity-pool.service.js";
-import { findPoolTokenFromDb } from "../../services/supported-token.service.js";
 import { addInventory } from "../../services/inventory.service.js";
 import { verifyTransactionByHash, transferMatches } from "../../services/transaction-verify.service.js";
 import { successEnvelope, errorEnvelope } from "../../lib/api-helpers.js";
 import { requirePermission } from "../../lib/admin-auth.guard.js";
 import { PERMISSION_CONNECT_TRANSACTIONS } from "../../lib/permissions.js";
-
-const CHAIN_NAME_TO_ID: Record<string, number> = {
-  ETHEREUM: 1,
-  BASE: 8453,
-  "BASE SEPOLIA": 84532,
-  BNB: 56,
-  POLYGON: 137,
-  ARBITRUM: 42161,
-};
+import { isEvmConfirmableInstruction } from "../../services/payment-instruction.service.js";
 
 const CalldataQuerySchema = z.object({
   transaction_id: z.string().uuid(),
@@ -39,7 +29,7 @@ const ConfirmBodySchema = z.object({
 export async function offrampApiRoutes(app: FastifyInstance): Promise<void> {
   /**
    * Get calldata / destination for user to send crypto to our liquidity pool.
-   * Returns toAddress (liquidity pool), chainId, token, amount (human), tokenAddress for building tx.
+   * Returns a discriminated `kind` payload (evm_erc20_transfer, solana_spl_transfer, …).
    */
   app.get(
     "/api/offramp/calldata",
@@ -57,17 +47,20 @@ export async function offrampApiRoutes(app: FastifyInstance): Promise<void> {
       if (!built.ok) {
         return reply.status(built.status).send({ success: false, error: built.error });
       }
+      const data = built.data;
+      const baseMessage =
+        data.kind === "evm_erc20_transfer"
+          ? "User must send this amount of f_token to toAddress; then call POST /api/offramp/confirm with tx_hash"
+          : "Follow the instruction for this chain. Automatic POST /api/offramp/confirm is only supported for evm_erc20_transfer today.";
       return successEnvelope(reply, {
-        ...built.data,
-        message:
-          "User must send this amount of f_token to toAddress; then call POST /api/offramp/confirm with tx_hash",
+        ...data,
+        message: baseMessage,
       });
     }
   );
 
   /**
-   * Confirm offramp: frontend sends tx_hash; we verify (stub) and credit liquidity pool inventory, set COMPLETED.
-   * Real implementation would verify on-chain that tx sent amount to our pool address.
+   * Confirm offramp: frontend sends tx_hash; we verify on-chain for EVM ERC-20 only.
    */
   app.post<{ Body: unknown }>("/api/offramp/confirm", async (req: FastifyRequest<{ Body: unknown }>, reply) => {
     if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS, { allowMerchant: true })) return;
@@ -100,17 +93,26 @@ export async function offrampApiRoutes(app: FastifyInstance): Promise<void> {
       return successEnvelope(reply, { confirmed: true, transaction_id, message: "Already completed" });
     }
 
-    const pool = await getLiquidityPoolWallet(tx.f_chain);
-    if (!pool) {
-      return reply.status(503).send({
+    const built = await buildOfframpCalldataForTransaction(transaction_id);
+    if (!built.ok) {
+      return reply.status(built.status).send({ success: false, error: built.error });
+    }
+    const instruction = built.data;
+
+    if (!isEvmConfirmableInstruction(instruction)) {
+      return reply.status(501).send({
         success: false,
-        error: `No liquidity pool wallet for chain "${tx.f_chain}". Add a Wallet with isLiquidityPool=true and supportedChains including "${tx.f_chain}" (e.g. BASE or BASE SEPOLIA). The pool is the Wallet that receives crypto, not an InventoryAsset.`,
+        error:
+          "Automatic on-chain confirmation is only implemented for EVM ERC-20 transfers. Use manual settlement for this instruction kind until a chain verifier is added.",
+        code: "OFFRAMP_CONFIRM_NOT_IMPLEMENTED",
+        kind: instruction.kind,
       });
     }
 
-    const chainId = CHAIN_NAME_TO_ID[tx.f_chain?.toUpperCase().replace(/-/g, " ") ?? ""] ?? CHAIN_NAME_TO_ID[tx.f_chain?.toUpperCase() ?? ""] ?? 8453;
-    const poolToken = await findPoolTokenFromDb(chainId, tx.f_token);
-    if (!poolToken) return errorEnvelope(reply, `Unsupported token ${tx.f_token}`, 400);
+    const chainId = instruction.chainId;
+    const poolAddress = instruction.toAddress;
+    const poolTokenAddress = instruction.tokenAddress;
+    const decimals = instruction.decimals ?? 18;
 
     const verify = await verifyTransactionByHash(chainId, tx_hash);
     if (!verify.ok) {
@@ -119,16 +121,14 @@ export async function offrampApiRoutes(app: FastifyInstance): Promise<void> {
     if (verify.status !== "success") {
       return reply.status(400).send({ success: false, error: "Transaction reverted on-chain" });
     }
-    const decimals = poolToken.decimals ?? 18;
     const expectedAmountWei = parseUnits(tx.f_amount.toString(), decimals);
-    if (!transferMatches(verify.transfers, poolToken.address, pool.address, expectedAmountWei)) {
+    if (!transferMatches(verify.transfers, poolTokenAddress, poolAddress, expectedAmountWei)) {
       return reply.status(400).send({
         success: false,
-        error: `No ERC20 Transfer to pool ${pool.address} for token ${poolToken.address} with amount >= ${tx.f_amount} (${expectedAmountWei} raw). Check tx hash and that you sent to the calldata toAddress.`,
+        error: `No ERC20 Transfer to pool ${poolAddress} for token ${poolTokenAddress} with amount >= ${tx.f_amount} (${expectedAmountWei} raw). Check tx hash and that you sent to the calldata toAddress.`,
       });
     }
 
-    // Reject tx mined before order creation (replay protection: only tx created after calldata/order is valid).
     const orderCreatedAtSeconds = Math.floor(tx.createdAt.getTime() / 1000);
     const CLOCK_SKEW_SECONDS = 60;
     if (verify.blockTimestamp < orderCreatedAtSeconds - CLOCK_SKEW_SECONDS) {
@@ -146,10 +146,10 @@ export async function offrampApiRoutes(app: FastifyInstance): Promise<void> {
       await addInventory({
         chain: tx.f_chain,
         chainId,
-        tokenAddress: poolToken.address,
+        tokenAddress: poolTokenAddress,
         symbol: tx.f_token,
         amount,
-        address: pool.address.toLowerCase(),
+        address: poolAddress.toLowerCase(),
         type: "PURCHASE",
         costPerTokenUsd,
         sourceTransactionId: transaction_id,
