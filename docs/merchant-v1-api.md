@@ -66,7 +66,7 @@ Roles: `OWNER`, `ADMIN`, `DEVELOPER`, `FINANCE`, `SUPPORT`.
 | `POST /api-keys`, `PATCH /api-keys/:id` (deactivate) | `OWNER`, `ADMIN`, `DEVELOPER` |
 | `POST` / `PATCH` payout methods | `OWNER`, `ADMIN`, `FINANCE` |
 | `GET /exports/*.csv` (accounting exports) | `OWNER`, `ADMIN`, `FINANCE` |
-| `POST /webhooks/endpoints`, `PATCH /webhooks/endpoints/:id`, `POST /webhooks/deliveries/:id/retry` | `OWNER`, `ADMIN`, `DEVELOPER` |
+| `POST /webhooks/endpoints`, `PATCH /webhooks/endpoints/:id`, `DELETE /webhooks/endpoints/:id`, `POST /webhooks/endpoints/:id/reveal-secret`, `POST /webhooks/deliveries/:id/retry` | `OWNER`, `ADMIN`, `DEVELOPER` |
 | `GET` webhooks (endpoints + deliveries) | all active members |
 | CRM `GET` / `POST` / `PATCH /crm/customers` | all active members |
 | `POST /transactions/:id/refunds` | `OWNER`, `ADMIN`, `FINANCE` |
@@ -162,7 +162,10 @@ All paths are relative to **`/api/v1/merchant`**. Send **`x-merchant-environment
 | GET | `/webhooks/endpoints` | |
 | POST | `/webhooks/endpoints` | RBAC dev+ |
 | PATCH | `/webhooks/endpoints/:id` | RBAC dev+ |
-| GET | `/webhooks/deliveries` | Optional `endpointId` |
+| DELETE | `/webhooks/endpoints/:id` | RBAC dev+ |
+| GET | `/webhooks/endpoints/:id/summary` | `from` / `to` (optional; default last 30d) |
+| POST | `/webhooks/endpoints/:id/reveal-secret` | Returns signing `secret` (RBAC dev+) |
+| GET | `/webhooks/deliveries` | Optional `endpointId`, `from`, `to` |
 | POST | `/webhooks/deliveries/:id/retry` | Queue retry stub (RBAC dev+) |
 
 ---
@@ -386,20 +389,49 @@ Invalid body → **400** with Zod `details`.
 
 **`GET /webhooks/endpoints`**
 
-- Lists endpoints for business + environment (`url`, `events[]`, `isActive`, `hasSecret`, timestamps).
+- Lists endpoints for business + environment: `id`, **`displayName`**, **`protocolVersion`** (e.g. `v1`), `url`, `events[]`, `isActive`, `hasSecret`, `createdAt`, `updatedAt`.
 
 **`POST /webhooks/endpoints`** (RBAC: owner / admin / developer)
 
-- Body: `{ "url", "secret"?, "events": string[], "isActive"? }`
+- Body:
+  - **`displayName`** (1–120 chars) — label in the dashboard.
+  - **`url`** — HTTPS (or HTTP) callback URL, max 2048 chars.
+  - **`events`** — non-empty array; each entry must be one of the **allowed event ids** below.
+  - **`secret`** (optional, 8–256 chars) — override signing secret; if omitted, the server generates a unique secret per destination (`whsec_…`).
+  - **`isActive`** (optional, default `true`).
+  - **`protocolVersion`** (optional, default **`v1`**) — payload schema version for future revisions.
 
 **`PATCH /webhooks/endpoints/:id`** (RBAC: owner / admin / developer)
 
-- Partial update.
+- Partial update of any of the `POST` fields (omit fields you do not change).
+- If the endpoint currently has **no** stored secret and the body does not include **`secret`**, the server generates and stores one (same format as create).
+
+**`DELETE /webhooks/endpoints/:id`** (RBAC: owner / admin / developer)
+
+- Deletes the endpoint for the current business + environment. Related **`WebhookDeliveryLog`** rows are removed by database cascade.
+
+**Allowed `events` values (v1)**
+
+- `transaction.created`
+- `transaction.status_updated`
+- `invoice.created`
+- `invoice.paid`
+- `payout.status_updated`
+- `payment_link.paid`
+
+**`GET /webhooks/endpoints/:id/summary`** (all active members)
+
+- Query: optional **`from`**, **`to`** (ISO date or datetime). If both omitted, defaults to **last 30 days**. Range span must not exceed **90 days**.
+- Response: `totalDeliveries`, `failedDeliveries`, `errorRatePct` (0–100), `lastDeliveryAt`, `avgLatencyMs` (null until deliveries record **`durationMs`**), `buckets` (daily `{ date, successCount, failureCount }`), `latencyByDay` (daily min/avg/max ms, or `null` if no `durationMs` data).
+
+**`POST /webhooks/endpoints/:id/reveal-secret`** (RBAC: owner / admin / developer)
+
+- Returns `{ "secret": string }` when a secret is stored. **400** if none configured (set via `PATCH` / edit flow). Intended for dashboard “reveal signing secret” only; treat as sensitive.
 
 **`GET /webhooks/deliveries`**
 
-- Query: `page`, `limit`, optional **`endpointId`** (filter).
-- Returns delivery rows: `eventType`, `status`, `httpStatus`, `payload`, `responseBodyPreview`, `attemptCount`, `transactionId`, etc.
+- Query: `page`, `limit`, optional **`endpointId`**, optional **`from`**, **`to`** (filter `createdAt`, same max span as summary when both set).
+- Returns delivery rows: `eventType`, `status`, `httpStatus`, **`durationMs`** (nullable), `payload`, `responseBodyPreview`, `attemptCount`, `transactionId`, etc.
 
 **`POST /webhooks/deliveries/:id/retry`** (RBAC: owner / admin / developer)
 

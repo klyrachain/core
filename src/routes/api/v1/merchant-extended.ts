@@ -204,28 +204,37 @@ export function registerMerchantExtendedRoutes(app: FastifyInstance): void {
             ? Prisma.sql`AND "fromIdentifier" ILIKE ${"%" + q.replace(/[%_\\]/g, "") + "%"}`
             : Prisma.empty;
         /**
-         * Distinct payers: Transaction.fromIdentifier, plus Claim.payerIdentifier when the
-         * linked transaction has no payer id (legacy / edge REQUEST rows).
+         * Distinct counterparties: payer `fromIdentifier`, recipient `toIdentifier` (hosted checkout),
+         * plus Claim.payerIdentifier when the linked transaction has no payer id.
          */
         const rows = await prisma.$queryRaw<
           { fromIdentifier: string; fromType: string | null; txCount: bigint; lastActivityAt: Date }[]
         >`
           WITH "txPayers" AS (
-            SELECT "fromIdentifier", "fromType"::text AS "fromType", COUNT(*)::bigint AS "cnt", MAX("createdAt") AS "lastAt"
+            SELECT "fromIdentifier" AS "identifier", "fromType"::text AS "fromType", COUNT(*)::bigint AS "cnt", MAX("createdAt") AS "lastAt"
             FROM "Transaction"
             WHERE "businessId" = ${businessId}
-              AND "environment" = ${environment}::"MerchantEnvironment"
+              AND "environment"::text = ${String(environment)}
               AND "fromIdentifier" IS NOT NULL
               AND TRIM("fromIdentifier") <> ''
             GROUP BY "fromIdentifier", "fromType"
           ),
+          "txRecipients" AS (
+            SELECT "toIdentifier" AS "identifier", "toType"::text AS "fromType", COUNT(*)::bigint AS "cnt", MAX("createdAt") AS "lastAt"
+            FROM "Transaction"
+            WHERE "businessId" = ${businessId}
+              AND "environment"::text = ${String(environment)}
+              AND "toIdentifier" IS NOT NULL
+              AND TRIM("toIdentifier") <> ''
+            GROUP BY "toIdentifier", "toType"
+          ),
           "claimPayers" AS (
-            SELECT TRIM(c."payerIdentifier") AS "fromIdentifier", 'EMAIL'::text AS "fromType", COUNT(*)::bigint AS "cnt", MAX(t."createdAt") AS "lastAt"
+            SELECT TRIM(c."payerIdentifier") AS "identifier", 'EMAIL'::text AS "fromType", COUNT(*)::bigint AS "cnt", MAX(t."createdAt") AS "lastAt"
             FROM "Claim" c
             INNER JOIN "Request" r ON r."id" = c."requestId"
             INNER JOIN "Transaction" t ON t."id" = r."transactionId"
             WHERE r."businessId" = ${businessId}
-              AND r."environment" = ${environment}::"MerchantEnvironment"
+              AND r."environment"::text = ${String(environment)}
               AND TRIM(c."payerIdentifier") <> ''
               AND (t."fromIdentifier" IS NULL OR TRIM(t."fromIdentifier") = '')
             GROUP BY TRIM(c."payerIdentifier")
@@ -233,12 +242,14 @@ export function registerMerchantExtendedRoutes(app: FastifyInstance): void {
           "combined" AS (
             SELECT * FROM "txPayers"
             UNION ALL
+            SELECT * FROM "txRecipients"
+            UNION ALL
             SELECT * FROM "claimPayers"
           ),
           "rolled" AS (
-            SELECT "fromIdentifier", "fromType", SUM("cnt")::bigint AS "txCount", MAX("lastAt") AS "lastActivityAt"
+            SELECT "identifier" AS "fromIdentifier", "fromType", SUM("cnt")::bigint AS "txCount", MAX("lastAt") AS "lastActivityAt"
             FROM "combined"
-            GROUP BY "fromIdentifier", "fromType"
+            GROUP BY "identifier", "fromType"
           )
           SELECT "fromIdentifier", "fromType", "txCount", "lastActivityAt"
           FROM "rolled"
@@ -249,21 +260,30 @@ export function registerMerchantExtendedRoutes(app: FastifyInstance): void {
         `;
         const countRows = await prisma.$queryRaw<{ c: bigint }[]>`
           WITH "txPayers" AS (
-            SELECT "fromIdentifier", "fromType"::text AS "fromType", COUNT(*)::bigint AS "cnt", MAX("createdAt") AS "lastAt"
+            SELECT "fromIdentifier" AS "identifier", "fromType"::text AS "fromType", COUNT(*)::bigint AS "cnt", MAX("createdAt") AS "lastAt"
             FROM "Transaction"
             WHERE "businessId" = ${businessId}
-              AND "environment" = ${environment}::"MerchantEnvironment"
+              AND "environment"::text = ${String(environment)}
               AND "fromIdentifier" IS NOT NULL
               AND TRIM("fromIdentifier") <> ''
             GROUP BY "fromIdentifier", "fromType"
           ),
+          "txRecipients" AS (
+            SELECT "toIdentifier" AS "identifier", "toType"::text AS "fromType", COUNT(*)::bigint AS "cnt", MAX("createdAt") AS "lastAt"
+            FROM "Transaction"
+            WHERE "businessId" = ${businessId}
+              AND "environment"::text = ${String(environment)}
+              AND "toIdentifier" IS NOT NULL
+              AND TRIM("toIdentifier") <> ''
+            GROUP BY "toIdentifier", "toType"
+          ),
           "claimPayers" AS (
-            SELECT TRIM(c."payerIdentifier") AS "fromIdentifier", 'EMAIL'::text AS "fromType", COUNT(*)::bigint AS "cnt", MAX(t."createdAt") AS "lastAt"
+            SELECT TRIM(c."payerIdentifier") AS "identifier", 'EMAIL'::text AS "fromType", COUNT(*)::bigint AS "cnt", MAX(t."createdAt") AS "lastAt"
             FROM "Claim" c
             INNER JOIN "Request" r ON r."id" = c."requestId"
             INNER JOIN "Transaction" t ON t."id" = r."transactionId"
             WHERE r."businessId" = ${businessId}
-              AND r."environment" = ${environment}::"MerchantEnvironment"
+              AND r."environment"::text = ${String(environment)}
               AND TRIM(c."payerIdentifier") <> ''
               AND (t."fromIdentifier" IS NULL OR TRIM(t."fromIdentifier") = '')
             GROUP BY TRIM(c."payerIdentifier")
@@ -271,12 +291,14 @@ export function registerMerchantExtendedRoutes(app: FastifyInstance): void {
           "combined" AS (
             SELECT * FROM "txPayers"
             UNION ALL
+            SELECT * FROM "txRecipients"
+            UNION ALL
             SELECT * FROM "claimPayers"
           ),
           "rolled" AS (
-            SELECT "fromIdentifier", "fromType", SUM("cnt")::bigint AS "txCount", MAX("lastAt") AS "lastActivityAt"
+            SELECT "identifier" AS "fromIdentifier", "fromType", SUM("cnt")::bigint AS "txCount", MAX("lastAt") AS "lastActivityAt"
             FROM "combined"
-            GROUP BY "fromIdentifier", "fromType"
+            GROUP BY "identifier", "fromType"
           )
           SELECT COUNT(*)::bigint AS c FROM (
             SELECT 1 FROM "rolled" WHERE 1=1 ${searchSql}

@@ -28,6 +28,10 @@ import { registerMerchantSaasRoutes } from "./merchant-saas.js";
 import { registerMerchantGasRoutes } from "./merchant-gas.js";
 import { registerMerchantPortalKycRoutes } from "./merchant-portal-kyc.js";
 import { registerMerchantPortalKybRoutes } from "./merchant-portal-kyb.js";
+import {
+  requestBusinessSupportEmailVerificationCode,
+  verifyBusinessSupportEmailCodeAndSave,
+} from "../../../services/business-support-email-otp.service.js";
 
 type PayoutStatus = "SCHEDULED" | "PROCESSING" | "PAID" | "FAILED" | "REVERSED";
 
@@ -47,6 +51,15 @@ const patchBusinessBody = z.object({
   supportUrl: z.string().url().max(2048).nullable().optional(),
   termsOfServiceUrl: z.string().url().max(2048).nullable().optional(),
   returnPolicyUrl: z.string().url().max(2048).nullable().optional(),
+});
+
+const supportEmailRequestCodeBody = z.object({
+  email: z.string().email().max(320),
+});
+
+const supportEmailVerifyBody = z.object({
+  email: z.string().email().max(320),
+  code: z.string().min(4).max(12),
 });
 
 const createApiKeyBody = z.object({
@@ -487,9 +500,29 @@ export async function merchantV1Routes(app: FastifyInstance): Promise<void> {
         return reply.status(400).send({ success: false, error: "No fields to update." });
       }
       const businessId = getMerchantV1BusinessId(req);
+      const existing = await prisma.business.findUnique({
+        where: { id: businessId },
+        select: { supportEmail: true },
+      });
+      const dataToApply = { ...parsed.data };
+      if (parsed.data.supportEmail !== undefined) {
+        const raw = parsed.data.supportEmail;
+        if (raw !== null && typeof raw === "string" && raw.trim() !== "") {
+          const next = raw.trim().toLowerCase();
+          const cur = (existing?.supportEmail ?? "").trim().toLowerCase();
+          if (next !== cur) {
+            return reply.status(400).send({
+              success: false,
+              error:
+                "To change your support email, request a verification code in the dashboard and enter it from your inbox.",
+              code: "SUPPORT_EMAIL_VERIFICATION_REQUIRED",
+            });
+          }
+        }
+      }
       const business = await prisma.business.update({
         where: { id: businessId },
-        data: parsed.data,
+        data: dataToApply,
         select: {
           id: true,
           name: true,
@@ -522,6 +555,111 @@ export async function merchantV1Routes(app: FastifyInstance): Promise<void> {
       return errorEnvelope(reply, "Something went wrong.", 500);
     }
   });
+
+  app.post(
+    "/business/support-email/request-code",
+    async (req: FastifyRequest<{ Body: unknown }>, reply) => {
+      try {
+        if (!requirePermission(req, reply, PERMISSION_BUSINESS_WRITE, { allowMerchant: true })) return;
+        if (!requireMerchantRole(req, reply, OWNER_ADMIN)) return;
+        const parsed = supportEmailRequestCodeBody.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.status(400).send({
+            success: false,
+            error: "Invalid email.",
+            details: parsed.error.flatten(),
+          });
+        }
+        const businessId = getMerchantV1BusinessId(req);
+        const b = await prisma.business.findUnique({
+          where: { id: businessId },
+          select: { name: true },
+        });
+        if (!b) return errorEnvelope(reply, "Business not found.", 404);
+        const result = await requestBusinessSupportEmailVerificationCode(
+          businessId,
+          parsed.data.email,
+          b.name
+        );
+        if (!result.ok) {
+          const status = result.code === "COOLDOWN" ? 429 : result.code === "INVALID_EMAIL" ? 400 : 503;
+          return reply.status(status).send({
+            success: false,
+            error: result.error,
+            code: result.code,
+          });
+        }
+        return successEnvelope(reply, { sent: true });
+      } catch (err) {
+        req.log.error({ err }, "POST /api/v1/merchant/business/support-email/request-code");
+        return errorEnvelope(reply, "Something went wrong.", 500);
+      }
+    }
+  );
+
+  app.post(
+    "/business/support-email/verify",
+    async (req: FastifyRequest<{ Body: unknown }>, reply) => {
+      try {
+        if (!requirePermission(req, reply, PERMISSION_BUSINESS_WRITE, { allowMerchant: true })) return;
+        if (!requireMerchantRole(req, reply, OWNER_ADMIN)) return;
+        const parsed = supportEmailVerifyBody.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.status(400).send({
+            success: false,
+            error: "Invalid body.",
+            details: parsed.error.flatten(),
+          });
+        }
+        const businessId = getMerchantV1BusinessId(req);
+        const result = await verifyBusinessSupportEmailCodeAndSave(
+          businessId,
+          parsed.data.email,
+          parsed.data.code
+        );
+        if (!result.ok) {
+          return reply.status(400).send({
+            success: false,
+            error: result.error,
+            code: result.code,
+          });
+        }
+        const business = await prisma.business.findUnique({
+          where: { id: businessId },
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            logoUrl: true,
+            website: true,
+            supportEmail: true,
+            webhookUrl: true,
+            brandColor: true,
+            buttonColor: true,
+            supportUrl: true,
+            termsOfServiceUrl: true,
+            returnPolicyUrl: true,
+          },
+        });
+        if (!business) return errorEnvelope(reply, "Business not found.", 404);
+        return successEnvelope(reply, {
+          ...business,
+          logoUrl: business.logoUrl ?? undefined,
+          website: business.website ?? undefined,
+          supportEmail: business.supportEmail ?? undefined,
+          webhookUrl: business.webhookUrl ?? undefined,
+          brandColor: business.brandColor ?? undefined,
+          buttonColor: business.buttonColor ?? undefined,
+          supportUrl: business.supportUrl ?? undefined,
+          termsOfServiceUrl: business.termsOfServiceUrl ?? undefined,
+          returnPolicyUrl: business.returnPolicyUrl ?? undefined,
+        });
+      } catch (err) {
+        req.log.error({ err }, "POST /api/v1/merchant/business/support-email/verify");
+        return errorEnvelope(reply, "Something went wrong.", 500);
+      }
+    }
+  );
 
   app.get("/api-keys", async (req: FastifyRequest, reply) => {
     try {

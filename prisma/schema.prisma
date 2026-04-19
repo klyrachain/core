@@ -1518,6 +1518,10 @@ model WebhookEndpoint {
 
   environment MerchantEnvironment @default(LIVE)
 
+  /// Friendly label shown in the dashboard (e.g. "Production checkout").
+  displayName      String  @default("Webhook")
+  /// Payload schema version for outbound deliveries (e.g. v1).
+  protocolVersion  String  @default("v1")
   url    String
   secret String?
   events String[]
@@ -1546,6 +1550,9 @@ model WebhookDeliveryLog {
   attemptCount Int     @default(0)
   lastAttemptAt DateTime?
   nextRetryAt   DateTime?
+
+  /// Round-trip HTTP time when the outbound worker records it (nullable until populated).
+  durationMs Int?
 
   transactionId String?
   transaction   Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
