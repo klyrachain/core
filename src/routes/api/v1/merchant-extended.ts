@@ -30,8 +30,10 @@ import { createPaymentRequest, CreatePaymentRequestBodySchema } from "../../../s
 import {
   canManageTeamMembers,
   createBusinessMemberInvite,
+  deactivateBusinessMember,
   listBusinessMembers,
   listPendingInvites,
+  resendBusinessMemberInvite,
   revokeBusinessMemberInvite,
   updateMemberRole,
 } from "../../../services/business-member-invite.service.js";
@@ -392,6 +394,32 @@ export function registerMerchantExtendedRoutes(app: FastifyInstance): void {
     }
   });
 
+  app.post("/team/invites/:id/resend", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
+    try {
+      if (!requirePermission(req, reply, PERMISSION_BUSINESS_MEMBERS_WRITE, { allowMerchant: true })) return;
+      const businessId = getMerchantV1BusinessId(req);
+      const userId = req.businessPortalTenant?.userId ?? null;
+      const allowed = await canManageTeamMembers(businessId, userId, viaApiKey(req));
+      if (!allowed) {
+        return reply.status(403).send({ success: false, error: "Only owners and admins can resend invites.", code: "FORBIDDEN" });
+      }
+      try {
+        const result = await resendBusinessMemberInvite({
+          businessId,
+          inviteId: req.params.id,
+          invitedByUserId: userId,
+        });
+        return successEnvelope(reply, result);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Resend failed.";
+        return reply.status(400).send({ success: false, error: msg });
+      }
+    } catch (err) {
+      req.log.error({ err }, "POST /api/v1/merchant/team/invites/:id/resend");
+      return errorEnvelope(reply, "Something went wrong.", 500);
+    }
+  });
+
   app.patch("/team/members/:id", async (req: FastifyRequest<{ Params: { id: string }; Body: unknown }>, reply) => {
     try {
       if (!requirePermission(req, reply, PERMISSION_BUSINESS_MEMBERS_WRITE, { allowMerchant: true })) return;
@@ -415,6 +443,28 @@ export function registerMerchantExtendedRoutes(app: FastifyInstance): void {
       }
     } catch (err) {
       req.log.error({ err }, "PATCH /api/v1/merchant/team/members/:id");
+      return errorEnvelope(reply, "Something went wrong.", 500);
+    }
+  });
+
+  app.delete("/team/members/:id", async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
+    try {
+      if (!requirePermission(req, reply, PERMISSION_BUSINESS_MEMBERS_WRITE, { allowMerchant: true })) return;
+      const businessId = getMerchantV1BusinessId(req);
+      const userId = req.businessPortalTenant?.userId ?? null;
+      const allowed = await canManageTeamMembers(businessId, userId, viaApiKey(req));
+      if (!allowed) {
+        return reply.status(403).send({ success: false, error: "Only owners and admins can remove members.", code: "FORBIDDEN" });
+      }
+      try {
+        await deactivateBusinessMember(businessId, req.params.id, userId, viaApiKey(req));
+        return successEnvelope(reply, { removed: true });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Remove failed.";
+        return reply.status(400).send({ success: false, error: msg });
+      }
+    } catch (err) {
+      req.log.error({ err }, "DELETE /api/v1/merchant/team/members/:id");
       return errorEnvelope(reply, "Something went wrong.", 500);
     }
   });

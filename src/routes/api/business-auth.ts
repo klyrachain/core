@@ -324,7 +324,10 @@ export async function businessAuthRoutes(app: FastifyInstance): Promise<void> {
       const { businessId } = await acceptBusinessMemberInvite(parsed.data.token, userId);
       return successEnvelope(reply, { businessId, message: "You joined the team." });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Accept failed.";
+      let msg = e instanceof Error ? e.message : "Accept failed.";
+      if (/Prisma|Unique constraint|invocation/i.test(msg)) {
+        msg = "Could not complete the invite. Try again, or contact support if this keeps happening.";
+      }
       return reply.status(400).send({ success: false, error: msg, code: "INVITE_ACCEPT_FAILED" });
     }
   });

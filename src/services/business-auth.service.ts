@@ -9,7 +9,7 @@ import type {
   RegistrationResponseJSON,
   AuthenticationResponseJSON,
 } from "@simplewebauthn/server";
-import type { BusinessRole, MerchantPrimaryGoal, MerchantSignupRole } from "../../prisma/generated/prisma/client.js";
+import type { MerchantPrimaryGoal, MerchantSignupRole } from "../../prisma/generated/prisma/client.js";
 import { getEnv } from "../config/env.js";
 import { prisma } from "../lib/prisma.js";
 import { getRedis, PORTAL_PASSKEY_AUTH_PREFIX, PORTAL_PASSKEY_AUTH_TTL } from "../lib/redis.js";
@@ -51,21 +51,10 @@ export async function ensureUniqueBusinessSlug(base: string): Promise<string> {
   return `${base}-${randomUUID().slice(0, 8)}`;
 }
 
-export function mapSignupRoleToBusinessRole(role: MerchantSignupRole): BusinessRole {
-  switch (role) {
-    case "DEVELOPER":
-      return "DEVELOPER";
-    case "FOUNDER_EXECUTIVE":
-      return "OWNER";
-    case "FINANCE_OPS":
-      return "FINANCE";
-    case "PRODUCT":
-      return "ADMIN";
-    default:
-      return "DEVELOPER";
-  }
-}
-
+/**
+ * Onboarding “signup role” only drives product hints — it does **not** set `BusinessMember.role`.
+ * The user who registers the business is always `OWNER` (full control; other admins cannot remove them).
+ */
 export function computeLandingHint(
   signupRole: MerchantSignupRole,
   primaryGoal: MerchantPrimaryGoal
@@ -469,7 +458,6 @@ export async function completeBusinessOnboarding(
   const websiteForBusiness = draft?.website ?? null;
 
   const slug = await ensureUniqueBusinessSlug(slugifyCompanyName(companyName));
-  const businessRole = mapSignupRoleToBusinessRole(signupRole);
   const landingHint = computeLandingHint(signupRole, primaryGoal);
 
   const result = await prisma.$transaction(async (tx) => {
@@ -487,7 +475,7 @@ export async function completeBusinessOnboarding(
       data: {
         userId,
         businessId: business.id,
-        role: businessRole,
+        role: "OWNER",
         isActive: true,
       },
     });
@@ -541,7 +529,6 @@ export async function createAdditionalPortalBusiness(
   }
 
   const slug = await ensureUniqueBusinessSlug(slugifyCompanyName(companyName));
-  const businessRole = mapSignupRoleToBusinessRole(input.signupRole);
   const landingHint = computeLandingHint(input.signupRole, input.primaryGoal);
 
   const result = await prisma.$transaction(async (tx) => {
@@ -559,7 +546,7 @@ export async function createAdditionalPortalBusiness(
       data: {
         userId,
         businessId: business.id,
-        role: businessRole,
+        role: "OWNER",
         isActive: true,
       },
     });

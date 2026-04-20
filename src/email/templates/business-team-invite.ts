@@ -9,6 +9,10 @@ import {
 export type BusinessTeamInviteTemplateVars = {
   businessName: string;
   inviteUrl: string;
+  /** BusinessRole enum value, e.g. ADMIN */
+  roleLabel?: string;
+  /** Human-readable expiry (UTC), e.g. from Date#toUTCString */
+  expiresAtDisplay?: string;
 };
 
 function escapeHtml(s: string): string {
@@ -24,12 +28,20 @@ function hrefAttr(url: string): string {
 }
 
 export function businessTeamInviteSubject(vars: BusinessTeamInviteTemplateVars): string {
-  return `You're invited to ${vars.businessName} on ${EMAIL_PRODUCT_NAME}`;
+  return `${vars.businessName} invited you to join their team on ${EMAIL_PRODUCT_NAME}`;
 }
 
 export function businessTeamInviteHtml(vars: BusinessTeamInviteTemplateVars): string {
   const name = escapeHtml(vars.businessName);
   const href = hrefAttr(vars.inviteUrl);
+  const roleLine =
+    vars.roleLabel != null && vars.roleLabel !== ""
+      ? `<p style="margin:12px 0 0; font-size:14px; color:#475569;">Your role when you accept: <strong>${escapeHtml(vars.roleLabel)}</strong></p>`
+      : "";
+  const expiryLine =
+    vars.expiresAtDisplay != null && vars.expiresAtDisplay !== ""
+      ? `<p style="margin:16px 0 0; font-size:13px; color:#64748b;">This invitation link expires on <strong>${escapeHtml(vars.expiresAtDisplay)}</strong> (UTC). After that, ask an admin to send a new invite.</p>`
+      : "";
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -50,6 +62,8 @@ ${emailLayoutShellStart()}
       <td style="padding:0 24px 24px;">
         <div style="background:#f0fdfa; border-radius:10px; padding:20px; border-left:4px solid ${EMAIL_TEAL};">
           <p style="margin:0; font-size:15px; color:#334155;">You've been invited to join <strong>${name}</strong> on ${EMAIL_PRODUCT_NAME}.</p>
+          ${roleLine}
+          ${expiryLine}
         </div>
         <p style="margin:24px 0 0; text-align:center;">
           <a href="${href}" style="display:inline-block; padding:12px 28px; background:${EMAIL_TEAL}; color:#ffffff; text-decoration:none; font-weight:600; font-size:15px; border-radius:8px;">Accept invitation</a>
@@ -63,5 +77,10 @@ ${emailLayoutShellEnd()}
 }
 
 export function businessTeamInviteText(vars: BusinessTeamInviteTemplateVars): string {
-  return `You've been invited to join ${vars.businessName} on ${EMAIL_PRODUCT_NAME}. Open: ${vars.inviteUrl}`;
+  const role = vars.roleLabel ? ` Role: ${vars.roleLabel}.` : "";
+  const exp =
+    vars.expiresAtDisplay != null && vars.expiresAtDisplay !== ""
+      ? ` Expires (UTC): ${vars.expiresAtDisplay}.`
+      : "";
+  return `You've been invited to join ${vars.businessName} on ${EMAIL_PRODUCT_NAME}.${role}${exp} Accept: ${vars.inviteUrl}`;
 }
