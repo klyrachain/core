@@ -1,5 +1,8 @@
 /**
  * Tenant-scoped metrics for GET /api/v1/merchant/summary (aligned with platform overview math).
+ *
+ * Volume, fee rollups, and headline transaction counts are **COMPLETED** checkouts only.
+ * `byStatus*` breakdowns still include every status so you can see funnel / failures.
  */
 import type { MerchantEnvironment, Prisma } from "../../prisma/generated/prisma/client.js";
 import { prisma } from "./prisma.js";
@@ -39,11 +42,15 @@ export type MerchantSummaryResult = {
     kybStatus: string;
   };
   transactions: {
+    /** Completed transactions, all time (same environment). */
     totalAllTime: number;
+    /** Completed transactions in the reporting window (`periodDays`). Same as `completedCountInPeriod`. */
     inPeriod: number;
     byStatusAllTime: Record<string, number>;
     byStatusInPeriod: Record<string, number>;
+    /** Completed transactions in the last 24 hours. */
     last24hCount: number;
+    /** Completed transactions in the last 7 days. */
     last7dCount: number;
     volumeUsdInPeriod: number;
     completedCountInPeriod: number;
@@ -64,6 +71,7 @@ export type MerchantSummaryResult = {
   };
   series: Array<{
     date: string;
+    /** Completed payments on this day (same basis as `completedVolumeUsd`). */
     transactionCount: number;
     completedVolumeUsd: number;
   }>;
@@ -104,11 +112,16 @@ export async function buildMerchantSummary(
     environment: options.environment,
   };
 
-  const [totalAllTime, inPeriod, last24hCount, last7dCount] = await Promise.all([
-    prisma.transaction.count({ where: baseWhere }),
-    prisma.transaction.count({ where: { ...baseWhere, createdAt: { gte: periodFrom } } }),
-    prisma.transaction.count({ where: { ...baseWhere, createdAt: { gte: since24h } } }),
-    prisma.transaction.count({ where: { ...baseWhere, createdAt: { gte: since7d } } }),
+  const completedWhere = (extra: Prisma.TransactionWhereInput = {}): Prisma.TransactionWhereInput => ({
+    ...baseWhere,
+    status: COMPLETED,
+    ...extra,
+  });
+
+  const [totalAllTime, last24hCount, last7dCount] = await Promise.all([
+    prisma.transaction.count({ where: completedWhere() }),
+    prisma.transaction.count({ where: completedWhere({ createdAt: { gte: since24h } }) }),
+    prisma.transaction.count({ where: completedWhere({ createdAt: { gte: since7d } }) }),
   ]);
 
   const [statusAllTime, statusInPeriod] = await Promise.all([
@@ -203,8 +216,8 @@ export async function buildMerchantSummary(
   for (const row of seriesRows) {
     const key = row.createdAt.toISOString().slice(0, 10);
     const cur = bucketMap.get(key) ?? { transactionCount: 0, completedVolumeUsd: 0 };
-    cur.transactionCount += 1;
     if (row.status === COMPLETED) {
+      cur.transactionCount += 1;
       cur.completedVolumeUsd += transactionVolumeUsdApprox(row);
     }
     bucketMap.set(key, cur);
@@ -263,7 +276,7 @@ export async function buildMerchantSummary(
     },
     transactions: {
       totalAllTime,
-      inPeriod,
+      inPeriod: periodTxs.length,
       byStatusAllTime,
       byStatusInPeriod,
       last24hCount,
