@@ -146,6 +146,12 @@ app.addHook("preHandler", async (request, reply) => {
     if (reply.sent) return;
   }
 
+  /** Portal JWT + X-Business-Id (same as invoices) so GET /api/access can return merchant context. */
+  if (method === "GET" && path === "/api/access") {
+    await resolveInvoicesPortalTenantIfEligible(request, reply);
+    if (reply.sent) return;
+  }
+
   requireApiKeyOrSession(request, reply);
 });
 

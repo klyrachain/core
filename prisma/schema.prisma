@@ -1075,6 +1075,10 @@ model PaymentLink {
   /// Optional JSON: `{ "purpose": "GAS_TOPUP_FIAT" | "GAS_TOPUP_CRYPTO" | ... }` for platform/merchant tooling.
   metadata Json?
 
+  /// When set, this checkout link was generated for a merchant invoice (one-to-one).
+  invoiceId String? @unique
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
   transactions Transaction[]
 
   @@index([businessId])
@@ -1496,6 +1500,8 @@ model Invoice {
   termsAndConditions String @default("")
   notesContent       String @default("")
   log                Json   // LogEntry[]: { id, description, date }
+
+  paymentLink PaymentLink?
 
   @@index([status])
   @@index([billedTo])

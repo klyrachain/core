@@ -54,6 +54,8 @@ const createPayPageBody = z.object({
   gasSponsorshipEnabled: z.boolean().optional(),
   isOneTime: z.boolean().optional(),
   isActive: z.boolean().optional(),
+  /** Optional JSON (e.g. multi item cart snapshot for checkout display). */
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 const patchPayPageBody = createPayPageBody.partial().extend({
@@ -112,6 +114,7 @@ function serializePayPage(p: {
   isActive: boolean;
   views: number;
   usageCount?: number;
+  metadata?: unknown;
 }) {
   return {
     id: p.id,
@@ -135,6 +138,7 @@ function serializePayPage(p: {
     isActive: p.isActive,
     views: p.views,
     usageCount: p.usageCount ?? 0,
+    metadata: p.metadata === null || p.metadata === undefined ? undefined : p.metadata,
   };
 }
 
@@ -444,6 +448,7 @@ export function registerMerchantCommerceRoutes(app: FastifyInstance): void {
               gasSponsorshipEnabled: linkGasSponsorshipEnabled,
               isOneTime: b.isOneTime ?? false,
               isActive: b.isActive ?? true,
+              ...(b.metadata !== undefined ? { metadata: b.metadata as Prisma.InputJsonValue } : {}),
             },
           });
           return reply.status(201).send({ success: true, data: serializePayPage(created) });
@@ -524,6 +529,9 @@ export function registerMerchantCommerceRoutes(app: FastifyInstance): void {
           : {}),
         ...(patch.isOneTime !== undefined ? { isOneTime: patch.isOneTime } : {}),
         ...(patch.isActive !== undefined ? { isActive: patch.isActive } : {}),
+        ...(patch.metadata !== undefined
+          ? { metadata: patch.metadata as Prisma.InputJsonValue }
+          : {}),
       };
       if (patch.chargeKind === "FIAT") {
         data.gasSponsorshipEnabled = false;

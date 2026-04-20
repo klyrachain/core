@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { randomUUID } from "crypto";
+import { randomBytes, randomUUID } from "crypto";
 import { prisma } from "../../lib/prisma.js";
 import {
   parsePagination,
@@ -7,7 +7,11 @@ import {
   successEnvelopeWithMeta,
   errorEnvelope,
 } from "../../lib/api-helpers.js";
-import type { InvoiceStatus } from "../../../prisma/generated/prisma/enums.js";
+import {
+  PaymentLinkChargeKind,
+  PaymentLinkType,
+  type InvoiceStatus,
+} from "../../../prisma/generated/prisma/enums.js";
 import type { Prisma } from "../../../prisma/generated/prisma/client.js";
 import { requirePermission } from "../../lib/admin-auth.guard.js";
 import { PERMISSION_INVOICES_READ, PERMISSION_INVOICES_WRITE } from "../../lib/permissions.js";
@@ -36,6 +40,84 @@ type InvoiceRow = Awaited<
   ReturnType<typeof prisma.invoice.findUniqueOrThrow>
 >;
 
+const invoicePaymentLinkInclude = { paymentLink: true } as const;
+
+type InvoiceDetailRow = Prisma.InvoiceGetPayload<{
+  include: typeof invoicePaymentLinkInclude;
+}>;
+
+function randomPaySlugCandidate(): string {
+  return `pay-${randomBytes(6).toString("hex")}`;
+}
+
+async function allocateUniquePaymentLinkSlug(candidate: string): Promise<string> {
+  let base = (candidate.trim().slice(0, 120) || randomPaySlugCandidate()).slice(0, 120);
+  let n = 0;
+  for (;;) {
+    const slug = n === 0 ? base : `${base}-${n}`.slice(0, 120);
+    const hit = await prisma.paymentLink.findUnique({ where: { slug } });
+    if (!hit) return slug;
+    n += 1;
+    if (n > 50) {
+      base = randomPaySlugCandidate();
+      n = 0;
+    }
+  }
+}
+
+async function allocateUniquePaymentLinkPublicCode(): Promise<string> {
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const code = randomBytes(6).toString("hex");
+    const hit = await prisma.paymentLink.findUnique({ where: { publicCode: code } });
+    if (!hit) return code;
+  }
+  throw new Error("PUBLIC_CODE_ALLOCATION_FAILED");
+}
+
+/** Creates a checkout PaymentLink scoped to this invoice (merchant invoices only). */
+async function ensureInvoicePaymentLink(invoice: InvoiceRow): Promise<void> {
+  if (!invoice.businessId) return;
+  const existing = await prisma.paymentLink.findFirst({
+    where: { invoiceId: invoice.id },
+  });
+  if (existing) return;
+
+  const slug = await allocateUniquePaymentLinkSlug(`inv-${randomBytes(4).toString("hex")}`);
+  const publicCode = await allocateUniquePaymentLinkPublicCode();
+  const titleBase = invoice.subject?.trim() || `Invoice ${invoice.invoiceNumber}`;
+
+  await prisma.paymentLink.create({
+    data: {
+      businessId: invoice.businessId,
+      environment: invoice.environment,
+      title: titleBase.slice(0, 200),
+      description: `Invoice ${invoice.invoiceNumber}`.slice(0, 500),
+      slug,
+      publicCode,
+      type: PaymentLinkType.STANDARD,
+      amount: invoice.amountDue,
+      currency: invoice.currency || "USD",
+      chargeKind: PaymentLinkChargeKind.CRYPTO,
+      invoiceId: invoice.id,
+    },
+  });
+}
+
+async function syncInvoicePaymentLinkFromInvoice(invoiceId: string): Promise<void> {
+  const link = await prisma.paymentLink.findFirst({ where: { invoiceId } });
+  if (!link) return;
+  const inv = await prisma.invoice.findFirst({ where: { id: invoiceId } });
+  if (!inv) return;
+  await prisma.paymentLink.update({
+    where: { id: link.id },
+    data: {
+      amount: inv.amountDue,
+      currency: inv.currency,
+      title: (inv.subject || `Invoice ${inv.invoiceNumber}`).slice(0, 200),
+    },
+  });
+}
+
 function toNum(v: { toString(): string } | number): number {
   if (typeof v === "number") return v;
   return parseFloat(v.toString());
@@ -46,9 +128,10 @@ function toIso(d: Date | null): string | null {
 }
 
 /** Serialize DB invoice to full API invoice (§2.4) */
-function toFullInvoice(row: InvoiceRow) {
+function toFullInvoice(row: InvoiceDetailRow) {
   const lineItems = (row.lineItems as LineItem[]) ?? [];
   const log = (row.log as LogEntry[]) ?? [];
+  const pl = row.paymentLink;
   return {
     id: row.id,
     invoiceNumber: row.invoiceNumber,
@@ -73,6 +156,16 @@ function toFullInvoice(row: InvoiceRow) {
     termsAndConditions: row.termsAndConditions,
     notesContent: row.notesContent,
     log,
+    paymentLink: pl
+      ? {
+          id: pl.id,
+          slug: pl.slug,
+          publicCode: pl.publicCode,
+          title: pl.title,
+          amount: pl.amount != null ? toNum(pl.amount) : null,
+          currency: pl.currency,
+        }
+      : null,
   };
 }
 
@@ -185,9 +278,22 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
       try {
         if (!requirePermission(req, reply, PERMISSION_INVOICES_READ, { allowMerchant: true }))
           return;
-        const row = await prisma.invoice.findFirst({
+        let row = await prisma.invoice.findFirst({
           where: { id: req.params.id, ...tenantInvoiceWhere(req) },
+          include: invoicePaymentLinkInclude,
         });
+        if (!row) return errorEnvelope(reply, "Invoice not found", 404);
+        if (row.businessId && !row.paymentLink) {
+          try {
+            await ensureInvoicePaymentLink(row);
+            row = await prisma.invoice.findFirst({
+              where: { id: req.params.id, ...tenantInvoiceWhere(req) },
+              include: invoicePaymentLinkInclude,
+            });
+          } catch (err) {
+            req.log.warn({ err }, "GET /api/invoices/:id payment link backfill");
+          }
+        }
         if (!row) return errorEnvelope(reply, "Invoice not found", 404);
         return successEnvelope(reply, toFullInvoice(row));
       } catch (err) {
@@ -290,19 +396,35 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
           },
         });
 
-        if (body.sendNow === true) {
-          const logUpdated = addLogEntry(
-            row.log as LogEntry[],
-            `Invoice was sent to ${row.billedTo}.`
-          );
-          await prisma.invoice.updateMany({
-            where: { id: row.id, ...tenantInvoiceWhere(req) },
-            data: { log: logUpdated as object },
-          });
-          (row as { log: unknown }).log = logUpdated;
+        if (scopeBid) {
+          try {
+            await ensureInvoicePaymentLink(row);
+          } catch (err) {
+            req.log.error({ err }, "POST /api/invoices payment link create");
+          }
         }
 
-        return successEnvelope(reply, toFullInvoice(row), 201);
+        const createdFull = await prisma.invoice.findFirst({
+          where: { id: row.id },
+          include: invoicePaymentLinkInclude,
+        });
+        if (!createdFull) {
+          return errorEnvelope(reply, "Invoice was created but could not be reloaded.", 500);
+        }
+
+        // if (body.sendNow === true) {
+        //   const logUpdated = addLogEntry(
+        //     row.log as LogEntry[],
+        //     `Invoice was sent to ${row.billedTo}.`
+        //   );
+        //   await prisma.invoice.updateMany({
+        //     where: { id: row.id, ...tenantInvoiceWhere(req) },
+        //     data: { log: logUpdated as object },
+        //   });
+        //   (row as { log: unknown }).log = logUpdated;
+        // }
+
+        return successEnvelope(reply, toFullInvoice(createdFull), 201);
       } catch (err) {
         req.log.error({ err }, "POST /api/invoices");
         return errorEnvelope(reply, "Something went wrong.", 500);
@@ -325,6 +447,7 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
           billingDetails?: string;
           termsAndConditions?: string;
           lineItems?: unknown;
+          discountPercent?: number;
         };
       }>,
       reply
@@ -361,16 +484,32 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
         if (body.termsAndConditions !== undefined)
           updates.termsAndConditions = body.termsAndConditions;
 
+        const existingLineItems = (row.lineItems as LineItem[]) ?? [];
+        let normalizedPatchLineItems: LineItem[] | null = null;
         if (body.lineItems !== undefined) {
-          const lineItems = normalizeLineItems(body.lineItems);
-          if (lineItems.length === 0)
+          normalizedPatchLineItems = normalizeLineItems(body.lineItems);
+          if (normalizedPatchLineItems.length === 0)
             return errorEnvelope(reply, "At least one line item is required", 400);
-          const discountPercent = toNum(row.discountPercent);
-          const { subtotal, discountAmount, total } = computeTotals(
-            lineItems,
-            discountPercent
+          updates.lineItems = normalizedPatchLineItems;
+        }
+
+        let discountForTotals = toNum(row.discountPercent);
+        if (body.discountPercent !== undefined) {
+          discountForTotals = Math.min(
+            100,
+            Math.max(0, Number(body.discountPercent) || 0)
           );
-          updates.lineItems = lineItems;
+          updates.discountPercent = discountForTotals;
+        }
+
+        if (body.lineItems !== undefined || body.discountPercent !== undefined) {
+          const basis = normalizedPatchLineItems ?? existingLineItems;
+          if (basis.length === 0)
+            return errorEnvelope(reply, "At least one line item is required", 400);
+          const { subtotal, discountAmount, total } = computeTotals(
+            basis,
+            discountForTotals
+          );
           updates.subtotal = subtotal;
           updates.discountAmount = discountAmount;
           updates.total = total;
@@ -383,9 +522,25 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
           where: scopedWhere,
           data: updates as object,
         });
-        const updated = await prisma.invoice.findFirst({
+        let updated = await prisma.invoice.findFirst({
           where: scopedWhere,
+          include: invoicePaymentLinkInclude,
         });
+        if (!updated) return errorEnvelope(reply, "Invoice not found", 404);
+        if (
+          updated.businessId &&
+          (body.lineItems !== undefined || body.discountPercent !== undefined)
+        ) {
+          try {
+            await syncInvoicePaymentLinkFromInvoice(updated.id);
+            updated = await prisma.invoice.findFirst({
+              where: scopedWhere,
+              include: invoicePaymentLinkInclude,
+            });
+          } catch (err) {
+            req.log.warn({ err }, "PATCH /api/invoices/:id payment link sync");
+          }
+        }
         if (!updated) return errorEnvelope(reply, "Invoice not found", 404);
         return successEnvelope(reply, toFullInvoice(updated));
       } catch (err) {
@@ -419,14 +574,14 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
         if (!toEmail)
           return errorEnvelope(reply, "No recipient email", 400);
 
-        const log = addLogEntry(
-          row.log as LogEntry[],
-          `Invoice was sent to ${toEmail}.`
-        );
-        await prisma.invoice.updateMany({
-          where: { id: req.params.id, ...tenantInvoiceWhere(req) },
-          data: { log: log as object },
-        });
+        // const log = addLogEntry(
+        //   row.log as LogEntry[],
+        //   `Invoice was sent to ${toEmail}.`
+        // );
+        // await prisma.invoice.updateMany({
+        //   where: { id: req.params.id, ...tenantInvoiceWhere(req) },
+        //   data: { log: log as object },
+        // });
         return successEnvelope(reply, { sent: true, to: toEmail });
       } catch (err) {
         req.log.error({ err }, "POST /api/invoices/:id/send");
@@ -496,7 +651,21 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
             environment: row.environment,
           },
         });
-        return successEnvelope(reply, toFullInvoice(newRow), 201);
+        if (newRow.businessId) {
+          try {
+            await ensureInvoicePaymentLink(newRow);
+          } catch (err) {
+            req.log.error({ err }, "POST /api/invoices/:id/duplicate payment link create");
+          }
+        }
+        const dupFull = await prisma.invoice.findFirst({
+          where: { id: newRow.id },
+          include: invoicePaymentLinkInclude,
+        });
+        if (!dupFull) {
+          return errorEnvelope(reply, "Duplicate created but could not be reloaded.", 500);
+        }
+        return successEnvelope(reply, toFullInvoice(dupFull), 201);
       } catch (err) {
         req.log.error({ err }, "POST /api/invoices/:id/duplicate");
         return errorEnvelope(reply, "Something went wrong.", 500);
@@ -531,6 +700,7 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
         });
         const updated = await prisma.invoice.findFirst({
           where: { id: req.params.id, ...tenantInvoiceWhere(req) },
+          include: invoicePaymentLinkInclude,
         });
         if (!updated) return errorEnvelope(reply, "Invoice not found", 404);
         return successEnvelope(reply, toFullInvoice(updated));
@@ -567,6 +737,7 @@ export async function invoicesApiRoutes(app: FastifyInstance): Promise<void> {
         });
         const updated = await prisma.invoice.findFirst({
           where: { id: req.params.id, ...tenantInvoiceWhere(req) },
+          include: invoicePaymentLinkInclude,
         });
         if (!updated) return errorEnvelope(reply, "Invoice not found", 404);
         return successEnvelope(reply, toFullInvoice(updated));
