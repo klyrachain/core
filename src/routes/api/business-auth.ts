@@ -29,6 +29,7 @@ import {
   upsertUserFromGoogleProfile,
   saveOnboardingEntity,
   completeBusinessOnboarding,
+  createAdditionalPortalBusiness,
   getBusinessPortalSession,
   parseSignupRole,
   parsePrimaryGoal,
@@ -137,6 +138,23 @@ const bodyEntity = z.object({
   website: z.string().max(500).optional(),
 });
 const bodyComplete = z.object({
+  signupRole: z.enum([
+    "DEVELOPER",
+    "FOUNDER_EXECUTIVE",
+    "FINANCE_OPS",
+    "PRODUCT",
+  ]),
+  primaryGoal: z.enum([
+    "ACCEPT_PAYMENTS",
+    "SEND_PAYOUTS",
+    "INTEGRATE_SDK",
+    "EXPLORING",
+  ]),
+});
+
+const bodyCreatePortalBusiness = z.object({
+  companyName: z.string().min(2).max(200),
+  website: z.string().max(500).optional(),
   signupRole: z.enum([
     "DEVELOPER",
     "FOUNDER_EXECUTIVE",
@@ -463,6 +481,38 @@ export async function businessAuthRoutes(app: FastifyInstance): Promise<void> {
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not complete signup.";
+      return reply.status(400).send({ success: false, error: msg });
+    }
+  });
+
+  /** Logged-in portal user: create another business (additional membership). */
+  app.post("/api/business-auth/businesses", async (req: FastifyRequest, reply: FastifyReply) => {
+    const userId = await requirePortalUser(req, reply);
+    if (!userId) return;
+    const parsed = bodyCreatePortalBusiness.safeParse(req.body);
+    if (!parsed.success) {
+      return errorEnvelope(reply, parsed.error.message, 400);
+    }
+    try {
+      const signupRole = parseSignupRole(parsed.data.signupRole);
+      const primaryGoal = parsePrimaryGoal(parsed.data.primaryGoal);
+      const result = await createAdditionalPortalBusiness(userId, {
+        companyName: parsed.data.companyName,
+        website: parsed.data.website,
+        signupRole,
+        primaryGoal,
+      });
+      return successEnvelope(reply, {
+        businessId: result.businessId,
+        slug: result.slug,
+        landingHint: result.landingHint,
+        accessToken: result.accessToken,
+        mode: "sandbox",
+        deferredKybNote:
+          "Legal name, registration number, and address are collected when you request live API keys or go live.",
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Could not create business.";
       return reply.status(400).send({ success: false, error: msg });
     }
   });

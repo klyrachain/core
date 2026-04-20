@@ -513,6 +513,76 @@ export async function completeBusinessOnboarding(
 }
 
 /**
+ * Create an additional business for a portal user who may already belong to one or more businesses.
+ * Does not use or clear `merchantOnboarding` draft rows (first-time signup flow keeps using those).
+ */
+export async function createAdditionalPortalBusiness(
+  userId: string,
+  input: {
+    companyName: string;
+    website?: string | null;
+    signupRole: MerchantSignupRole;
+    primaryGoal: MerchantPrimaryGoal;
+  }
+): Promise<{
+  businessId: string;
+  slug: string;
+  landingHint: string;
+  accessToken: string;
+}> {
+  const companyName = input.companyName.trim();
+  if (companyName.length < 2) {
+    throw new Error("Company name is required.");
+  }
+  let websiteForBusiness: string | null = null;
+  if (input.website != null && String(input.website).trim() !== "") {
+    const w = String(input.website).trim();
+    websiteForBusiness = /^https?:\/\//i.test(w) ? w : `https://${w}`;
+  }
+
+  const slug = await ensureUniqueBusinessSlug(slugifyCompanyName(companyName));
+  const businessRole = mapSignupRoleToBusinessRole(input.signupRole);
+  const landingHint = computeLandingHint(input.signupRole, input.primaryGoal);
+
+  const result = await prisma.$transaction(async (tx) => {
+    const business = await tx.business.create({
+      data: {
+        name: companyName,
+        slug,
+        website: websiteForBusiness,
+        country: "US",
+        kybStatus: "NOT_STARTED",
+        supportEmail: null,
+      },
+    });
+    await tx.businessMember.create({
+      data: {
+        userId,
+        businessId: business.id,
+        role: businessRole,
+        isActive: true,
+      },
+    });
+    await tx.feeSchedule.create({
+      data: {
+        businessId: business.id,
+        flatFee: 0,
+        percentageFee: 1,
+        maxFee: 50,
+      },
+    });
+    return business;
+  });
+
+  return {
+    businessId: result.id,
+    slug: result.slug,
+    landingHint,
+    accessToken: signBusinessPortalToken(userId),
+  };
+}
+
+/**
  * @param requestOrigin - Prefer `Origin` header from the HTTP request. When `BUSINESS_WEBAUTHN_RP_ID`
  * is unset, hostname is derived from this URL so production (e.g. Vercel) is not stuck on `localhost`.
  */
