@@ -53,7 +53,7 @@ const DEFAULT_CHECKOUT_TOKEN_CA: Record<string, Record<string, string>> = {
     WXRP: "0x39fBBABf11738317a448031930706cd3e612e1B9",
   },
   SOLANA: {
-    USDC: "EPjFWdd5AufqSSqeM2qAq3h91M4A8fYf1R9n9xv8wYw",
+    USDC: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     SOL: "So11111111111111111111111111111111111111112",
   },
 };

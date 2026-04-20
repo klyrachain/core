@@ -4,9 +4,16 @@
  */
 
 import { buildPublicQuote } from "./public-quote.service.js";
-import { logCheckoutUsdReferenceVsSpotIfNeeded } from "./checkout-usd-reference-price.service.js";
+import {
+  fetchUsdSpotForCheckoutReference,
+  isStableCheckoutSymbol,
+  logCheckoutUsdReferenceVsSpotIfNeeded,
+} from "./checkout-usd-reference-price.service.js";
 import { getBestQuotes } from "./swap-quote.service.js";
-import { getSwapQuoteEstimateFromAddress } from "../lib/swap-quote-from-address.js";
+import {
+  getSwapQuoteEstimateFromAddress,
+  resolveSwapQuoteFromAddress,
+} from "../lib/swap-quote-from-address.js";
 import { prisma } from "../lib/prisma.js";
 import {
   DEFAULT_CHECKOUT_ROWS,
@@ -24,8 +31,10 @@ const ETH_MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const ETH_WXRP = "0x39fBBABf11738317a448031930706cd3e612e1B9";
 const WXRP_DECIMALS = 18;
 const BNB_USDC = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
-const SOL_USDC = "EPjFWdd5AufqSSqeM2qAq3h91M4A8fYf1R9n9xv8wYw";
+const SOL_USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
+/** Ethereum mainnet MANA — last-resort spot estimate when Solana swap + SOL spot fail. */
+const ETHEREUM_MANA = "0x0f5d2fb29fb7d3cfee444a200298f468908cc942";
 const USDC_DECIMALS = 6;
 const SOL_DECIMALS = 9;
 
@@ -41,20 +50,23 @@ function isRateLimitMessage(msg: string): boolean {
   return m.includes("too many") || m.includes("rate") || m.includes("429");
 }
 
-/** User-facing copy when provider has no rate for this asset/country pair. */
-function mapCheckoutQuoteError(
-  raw: string,
-  context: "offramp" | "swap" = "swap"
-): string {
+/** Short UI copy; raw provider text is logged server-side only. */
+function mapCheckoutQuoteError(raw: string): string {
   const m = raw.toLowerCase();
   if (m.includes("no offers") || m.includes("no offer")) {
-    return "No rate available for this asset right now. Try another token or check back later.";
+    return "No rate right now. Try another option.";
   }
-  if (m.includes("unsupported chain") || m.includes("chain is not supported")) {
-    if (context === "offramp") {
-      return "This provider does not currently support the selected chain for offramp quotes.";
-    }
-    return "This provider does not currently support the selected chain for swap quotes.";
+  if (
+    m.includes("unsupported chain") ||
+    m.includes("chain is not supported") ||
+    m.includes("fromchainid") ||
+    m.includes("tochainid") ||
+    m.includes("schema in oneof")
+  ) {
+    return "Quote unavailable.";
+  }
+  if (raw.length > 160) {
+    return "Quote unavailable.";
   }
   return raw;
 }
@@ -93,6 +105,48 @@ function humanToRawUnits(human: string, decimals: number): string {
   const n = Number.parseFloat(human);
   if (!Number.isFinite(n) || n <= 0) return "0";
   return String(Math.round(n * Math.pow(10, decimals)));
+}
+
+/**
+ * `SOL_USDC` = SPL USDC mint (invoice “sell” side). `SOL_MINT` = native SOL (row “buy” side).
+ * The swap asks aggregators: sell invoice USDC → receive SOL for display.
+ * When swap APIs fail, approximate from USD spot (stables) then MANA as last resort.
+ */
+async function spotFallbackSolanaSolRow(
+  invoiceAmount: string,
+  invoiceSymbol: string
+): Promise<{ cryptoAmount: string; cryptoSymbol: string } | null> {
+  const sym = invoiceSymbol.trim().toUpperCase();
+  if (!isStableCheckoutSymbol(sym)) {
+    return null;
+  }
+  const usdValue = Number.parseFloat(invoiceAmount.trim());
+  if (!Number.isFinite(usdValue) || usdValue <= 0) return null;
+
+  const solUsd = await fetchUsdSpotForCheckoutReference({
+    chainSlug: "SOLANA",
+    symbol: "SOL",
+    tokenAddress: SOL_MINT,
+  });
+  if (solUsd != null && solUsd > 0) {
+    return {
+      cryptoAmount: formatCheckoutCryptoDisplay(String(usdValue / solUsd)),
+      cryptoSymbol: "SOL",
+    };
+  }
+
+  const manaUsd = await fetchUsdSpotForCheckoutReference({
+    chainSlug: "ETHEREUM",
+    symbol: "MANA",
+    tokenAddress: ETHEREUM_MANA,
+  });
+  if (manaUsd != null && manaUsd > 0) {
+    return {
+      cryptoAmount: formatCheckoutCryptoDisplay(String(usdValue / manaUsd)),
+      cryptoSymbol: "MANA",
+    };
+  }
+  return null;
 }
 
 /** Match checkout display: two decimal places for all token amounts. */
@@ -223,20 +277,42 @@ async function quoteCryptoRow(
   if (!chainId) {
     return { id, cryptoAmount: null, cryptoSymbol: null, error: "Unsupported checkout chain." };
   }
+  const swapFromAddress = resolveSwapQuoteFromAddress({
+    from_chain: chainId,
+    to_chain: chainId,
+    hint: fromAddress,
+  });
   const bq = await getBestQuotes({
     from_chain: chainId,
     to_chain: chainId,
     from_token: source.address,
     to_token: target.address,
-    from_address: fromAddress,
+    from_address: swapFromAddress,
     amount: rawIn,
   });
   if (!bq.ok) {
+    const raw = bq.error ?? "Swap quote unavailable";
+    console.warn("[checkout:quoteCryptoRow] swap failed", JSON.stringify({ id, raw }));
+    if (id === "solana-sol" && row.chain === "SOLANA" && row.symbol === "SOL") {
+      const spot = await spotFallbackSolanaSolRow(invoiceCryptoAmount, invoiceCryptoSymbol);
+      if (spot) {
+        console.warn(
+          "[checkout:quoteCryptoRow] spot fallback",
+          JSON.stringify({ id, cryptoSymbol: spot.cryptoSymbol })
+        );
+        return {
+          id,
+          cryptoAmount: spot.cryptoAmount,
+          cryptoSymbol: spot.cryptoSymbol,
+          error: null,
+        };
+      }
+    }
     return {
       id,
       cryptoAmount: null,
       cryptoSymbol: null,
-      error: mapCheckoutQuoteError(bq.error ?? "Swap quote unavailable"),
+      error: mapCheckoutQuoteError(raw),
     };
   }
   const outHuman = formatFromRawUnits(bq.data.best.to_amount, target.decimals);
@@ -288,11 +364,13 @@ async function quoteInvoiceOfframpRow(
     fromAddress,
   });
   if (!r.success) {
+    const raw = r.error ?? "Quote unavailable";
+    console.warn("[checkout:quoteInvoiceOfframpRow] failed", JSON.stringify({ id, raw }));
     return {
       id,
       cryptoAmount: null,
       cryptoSymbol: null,
-      error: mapCheckoutQuoteError(r.error ?? "Quote unavailable", "offramp"),
+      error: mapCheckoutQuoteError(raw),
     };
   }
   const cryptoAmount = formatCheckoutCryptoDisplay(r.data.input.amount);
@@ -436,11 +514,12 @@ async function quoteCompositeWxrpRow(
   }
 
   if (!gotWxrp) {
+    console.warn("[checkout:quoteCompositeWxrpRow] failed", JSON.stringify({ id, raw: lastSwapErr }));
     wxrp = {
       id,
       cryptoAmount: null,
       cryptoSymbol: null,
-      error: lastSwapErr,
+      error: mapCheckoutQuoteError(lastSwapErr),
     };
   } else if (wxrp.cryptoAmount && fiatCurrency.trim().toUpperCase() === "USD") {
     void logCheckoutUsdReferenceVsSpotIfNeeded({

@@ -8,6 +8,7 @@
 import { getEnv } from "../config/env.js";
 import { getSwapFeeConfigForProvider } from "./platform-settings.service.js";
 import { toLiFiNativeToken } from "../lib/native-token.js";
+import { toLiFiChainId } from "../lib/aggregator-chain-ids.js";
 import type { SwapQuoteRequest, SwapQuoteResponse } from "../lib/swap-quote.types.js";
 
 const LIFI_BASE = "https://li.quest/v1";
@@ -64,8 +65,8 @@ export async function getLiFiQuote(
     options.fee = feePercent;
   }
   const body = {
-    fromChainId: params.from_chain,
-    toChainId: params.to_chain,
+    fromChainId: toLiFiChainId(params.from_chain),
+    toChainId: toLiFiChainId(params.to_chain),
     fromTokenAddress: fromToken,
     toTokenAddress: toToken,
     fromAmount: params.amount,
@@ -103,9 +104,7 @@ export async function getLiFiQuote(
   }
 
   const best = routes[0];
-  const fromChainId = best.fromChainId ?? params.from_chain;
-  const toChainId = best.toChainId ?? params.to_chain;
-  const crossChain = fromChainId !== toChainId;
+  const crossChain = params.from_chain !== params.to_chain;
   const sameToken = fromToken.toLowerCase() === toToken.toLowerCase();
 
   let estimatedDuration: number | null = null;
@@ -116,8 +115,8 @@ export async function getLiFiQuote(
 
   const quote: SwapQuoteResponse = {
     provider: "lifi",
-    from_chain_id: fromChainId,
-    to_chain_id: toChainId,
+    from_chain_id: params.from_chain,
+    to_chain_id: params.to_chain,
     cross_chain: crossChain,
     same_chain: !crossChain,
     token_type: sameToken ? "same_token" : "cross_token",

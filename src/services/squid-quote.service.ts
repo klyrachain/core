@@ -7,6 +7,7 @@
 import { getEnv } from "../config/env.js";
 import { getSwapFeeConfigForProvider } from "./platform-settings.service.js";
 import { toSquidNativeToken } from "../lib/native-token.js";
+import { toSquidChainParam } from "../lib/aggregator-chain-ids.js";
 import type { SwapQuoteRequest, SwapQuoteResponse, SwapQuoteTransaction } from "../lib/swap-quote.types.js";
 
 const SQUID_BASE = "https://v2.api.squidrouter.com/v2";
@@ -75,10 +76,10 @@ export async function getSquidQuote(
 
   const body: Record<string, unknown> = {
     fromAddress,
-    fromChain: String(params.from_chain),
+    fromChain: toSquidChainParam(params.from_chain),
     fromToken,
     fromAmount: params.amount,
-    toChain: String(params.to_chain),
+    toChain: toSquidChainParam(params.to_chain),
     toToken,
     toAddress,
     slippage: params.slippage ?? 1,
@@ -128,9 +129,7 @@ export async function getSquidQuote(
     return { ok: false, error: "Invalid Squid route response" };
   }
 
-  const fromChainId = params.from_chain;
-  const toChainId = params.to_chain;
-  const crossChain = fromChainId !== toChainId;
+  const crossChain = params.from_chain !== params.to_chain;
   const sameToken = fromToken.toLowerCase() === toToken.toLowerCase();
 
   let transaction: SwapQuoteTransaction | null = null;
@@ -158,8 +157,8 @@ export async function getSquidQuote(
 
   const quote: SwapQuoteResponse = {
     provider: "squid",
-    from_chain_id: fromChainId,
-    to_chain_id: toChainId,
+    from_chain_id: params.from_chain,
+    to_chain_id: params.to_chain,
     cross_chain: crossChain,
     same_chain: !crossChain,
     token_type: sameToken ? "same_token" : "cross_token",
