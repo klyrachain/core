@@ -7,7 +7,7 @@ import { z } from "zod";
 import type { MerchantEnvironment } from "../../prisma/generated/prisma/client.js";
 import { prisma } from "../lib/prisma.js";
 import { normalizeNotificationChannels } from "../lib/notification.types.js";
-import { sendPaymentRequestNotification, buildPaymentRequestLink } from "./notification.service.js";
+import { sendPaymentRequestNotification, sendPaymentRequestReceiverPending, buildPaymentRequestLink } from "./notification.service.js";
 import { generateClaimCode, generateClaimLinkId } from "../utils/claim-code.js";
 
 const PayoutFiatSchema = z.object({
@@ -18,24 +18,31 @@ const PayoutFiatSchema = z.object({
   currency: z.string().min(1),
 });
 
-export const CreatePaymentRequestBodySchema = z.object({
-  payerEmail: z.string().email(),
-  payerPhone: z.string().min(1).optional(),
-  channels: z
-    .union([z.array(z.enum(["EMAIL", "SMS", "WHATSAPP"])), z.enum(["EMAIL", "SMS", "WHATSAPP"])])
-    .optional(),
-  t_amount: z.coerce.number().positive(),
-  t_chain: z.string().min(1),
-  t_token: z.string().min(1),
-  toIdentifier: z.string().min(1),
-  receiveSummary: z.string().min(1),
-  payoutTarget: z.string().min(1).optional(),
-  payoutFiat: PayoutFiatSchema.optional(),
-  f_chain: z.string().min(1).optional(),
-  f_token: z.string().min(1).optional(),
-  f_amount: z.coerce.number().positive().optional(),
-  skipPaymentRequestNotification: z.boolean().optional(),
-});
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export const CreatePaymentRequestBodySchema = z
+  .object({
+    payerEmail: z.string().email().optional(),
+    payerPhone: z.string().min(8).optional(),
+    channels: z
+      .union([z.array(z.enum(["EMAIL", "SMS", "WHATSAPP"])), z.enum(["EMAIL", "SMS", "WHATSAPP"])])
+      .optional(),
+    t_amount: z.coerce.number().positive(),
+    t_chain: z.string().min(1),
+    t_token: z.string().min(1),
+    toIdentifier: z.string().min(1),
+    receiveSummary: z.string().min(1),
+    payoutTarget: z.string().min(1).optional(),
+    payoutFiat: PayoutFiatSchema.optional(),
+    f_chain: z.string().min(1).optional(),
+    f_token: z.string().min(1).optional(),
+    f_amount: z.coerce.number().positive().optional(),
+    skipPaymentRequestNotification: z.boolean().optional(),
+  })
+  .refine((d) => !!(d.payerEmail?.trim() || d.payerPhone?.trim()), {
+    message: "Provide payerEmail or payerPhone",
+    path: ["payerEmail"],
+  });
 
 export type CreatePaymentRequestBody = z.infer<typeof CreatePaymentRequestBodySchema>;
 
@@ -55,7 +62,12 @@ export async function createPaymentRequest(
   body: CreatePaymentRequestBody,
   options: { businessId?: string | null; environment?: MerchantEnvironment }
 ): Promise<CreatePaymentRequestResult> {
-  const channels = normalizeNotificationChannels(body.channels);
+  const payerEmailTrim = body.payerEmail?.trim() ?? "";
+  const payerPhoneTrim = body.payerPhone?.trim() ?? "";
+  const payerIsEmail = EMAIL_RE.test(payerEmailTrim);
+  const channels = normalizeNotificationChannels(
+    body.channels ?? (payerIsEmail ? ["EMAIL"] : ["SMS"])
+  );
   const linkId = randomBytes(8).toString("hex");
   const requestCode = `REQ${randomBytes(4).toString("hex").toUpperCase()}`;
   const claimCode = generateClaimCode();
@@ -107,8 +119,8 @@ export async function createPaymentRequest(
       t_token,
       f_provider: isSenderPaysCrypto ? "KLYRA" : "PAYSTACK",
       t_provider: "KLYRA",
-      fromIdentifier: body.payerEmail,
-      fromType: "EMAIL",
+      fromIdentifier: payerIsEmail ? payerEmailTrim : payerPhoneTrim,
+      fromType: payerIsEmail ? "EMAIL" : "NUMBER",
       toIdentifier: body.toIdentifier,
       toType: body.toIdentifier.includes("@") ? "EMAIL" : "NUMBER",
       businessId: businessId ?? null,
@@ -143,7 +155,7 @@ export async function createPaymentRequest(
       value: body.t_amount,
       price: 1,
       token: t_token,
-      payerIdentifier: body.payerEmail,
+      payerIdentifier: payerIsEmail ? payerEmailTrim : payerPhoneTrim,
       toIdentifier: body.toIdentifier,
       code: claimCode,
       claimLinkId,
@@ -151,12 +163,13 @@ export async function createPaymentRequest(
   });
 
   const claimLinkUrl = buildPaymentRequestLink(linkId);
+  const payerContactLabel = payerIsEmail ? payerEmailTrim : payerPhoneTrim;
   const results = body.skipPaymentRequestNotification
     ? {}
     : await sendPaymentRequestNotification({
         channels,
-        toEmail: body.payerEmail,
-        toPhone: body.payerPhone,
+        toEmail: payerIsEmail ? payerEmailTrim : "",
+        toPhone: payerIsEmail ? body.payerPhone?.trim() : payerPhoneTrim,
         entityRefId: request.id,
         templateVars: {
           requesterIdentifier: body.toIdentifier,
@@ -166,6 +179,16 @@ export async function createPaymentRequest(
           claimLinkUrl,
         },
       });
+
+  if (!body.skipPaymentRequestNotification) {
+    await sendPaymentRequestReceiverPending({
+      beneficiaryContact: body.toIdentifier.trim(),
+      payerContact: payerContactLabel,
+      amount: String(body.t_amount),
+      currency: t_token,
+      entityRefId: `${request.id}:receiver-pending`,
+    });
+  }
 
   return {
     id: request.id,

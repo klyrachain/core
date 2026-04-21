@@ -237,7 +237,12 @@ export async function claimsApiRoutes(app: FastifyInstance): Promise<void> {
       return errorEnvelope(reply, "Claim not found", 404);
     } catch (err) {
       req.log.error({ err }, "GET /api/claims/by-link/:claimLinkId");
-      return errorEnvelope(reply, "Something went wrong.", 500);
+      /** DB/Redis/network failures, or unexpected errors in lookup. */
+      return reply.status(500).send({
+        success: false,
+        error: "Could not load claim link.",
+        code: "CLAIM_LINK_LOOKUP_FAILED",
+      });
     }
   });
 
@@ -810,7 +815,11 @@ export async function claimsApiRoutes(app: FastifyInstance): Promise<void> {
       return errorEnvelope(reply, "Session expired or invalid", 404);
     } catch (err) {
       req.log.error({ err }, "GET /api/claims/unlocked/:token");
-      return errorEnvelope(reply, "Something went wrong.", 500);
+      return reply.status(500).send({
+        success: false,
+        error: "Could not load claim details.",
+        code: "CLAIM_UNLOCK_LOAD_FAILED",
+      });
     }
   });
 

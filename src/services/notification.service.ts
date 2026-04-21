@@ -36,6 +36,12 @@ import {
   type PaymentLinkPayerReceiptVars,
 } from "../email/templates/payment-link-payer-receipt.js";
 import {
+  paymentRequestReceiverPendingSubject,
+  paymentRequestReceiverPendingHtml,
+  paymentRequestReceiverPendingText,
+  type PaymentRequestReceiverPendingVars,
+} from "../email/templates/payment-request-receiver-pending.js";
+import {
   paymentLinkMerchantReceiptSubject,
   paymentLinkMerchantReceiptHtml,
   paymentLinkMerchantReceiptText,
@@ -79,6 +85,7 @@ export async function sendPaymentRequestNotification(
 
   for (const ch of payload.channels) {
     if (ch === "EMAIL") {
+      if (!payload.toEmail?.trim()) continue;
       const r = await sendEmail({
         to: payload.toEmail,
         subject: paymentRequestSubject(payload.templateVars),
@@ -90,7 +97,20 @@ export async function sendPaymentRequestNotification(
     } else if ((ch === "SMS" || ch === "WHATSAPP") && payload.toPhone) {
       const templateId = getEnv().SENT_DM_TEMPLATE_PAYMENT_REQUEST;
       if (!templateId) {
-        results[ch === "SMS" ? "sms" : "whatsapp"] = { ok: false, error: "Sent.dm payment-request template not configured" };
+        if (ch === "SMS") {
+          const { isLikelyMoolreSmsDestination, isMoolreSmsConfigured, sendMoolrePlainSms } = await import(
+            "./moolre-sms.service.js"
+          );
+          if (isMoolreSmsConfigured() && isLikelyMoolreSmsDestination(payload.toPhone)) {
+            const plain = `Morapay: ${payload.templateVars.amount} ${payload.templateVars.currency}. Pay ${linkUrl}`.slice(0, 459);
+            const m = await sendMoolrePlainSms(payload.toPhone, plain);
+            results.sms = m.ok ? { ok: true } : { ok: false, error: m.error };
+          } else {
+            results.sms = { ok: false, error: "Sent.dm payment-request template not configured" };
+          }
+        } else {
+          results.whatsapp = { ok: false, error: "Sent.dm payment-request template not configured" };
+        }
         continue;
       }
       const r = await sendMessageToPhone({
@@ -103,10 +123,82 @@ export async function sendPaymentRequestNotification(
           receiveSummary: payload.templateVars.receiveSummary,
         },
       });
-      results[ch === "SMS" ? "sms" : "whatsapp"] = r.ok ? { ok: true } : { ok: false, error: r.error };
+      const key = ch === "SMS" ? "sms" : "whatsapp";
+      if (r.ok) {
+        results[key] = { ok: true };
+        continue;
+      }
+      if (ch === "SMS") {
+        const { isLikelyMoolreSmsDestination, isMoolreSmsConfigured, sendMoolrePlainSms } = await import(
+          "./moolre-sms.service.js"
+        );
+        if (isMoolreSmsConfigured() && isLikelyMoolreSmsDestination(payload.toPhone)) {
+          const plain = `Morapay: ${payload.templateVars.amount} ${payload.templateVars.currency}. Pay ${linkUrl}`.slice(0, 459);
+          const m = await sendMoolrePlainSms(payload.toPhone, plain);
+          results.sms = m.ok ? { ok: true } : { ok: false, error: `${r.error}; Moolre: ${m.error}` };
+        } else {
+          results.sms = { ok: false, error: r.error };
+        }
+      } else {
+        results.whatsapp = { ok: false, error: r.error };
+      }
     }
   }
   return results;
+}
+
+const BENEFICIARY_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Notify the receiver that a request was created (payer notified). No pay link; claim code/link go out after payment via {@link sendClaimNotification}.
+ */
+export async function sendPaymentRequestReceiverPending(opts: {
+  beneficiaryContact: string;
+  payerContact: string;
+  amount: string;
+  currency: string;
+  entityRefId: string;
+}): Promise<void> {
+  const ben = opts.beneficiaryContact.trim();
+  const vars: PaymentRequestReceiverPendingVars = {
+    payerContact: opts.payerContact,
+    amount: opts.amount,
+    currency: opts.currency,
+  };
+  if (BENEFICIARY_EMAIL_RE.test(ben)) {
+    await sendEmail({
+      to: ben,
+      subject: paymentRequestReceiverPendingSubject(vars),
+      html: paymentRequestReceiverPendingHtml(vars),
+      text: paymentRequestReceiverPendingText(vars),
+      entityRefId: opts.entityRefId,
+    }).catch(() => {});
+    return;
+  }
+  const appBase = getEnv().FRONTEND_APP_URL.replace(/\/$/, "") || "https://morapay.app";
+  const templateId = getEnv().SENT_DM_TEMPLATE_PAYMENT_REQUEST;
+  if (templateId) {
+    const r = await sendMessageToPhone({
+      phoneNumber: ben,
+      templateId,
+      templateVariables: {
+        link: appBase,
+        amount: opts.amount,
+        currency: opts.currency,
+        receiveSummary: `Request sent · payer notified · claim after they pay`,
+      },
+    });
+    if (r.ok) return;
+  }
+  const { isLikelyMoolreSmsDestination, isMoolreSmsConfigured, sendMoolrePlainSms } = await import("./moolre-sms.service.js");
+  if (isMoolreSmsConfigured() && isLikelyMoolreSmsDestination(ben)) {
+    const plain =
+      `Morapay: Request ${opts.amount} ${opts.currency} from ${opts.payerContact}. They were notified. Claim steps after they pay.`.slice(
+        0,
+        459
+      );
+    await sendMoolrePlainSms(ben, plain).catch(() => {});
+  }
 }
 
 /**

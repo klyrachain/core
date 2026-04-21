@@ -20,7 +20,8 @@ export function isLikelyMoolreSmsDestination(phone: string): boolean {
 
 export function isMoolreSmsConfigured(): boolean {
   const env = getEnv();
-  return !!(env.MOOLRE_SMS_API_KEY?.trim() && env.MOOLRE_API_BASE_URL?.trim());
+  /** API base defaults in `sendMoolrePlainSms`; only the VAS key is required to attempt fallback. */
+  return !!env.MOOLRE_SMS_API_KEY?.trim();
 }
 
 type MoolreSmsResponse = { status?: number | string; message?: string };

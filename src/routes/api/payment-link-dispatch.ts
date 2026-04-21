@@ -125,8 +125,22 @@ export async function paymentLinkDispatchApiRoutes(app: FastifyInstance): Promis
         }
       } else {
         const templateId = getEnv().SENT_DM_TEMPLATE_PAYMENT_REQUEST;
+        const tryMoolreSms = async (): Promise<{ ok: boolean; err?: string }> => {
+          const { isLikelyMoolreSmsDestination, isMoolreSmsConfigured, sendMoolrePlainSms } = await import(
+            "../../services/moolre-sms.service.js"
+          );
+          if (!isMoolreSmsConfigured() || !isLikelyMoolreSmsDestination(dest)) {
+            return { ok: false, err: "Moolre SMS not available for this destination" };
+          }
+          const plain = `Morapay: ${amountStr} ${currencyOrToken}. ${link_url}`.slice(0, 459);
+          const m = await sendMoolrePlainSms(dest, plain);
+          return m.ok ? { ok: true } : { ok: false, err: m.error };
+        };
+
         if (!templateId) {
-          sendError = "SMS template not configured (SENT_DM_TEMPLATE_PAYMENT_REQUEST)";
+          const m = await tryMoolreSms();
+          sendOk = m.ok;
+          sendError = m.ok ? undefined : m.err ?? "SMS template not configured (SENT_DM_TEMPLATE_PAYMENT_REQUEST)";
         } else {
           const r = await sendMessageToPhone({
             phoneNumber: dest,
@@ -140,6 +154,15 @@ export async function paymentLinkDispatchApiRoutes(app: FastifyInstance): Promis
           });
           sendOk = r.ok;
           sendError = r.ok ? undefined : r.error;
+          if (!sendOk) {
+            const m = await tryMoolreSms();
+            if (m.ok) {
+              sendOk = true;
+              sendError = undefined;
+            } else if (m.err) {
+              sendError = `${sendError ?? "Sent.dm failed"}; ${m.err}`;
+            }
+          }
         }
 
         if (sendOk && notify_sender_email?.trim() && isEmail(notify_sender_email.trim())) {
