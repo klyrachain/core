@@ -45,6 +45,7 @@ describe("Paystack payments API", () => {
     vi.clearAllMocks();
     mockGetEnv.mockReturnValue({
       PAYSTACK_PLATFORM_EMAIL: "platform@morapay.test",
+      PAYSTACK_DEFAULT_PAYER_FIAT: "NGN",
     } as ReturnType<typeof getEnv>);
     mockPaymentLinkFindFirst.mockResolvedValue(null);
     app = Fastify();
@@ -89,6 +90,7 @@ describe("Paystack payments API", () => {
       mockIsPaystackConfigured.mockReturnValue(true);
       mockGetEnv.mockReturnValue({
         PAYSTACK_PLATFORM_EMAIL: "",
+        PAYSTACK_DEFAULT_PAYER_FIAT: "NGN",
       } as unknown as ReturnType<typeof getEnv>);
 
       const res = await app.inject({

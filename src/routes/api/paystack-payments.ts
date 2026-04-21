@@ -62,7 +62,11 @@ const InitializeBodySchema = z
     email: z.string().email().optional(),
     customer_email: z.string().email().optional(),
     amount: z.coerce.number().positive().optional(),
-    currency: z.string().trim().regex(/^[A-Za-z]{3}$/, "currency must be a 3-letter code").optional().default("NGN"),
+    currency: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z]{3}$/, "currency must be a 3-letter code")
+      .optional(),
     callback_url: z.string().url().optional(),
     channels: z.array(PAYSTACK_CHANNEL_ENUM).optional(),
     transaction_id: z.string().uuid().optional(),
@@ -153,7 +157,8 @@ export async function paystackPaymentsApiRoutes(app: FastifyInstance): Promise<v
         platformPaystackEmail
       );
 
-      let currency = (bodyCurrency ?? "NGN").trim().toUpperCase();
+      const defaultPayerFiat = getEnv().PAYSTACK_DEFAULT_PAYER_FIAT.trim().toUpperCase();
+      let currency = (bodyCurrency ?? defaultPayerFiat).trim().toUpperCase();
       const channelsNormalized = channels?.map((channel) => channel.trim().toLowerCase());
       let majorAmount: number | undefined = bodyAmount;
       let commerceLink: {

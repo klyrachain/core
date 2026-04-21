@@ -40,6 +40,8 @@ export type RequestPaymentReceivedTemplateVars = {
   currency: string;
   txHash?: string;
   txExplorerUrl?: string;
+  /** When set (e.g. custodial Pay), payer shares this code with the beneficiary to claim. */
+  claimShareCode?: string;
 };
 
 export function requestPaymentReceivedSubject(_vars: RequestPaymentReceivedTemplateVars): string {
@@ -47,13 +49,19 @@ export function requestPaymentReceivedSubject(_vars: RequestPaymentReceivedTempl
 }
 
 export function requestPaymentReceivedHtml(vars: RequestPaymentReceivedTemplateVars): string {
-  const { requesterIdentifier, amount, currency, txHash, txExplorerUrl } = vars;
+  const { requesterIdentifier, amount, currency, txHash, txExplorerUrl, claimShareCode } = vars;
   const txLine =
     txHash && txExplorerUrl
       ? `<p style="margin:12px 0 0; font-size:14px;"><a href="${txExplorerUrl}" style="color:${EMAIL_TEAL}; word-break:break-all;">View transaction</a></p>`
       : txHash
         ? `<p style="margin:12px 0 0; font-size:12px; word-break:break-all; color:#64748b;">${txHash}</p>`
         : "";
+  const shareBlock =
+    claimShareCode && claimShareCode.trim().length > 0
+      ? `<p style="margin:16px 0 0; font-size:14px; color:#475569;"><strong style="color:#1e293b;">Share this claim code with your recipient:</strong></p>
+        <p style="margin:8px 0 0;"><code style="background:#e2e8f0; padding:8px 14px; border-radius:8px; font-size:16px; font-weight:600; letter-spacing:0.05em;">${claimShareCode.trim()}</code></p>
+        <p style="margin:12px 0 0; font-size:13px; color:#64748b;">They will get a separate email with a verification code (OTP) to claim.</p>`
+      : "";
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -74,6 +82,7 @@ ${emailLayoutShellStart()}
       <td style="padding:0 24px 24px;">
         <div style="background:#f0fdfa; border-radius:10px; padding:20px; border-left:4px solid ${EMAIL_TEAL};">
           <p style="margin:0; font-size:15px; color:#334155;">Your payment of <strong>${amount} ${currency}</strong> has been received and sent to <strong>${requesterIdentifier}</strong>.</p>
+          ${shareBlock}
           ${txLine}
         </div>
         <p style="margin:20px 0 0; color:#94a3b8; font-size:12px; text-align:center;">Thank you for using our service.</p>
@@ -85,9 +94,13 @@ ${emailLayoutShellEnd()}
 }
 
 export function requestPaymentReceivedText(vars: RequestPaymentReceivedTemplateVars): string {
-  const { requesterIdentifier, amount, currency, txHash, txExplorerUrl } = vars;
+  const { requesterIdentifier, amount, currency, txHash, txExplorerUrl, claimShareCode } = vars;
   const txLine = txHash ? (txExplorerUrl ? ` View transaction: ${txExplorerUrl}` : ` Transaction: ${txHash}`) : "";
-  return `We received your payment of ${amount} ${currency} and sent it to ${requesterIdentifier}.${txLine}`;
+  const shareLine =
+    claimShareCode && claimShareCode.trim().length > 0
+      ? ` Share this claim code with your recipient: ${claimShareCode.trim()}. They will receive a separate email with an OTP to claim.`
+      : "";
+  return `We received your payment of ${amount} ${currency} and sent it to ${requesterIdentifier}.${shareLine}${txLine}`;
 }
 
 export type RequestSettledToRequesterTemplateVars = {

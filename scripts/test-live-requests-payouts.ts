@@ -4,9 +4,9 @@
  * 1. POST /api/notification/channels — list channels
  * 2. POST /api/requests — create payment request (notifies payer via email/SMS)
  * 3. GET /api/requests/by-link/:linkId — load request by link (pay page)
- * 4. GET /api/claims/by-code/:code — load claim by code
- * 5. POST /api/claims/verify-otp — verify OTP
- * 6. POST /api/claims/claim — complete claim (crypto or fiat)
+ * 4. GET /api/claims/by-link/:claimLinkId (or legacy by-code) — resolve claim
+ * 5. POST /api/claims/verify-otp — verify OTP (optionally with claim_link_id + recipient)
+ * 6. POST /api/claims/claim — complete claim (unlock_token flow or legacy code)
  *
  * Usage: pnpm run test:live:requests-payouts
  * Env: CORE_URL (default http://localhost:4000), CORE_API_KEY (required for create/list).
@@ -115,7 +115,9 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log("\nDone. To test claim flow: when payment is completed for this request, call onRequestPaymentConfirmed(transactionId) to send claim notification + OTP; then POST /api/claims/verify-otp and POST /api/claims/claim.");
+  console.log(
+    "\nDone. To test claim flow: when payment is completed, call onRequestPaymentConfirmed(transactionId); recipient uses /claim/{claimLinkId}, verify-recipient → verify-otp → verify-claim-code → GET unlocked → POST /api/claims/claim with unlock_token (or legacy by-code + claim code body)."
+  );
 }
 
 main().catch((err) => {

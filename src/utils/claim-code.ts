@@ -1,6 +1,11 @@
-import { randomInt } from "crypto";
+import { randomBytes, randomInt } from "crypto";
 
 const ALPHANUM = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O, 1/I
+
+/** Opaque hex id for claim URLs (same length style as Request.linkId). */
+export function generateClaimLinkId(): string {
+  return randomBytes(8).toString("hex");
+}
 
 /** Generate 6-digit OTP for claim verification (stored in Redis, single use). */
 export function generateClaimOtp(): string {

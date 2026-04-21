@@ -69,6 +69,119 @@ export async function deleteClaimOtp(claimId: string): Promise<void> {
   await r.del(claimOtpKey(claimId));
 }
 
+/** Custodial send (Pay → email/phone): claim code + OTP payload for a SELL transaction id. TTL 7d. */
+export const CUSTODIAL_SEND_PREFIX = "custodial_send:";
+export const CUSTODIAL_SEND_TTL_SECONDS = 604800;
+
+export function custodialSendKey(transactionId: string): string {
+  return `${CUSTODIAL_SEND_PREFIX}${transactionId}`;
+}
+
+export async function setCustodialSendPayload(transactionId: string, payload: string): Promise<void> {
+  const r = getRedis();
+  await r.set(custodialSendKey(transactionId), payload, "EX", CUSTODIAL_SEND_TTL_SECONDS);
+}
+
+export async function getCustodialSendPayload(transactionId: string): Promise<string | null> {
+  const r = getRedis();
+  return r.get(custodialSendKey(transactionId));
+}
+
+export async function deleteCustodialSendPayload(transactionId: string): Promise<void> {
+  const r = getRedis();
+  await r.del(custodialSendKey(transactionId));
+}
+
+/** Reverse lookup: opaque claim link id → custodial SELL transaction id. Same TTL as custodial payload. */
+export const CUSTODIAL_CLAIM_LINK_PREFIX = "custodial_claim_link:";
+
+export function custodialClaimLinkKey(claimLinkId: string): string {
+  return `${CUSTODIAL_CLAIM_LINK_PREFIX}${claimLinkId.trim().toLowerCase()}`;
+}
+
+export async function setCustodialClaimLinkIndex(claimLinkId: string, transactionId: string): Promise<void> {
+  const r = getRedis();
+  await r.set(custodialClaimLinkKey(claimLinkId), transactionId, "EX", CUSTODIAL_SEND_TTL_SECONDS);
+}
+
+export async function getCustodialTransactionIdByClaimLinkId(claimLinkId: string): Promise<string | null> {
+  const r = getRedis();
+  const v = await r.get(custodialClaimLinkKey(claimLinkId));
+  return v?.trim() ?? null;
+}
+
+export async function deleteCustodialClaimLinkIndex(claimLinkId: string): Promise<void> {
+  const r = getRedis();
+  await r.del(custodialClaimLinkKey(claimLinkId));
+}
+
+/** After OTP verified for custodial unlock flow (before claim code). TTL 15m. */
+export const CUSTODIAL_CLAIM_OTP_GATE_PREFIX = "custodial_claim_otp_gate:";
+export const CUSTODIAL_CLAIM_OTP_GATE_TTL_SECONDS = 900;
+
+export function custodialClaimOtpGateKey(claimLinkId: string): string {
+  return `${CUSTODIAL_CLAIM_OTP_GATE_PREFIX}${claimLinkId.trim().toLowerCase()}`;
+}
+
+export async function setCustodialClaimOtpGate(claimLinkId: string, transactionId: string): Promise<void> {
+  const r = getRedis();
+  await r.set(custodialClaimOtpGateKey(claimLinkId), transactionId, "EX", CUSTODIAL_CLAIM_OTP_GATE_TTL_SECONDS);
+}
+
+export async function getCustodialClaimOtpGate(claimLinkId: string): Promise<string | null> {
+  const r = getRedis();
+  const v = await r.get(custodialClaimOtpGateKey(claimLinkId));
+  return v?.trim() ?? null;
+}
+
+export async function deleteCustodialClaimOtpGate(claimLinkId: string): Promise<void> {
+  const r = getRedis();
+  await r.del(custodialClaimOtpGateKey(claimLinkId));
+}
+
+/** Short-lived session after claim code verified; used for GET details + POST claim. TTL 15m. */
+export const CLAIM_UNLOCK_PREFIX = "claim_unlock:";
+export const CLAIM_UNLOCK_TTL_SECONDS = 900;
+
+export function claimUnlockKey(token: string): string {
+  return `${CLAIM_UNLOCK_PREFIX}${token}`;
+}
+
+export async function setClaimUnlockSession(token: string, payload: string): Promise<void> {
+  const r = getRedis();
+  await r.set(claimUnlockKey(token), payload, "EX", CLAIM_UNLOCK_TTL_SECONDS);
+}
+
+export async function getClaimUnlockSession(token: string): Promise<string | null> {
+  const r = getRedis();
+  return r.get(claimUnlockKey(token));
+}
+
+export async function deleteClaimUnlockSession(token: string): Promise<void> {
+  const r = getRedis();
+  await r.del(claimUnlockKey(token));
+}
+
+/** Prevents concurrent POST /claims/claim payouts for the same claim or custodial tx. */
+export const CLAIM_PAYOUT_LOCK_PREFIX = "claim_payout:";
+export const CLAIM_PAYOUT_LOCK_TTL_SECONDS = 180;
+
+export function claimPayoutLockKey(id: string): string {
+  return `${CLAIM_PAYOUT_LOCK_PREFIX}${id}`;
+}
+
+/** Returns true if lock acquired (SET NX). */
+export async function tryAcquireClaimPayoutLock(id: string): Promise<boolean> {
+  const r = getRedis();
+  const ok = await r.set(claimPayoutLockKey(id), "1", "EX", CLAIM_PAYOUT_LOCK_TTL_SECONDS, "NX");
+  return ok === "OK";
+}
+
+export async function releaseClaimPayoutLock(id: string): Promise<void> {
+  const r = getRedis();
+  await r.del(claimPayoutLockKey(id));
+}
+
 export function costBasisKey(chain: string, token: string): string {
   return `${VALIDATION_KEY_COST_BASIS_PREFIX}${chain.toUpperCase()}:${token.toUpperCase()}`;
 }

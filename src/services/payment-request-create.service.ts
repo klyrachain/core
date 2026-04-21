@@ -8,7 +8,7 @@ import type { MerchantEnvironment } from "../../prisma/generated/prisma/client.j
 import { prisma } from "../lib/prisma.js";
 import { normalizeNotificationChannels } from "../lib/notification.types.js";
 import { sendPaymentRequestNotification, buildPaymentRequestLink } from "./notification.service.js";
-import { generateClaimCode } from "../utils/claim-code.js";
+import { generateClaimCode, generateClaimLinkId } from "../utils/claim-code.js";
 
 const PayoutFiatSchema = z.object({
   type: z.enum(["nuban", "mobile_money"]),
@@ -46,6 +46,7 @@ export type CreatePaymentRequestResult = {
   transactionId: string;
   claimId: string;
   claimCode: string;
+  claimLinkId: string;
   payLink: string;
   notification: Record<string, unknown>;
 };
@@ -58,6 +59,7 @@ export async function createPaymentRequest(
   const linkId = randomBytes(8).toString("hex");
   const requestCode = `REQ${randomBytes(4).toString("hex").toUpperCase()}`;
   const claimCode = generateClaimCode();
+  const claimLinkId = generateClaimLinkId();
 
   const isSenderPaysCrypto =
     body.f_chain != null &&
@@ -65,9 +67,30 @@ export async function createPaymentRequest(
     body.f_amount != null &&
     body.f_chain.toUpperCase() !== "MOMO" &&
     body.f_chain.toUpperCase() !== "BANK";
-  const f_chain = isSenderPaysCrypto ? body.f_chain! : "MOMO";
-  const f_token = isSenderPaysCrypto ? body.f_token! : "GHS";
-  const f_amount = isSenderPaysCrypto ? body.f_amount! : 0;
+
+  /** When payer pays fiat, beneficiary still claims on-chain crypto to this leg (FX vs fiat amount is TODO). */
+  const FIAT_BENEFICIARY_T_CHAIN = "BASE";
+  const FIAT_BENEFICIARY_T_TOKEN = "USDC";
+
+  let f_chain: string;
+  let f_token: string;
+  let f_amount: number;
+  let t_chain: string;
+  let t_token: string;
+
+  if (isSenderPaysCrypto) {
+    f_chain = body.f_chain!;
+    f_token = body.f_token!;
+    f_amount = body.f_amount!;
+    t_chain = body.t_chain;
+    t_token = body.t_token;
+  } else {
+    f_chain = "MOMO";
+    f_token = body.t_token.trim();
+    f_amount = body.t_amount;
+    t_chain = FIAT_BENEFICIARY_T_CHAIN;
+    t_token = FIAT_BENEFICIARY_T_TOKEN;
+  }
 
   const businessId = options.businessId ?? undefined;
   const environment: MerchantEnvironment = options.environment ?? "LIVE";
@@ -79,9 +102,9 @@ export async function createPaymentRequest(
       f_amount,
       t_amount: body.t_amount,
       f_chain,
-      t_chain: body.t_chain,
+      t_chain,
       f_token,
-      t_token: body.t_token,
+      t_token,
       f_provider: isSenderPaysCrypto ? "KLYRA" : "PAYSTACK",
       t_provider: "KLYRA",
       fromIdentifier: body.payerEmail,
@@ -119,10 +142,11 @@ export async function createPaymentRequest(
       status: "ACTIVE",
       value: body.t_amount,
       price: 1,
-      token: body.t_token,
+      token: t_token,
       payerIdentifier: body.payerEmail,
       toIdentifier: body.toIdentifier,
       code: claimCode,
+      claimLinkId,
     },
   });
 
@@ -137,7 +161,7 @@ export async function createPaymentRequest(
         templateVars: {
           requesterIdentifier: body.toIdentifier,
           amount: String(body.t_amount),
-          currency: body.t_token,
+          currency: t_token,
           receiveSummary: body.receiveSummary,
           claimLinkUrl,
         },
@@ -150,6 +174,7 @@ export async function createPaymentRequest(
     transactionId: transaction.id,
     claimId: claim.id,
     claimCode: claim.code,
+    claimLinkId: claim.claimLinkId,
     payLink: claimLinkUrl,
     notification: results,
   };

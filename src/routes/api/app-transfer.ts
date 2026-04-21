@@ -11,6 +11,7 @@ import { successEnvelope } from "../../lib/api-helpers.js";
 import { requirePermission } from "../../lib/admin-auth.guard.js";
 import { PERMISSION_CONNECT_TRANSACTIONS } from "../../lib/permissions.js";
 import { buildOfframpCalldataForTransaction } from "../../services/offramp-calldata.service.js";
+import { notifyCustodialSellAfterDeposit } from "../../services/custodial-send-notify.service.js";
 import type { PaymentInstruction } from "../../services/payment-instruction.service.js";
 import { ecosystemFromCoreChain } from "../../lib/payment-chain-routing.js";
 import { isValidReceiverForEcosystem } from "../../lib/payment-address-validation.js";
@@ -64,7 +65,17 @@ const IntentBodySchema = z.object({
   t_chain_slug: z.string().min(1),
   t_token: z.string().min(1),
   t_amount: z.string().min(1),
+  /**
+   * On-chain identity for this deposit (must match the paying ecosystem, e.g. EVM 0x).
+   * When `recipient_email` is set, this should be the payer’s connected wallet — funds still go to the pool per calldata.
+   */
   receiver_address: z.string().min(1),
+  /** Beneficiary email (platform custody / claim). Does not change pool transfer calldata. */
+  recipient_email: z.string().email().optional(),
+  /** Beneficiary phone E.164 or digits (platform custody / claim). */
+  recipient_phone: z.string().min(8).max(24).optional(),
+  /** Optional payer email stored on the transaction row. */
+  payer_email: z.string().email().optional(),
   /** When set, links the SELL to a public commerce payment link (checkout / settlement). */
   payment_link_id: z.string().uuid().optional(),
 });
@@ -139,6 +150,11 @@ export async function appTransferApiRoutes(app: FastifyInstance): Promise<void> 
       });
     }
 
+    const beneficiaryEmail = b.recipient_email?.trim();
+    const beneficiaryPhone = b.recipient_phone?.trim();
+    const benefit = beneficiaryEmail ?? beneficiaryPhone;
+    const payerEmailTrim = b.payer_email?.trim();
+
     let paymentLinkId: string | undefined;
     if (b.payment_link_id?.trim()) {
       const link = await prisma.paymentLink.findFirst({
@@ -170,8 +186,15 @@ export async function appTransferApiRoutes(app: FastifyInstance): Promise<void> 
         t_tokenPriceUsd: 1,
         f_provider: "KLYRA",
         t_provider: "NONE",
-        toIdentifier: recv,
-        toType: "ADDRESS",
+        ...(payerEmailTrim
+          ? { fromIdentifier: payerEmailTrim, fromType: "EMAIL" as const }
+          : {}),
+        toIdentifier: benefit ?? recv,
+        toType: beneficiaryEmail
+          ? ("EMAIL" as const)
+          : beneficiaryPhone
+            ? ("NUMBER" as const)
+            : ("ADDRESS" as const),
         paymentLinkId: paymentLinkId ?? undefined,
       },
     });
@@ -187,5 +210,26 @@ export async function appTransferApiRoutes(app: FastifyInstance): Promise<void> 
       calldata: built.data,
       next_step: nextStepForInstruction(built.data),
     });
+  });
+
+  const CustodialNotifyBodySchema = z.object({
+    transaction_id: z.string().uuid(),
+  });
+
+  app.post<{ Body: unknown }>("/api/app-transfer/custodial-notify", async (req, reply) => {
+    if (!requirePermission(req, reply, PERMISSION_CONNECT_TRANSACTIONS, { allowMerchant: true })) return;
+    const parse = CustodialNotifyBodySchema.safeParse(req.body);
+    if (!parse.success) {
+      return reply.status(400).send({
+        success: false,
+        error: "Validation failed",
+        details: parse.error.flatten(),
+      });
+    }
+    const result = await notifyCustodialSellAfterDeposit(parse.data.transaction_id);
+    if (!result.ok) {
+      return reply.status(400).send({ success: false, error: result.error });
+    }
+    return successEnvelope(reply, { notified: true });
   });
 }

@@ -619,8 +619,12 @@ model Claim {
   toIdentifier    String
 
   code String
+  /// Opaque public id for `/claim/{claimLinkId}` (never put `code` in the URL).
+  claimLinkId String @unique
   /// Set when recipient verifies OTP (email/phone); claim allowed only after this.
   otpVerifiedAt DateTime?
+  /// Set after recipient verifies the 6-char share code (new unlock flow).
+  claimCodeVerifiedAt DateTime?
 }
 
 // --------------------------------------

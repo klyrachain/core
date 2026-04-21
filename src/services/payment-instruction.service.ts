@@ -13,6 +13,7 @@ import {
 import { getLiquidityPoolWallet } from "./liquidity-pool.service.js";
 import { findPoolTokenFromDb } from "./supported-token.service.js";
 import { resolvePlatformPoolDestination } from "./platform-pool-destination-resolve.service.js";
+import { isNativeTokenAddress } from "../lib/native-token.js";
 
 export type EvmErc20TransferInstruction = {
   kind: "evm_erc20_transfer";
@@ -178,6 +179,13 @@ async function buildEvmInstruction(
   const poolToken = await findPoolTokenFromDb(chainId, f_token);
   if (!poolToken) {
     return { ok: false, status: 400, error: `Unsupported token ${f_token} for chain ${f_chain}` };
+  }
+  if (isNativeTokenAddress(poolToken.address)) {
+    return {
+      ok: false,
+      status: 503,
+      error: `SupportedToken for ${f_token} on chain ${f_chain} uses a native placeholder address; use the wrapped ERC-20 contract address in the database (not 0xeeee… / zero).`,
+    };
   }
 
   const resolved = await resolvePlatformPoolDestination("EVM", f_chain, f_token);

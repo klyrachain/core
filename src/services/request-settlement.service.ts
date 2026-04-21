@@ -62,7 +62,7 @@ export async function executePaystackFiatTransfer(opts: {
   /** Human amount in major units (same as transaction t_amount for GHS). */
   amountHuman: string | number | { toString(): string };
   referencePrefix: string;
-}): Promise<{ ok: true } | { ok: false; error: string }> {
+}): Promise<{ ok: true; reference?: string } | { ok: false; error: string }> {
   if (!isPaystackConfigured()) {
     return { ok: false, error: "Paystack is not configured for transfers." };
   }
@@ -101,7 +101,7 @@ export async function executePaystackFiatTransfer(opts: {
       reason: "Claim payout",
       currency: payoutFiat.currency,
     });
-    return { ok: true };
+    return { ok: true, reference };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Paystack transfer failed";
     return { ok: false, error: msg };

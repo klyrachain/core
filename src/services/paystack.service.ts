@@ -306,7 +306,11 @@ type InitializeResponse = {
  * Initialize a Paystack transaction. Returns authorization_url for frontend redirect.
  */
 export async function initializePayment(params: InitializePaymentParams): Promise<InitializePaymentResult> {
-  const normalizedCurrency = (params.currency ?? "NGN").trim().toUpperCase();
+  const normalizedCurrency = (
+    params.currency ?? getEnv().PAYSTACK_DEFAULT_PAYER_FIAT
+  )
+    .trim()
+    .toUpperCase();
   const amountSubunits = Math.round(params.amount);
   const normalizedChannels = [...new Set((params.channels ?? []).map((channel) => channel.trim().toLowerCase()))]
     .filter((channel) => channel.length > 0)

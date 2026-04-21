@@ -43,8 +43,12 @@ export async function syncPaystackMetadataToCountry(): Promise<PaystackCountrySy
     try {
       const { data } = await listBanks({ country: m.slug, perPage: 5 });
       const supported = data.length > 0;
-      const currency =
-        (data[0]?.currency && String(data[0].currency).trim().toUpperCase()) || m.defaultCurrency;
+      /**
+       * Always use the market’s official settlement currency (see Paystack markets docs).
+       * Do not copy `data[0].currency` from GET /bank — Paystack may return a generic or
+       * international code that does not match the country (e.g. wrong label “USD · Ghana”).
+       */
+      const currency = m.defaultCurrency;
 
       await prisma.country.upsert({
         where: { code: m.code },

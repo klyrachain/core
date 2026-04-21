@@ -110,6 +110,15 @@ export type QuoteResponseDto = {
 const QUOTE_VALIDITY_SECONDS = 30;
 const DEFAULT_VOLATILITY = 0.01;
 
+/** Human-readable swap amounts (avoid `toFixed(2)` rounding away small token quantities). */
+function formatSwapHumanCryptoAmount(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return "0";
+  if (n === 0) return "0";
+  let s = n.toFixed(12);
+  s = s.replace(/\.?0+$/u, "");
+  return s === "" ? "0" : s;
+}
+
 /** EIP-55 / 0x + 40 hex: treat as token address. */
 const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
 
@@ -576,6 +585,9 @@ export async function buildPublicQuote(
 
   const { fromCurrency, toCurrency } = getCanonicalCurrencies(action, inputCurrency, outputCurrency, inputSide);
 
+  /** SWAP + inputSide "to": human amount of **from** token derived before the sized provider quote. */
+  let swapFromAmountHumanForToSide: number | undefined;
+
   let raw:
     | { basePrice: number; providerCode: string; ok: true }
     | { ok: false; error: string; status?: number; code?: string };
@@ -591,6 +603,7 @@ export async function buildPublicQuote(
     });
     if (!rawOne.ok) return { success: false, error: rawOne.error, code: "RATE_UNAVAILABLE", status: rawOne.status ?? 502 };
     const fromAmountForQuote = inputAmountNum / rawOne.basePrice;
+    swapFromAmountHumanForToSide = fromAmountForQuote;
     raw = await getRawRate({
       action,
       inputCurrency: fromCurrency,
@@ -732,8 +745,19 @@ export async function buildPublicQuote(
       fromAmount = toAmount / exchangeRate;
     }
   } else {
-    fromAmount = inputAmountNum;
-    toAmount = fromAmount * exchangeRate;
+    // SWAP: paying `fromCurrency`, receiving `toCurrency` (e.g. token → USDC for USD notionals).
+    if (inputSide === "from") {
+      fromAmount = inputAmountNum;
+      toAmount = fromAmount * exchangeRate;
+    } else {
+      toAmount = inputAmountNum;
+      fromAmount =
+        swapFromAmountHumanForToSide !== undefined &&
+        Number.isFinite(swapFromAmountHumanForToSide) &&
+        swapFromAmountHumanForToSide > 0
+          ? swapFromAmountHumanForToSide
+          : toAmount / exchangeRate;
+    }
   }
 
   // Fee = (selling price − provider price) × quantity (spread-based for onramp/offramp)
@@ -777,7 +801,7 @@ export async function buildPublicQuote(
   const inputForResponse: QuoteResponseDto["input"] =
     action === "SWAP"
       ? {
-          amount: fromAmount.toFixed(2),
+          amount: formatSwapHumanCryptoAmount(fromAmount),
           currency: fromCurrency,
           ...(fromChainResolved
             ? { chain: String(fromChainResolved.chainId) }
@@ -791,7 +815,7 @@ export async function buildPublicQuote(
   const outputForResponse: QuoteResponseDto["output"] =
     action === "SWAP"
       ? {
-          amount: toAmount.toFixed(2),
+          amount: formatSwapHumanCryptoAmount(toAmount),
           currency: toCurrency,
           ...(toChainResolved
             ? { chain: String(toChainResolved.chainId) }

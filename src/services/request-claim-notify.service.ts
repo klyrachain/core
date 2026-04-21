@@ -5,7 +5,7 @@
 import { prisma } from "../lib/prisma.js";
 import { setClaimOtp } from "../lib/redis.js";
 import { normalizeNotificationChannels } from "../lib/notification.types.js";
-import { sendClaimNotification, buildClaimLinkForReceiver } from "./notification.service.js";
+import { sendClaimNotification, buildClaimLinkByClaimLinkId } from "./notification.service.js";
 import { generateClaimOtp } from "../utils/claim-code.js";
 
 /** Called when payment for a REQUEST transaction is confirmed (e.g. onramp completed or transfer received). Sends claim notification to receiver and sets OTP in Redis. */
@@ -29,7 +29,7 @@ export async function onRequestPaymentConfirmed(opts: {
   const otp = generateClaimOtp();
   await setClaimOtp(claim.id, otp);
 
-  const claimLinkUrl = buildClaimLinkForReceiver(claim.code);
+  const claimLinkUrl = buildClaimLinkByClaimLinkId(claim.claimLinkId);
   const amount = claim.value.toString();
   const currency = claim.token; // or map token to currency for display
 

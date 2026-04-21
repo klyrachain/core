@@ -293,7 +293,9 @@ export async function executeRequestSettlementSend(
     },
   });
   if (!tx) return { ok: false, error: "Transaction not found", code: "TX_NOT_FOUND" };
-  if (tx.type !== "REQUEST") return { ok: false, error: "Transaction is not a REQUEST", code: "INVALID_TYPE" };
+  if (tx.type !== "REQUEST" && tx.type !== "SELL") {
+    return { ok: false, error: "Transaction is not a REQUEST or SELL", code: "INVALID_TYPE" };
+  }
   if (tx.cryptoSendTxHash) return { ok: true, txHash: tx.cryptoSendTxHash };
 
   const address = toAddress.trim();
@@ -333,7 +335,11 @@ export async function executeRequestSettlementSend(
       where: { id: transactionId },
       data: { status: "COMPLETED", cryptoSendTxHash: sendResult.txHash },
     });
-    await triggerTransactionStatusChange({ transactionId, status: "COMPLETED", type: "REQUEST" }).catch(() => {});
+    await triggerTransactionStatusChange({
+      transactionId,
+      status: "COMPLETED",
+      type: tx.type,
+    }).catch(() => {});
     return { ok: true, txHash: sendResult.txHash };
   }
 
@@ -384,6 +390,10 @@ export async function executeRequestSettlementSend(
     where: { id: transactionId },
     data: { status: "COMPLETED", cryptoSendTxHash: sendResult.txHash },
   });
-  await triggerTransactionStatusChange({ transactionId, status: "COMPLETED", type: "REQUEST" }).catch(() => {});
+  await triggerTransactionStatusChange({
+    transactionId,
+    status: "COMPLETED",
+    type: tx.type,
+  }).catch(() => {});
   return { ok: true, txHash: sendResult.txHash };
 }

@@ -64,6 +64,7 @@ import { adminAuthRoutes } from "./routes/api/admin-auth.js";
 import { businessAuthRoutes } from "./routes/api/business-auth.js";
 import { paystackWebhookRoutes } from "./routes/webhook/paystack.js";
 import { onRequestLog, onResponseLog } from "./lib/request-log-hooks.js";
+import { refreshPlatformQuoteWalletsFromInfisical } from "./lib/platform-quote-wallets.js";
 import { requireApiKeyOrSession, resolveApiKeyIfPresent } from "./lib/auth.guard.js";
 import { resolveAdminSessionIfPresent } from "./lib/admin-auth.guard.js";
 import {
@@ -271,6 +272,9 @@ const port = getEnv().PORT;
 
 const startServer = async () => {
   try {
+    await refreshPlatformQuoteWalletsFromInfisical(app.log).catch((e) =>
+      app.log.warn({ err: e }, "Platform quote wallet preload from Infisical failed")
+    );
     const address = await app.listen({ port, host: "0.0.0.0" });
     app.log.info(`Server listening at ${address}`);
     await ensureValidationCache().catch((e) =>

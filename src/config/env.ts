@@ -61,6 +61,18 @@ const envSchema = z.object({
    * so Paystack notifications go to your platform inbox; the payer’s email is stored on the transaction only.
    */
   PAYSTACK_PLATFORM_EMAIL: z.string().email().optional(),
+  /**
+   * ISO 4217 code when POST /api/paystack/payments/initialize omits `currency`.
+   * Paystack only accepts currencies enabled for the merchant (e.g. GHS-only in Ghana).
+   * Default NGN preserves older clients; set `GHS` when your Paystack account is not NGN-enabled.
+   */
+  PAYSTACK_DEFAULT_PAYER_FIAT: z
+    .string()
+    .trim()
+    .length(3, "PAYSTACK_DEFAULT_PAYER_FIAT must be a 3-letter ISO code")
+    .optional()
+    .default("NGN")
+    .transform((s) => s.toUpperCase()),
 
   /** Fonbnk API for onramp fiat↔crypto quotes. Optional; if missing, onramp quote returns 503. */
   FONBNK_API_URL: z.string().optional(),
@@ -127,6 +139,13 @@ const envSchema = z.object({
   /** Sent.dm: template UUID for claim-notification message. Variables: claimCode, otp, link, amount, currency. */
   SENT_DM_TEMPLATE_CLAIM_NOTIFICATION: z.string().uuid().optional(),
 
+  /** Moolre API base (plain SMS fallback for claim OTP). Default https://api.moolre.com */
+  MOOLRE_API_BASE_URL: z.string().url().optional(),
+  /** Moolre VAS SMS key (X-API-VASKEY). Optional; used when Sent.dm SMS fails for supported destinations. */
+  MOOLRE_SMS_API_KEY: z.string().min(1).optional(),
+  /** Moolre SMS sender id (optional). */
+  MOOLRE_SMS_SENDER_ID: z.string().min(1).optional(),
+
   /** Frontend app base URL for payment/claim links (e.g. https://app.example.com). Used in email/SMS templates. */
   FRONTEND_APP_URL: z.string().url().optional().default("http://localhost:3000"),
 
@@ -167,6 +186,11 @@ const envSchema = z.object({
   INFISICAL_ENVIRONMENT_SLUG: z.string().min(1).optional().default("dev"),
   /** In-memory cache TTL for Infisical secret values (ms). */
   INFISICAL_CACHE_TTL_MS: z.coerce.number().int().min(5_000).max(3_600_000).optional().default(60_000),
+  /**
+   * Infisical folder path for platform quote-wallet secrets (GET /api/v4/secrets/{name}?secretPath=…).
+   * Create secrets such as PLATFORM_WALLET_EVM_QUOTE, PLATFORM_WALLET_SOLANA_QUOTE, etc. in this path.
+   */
+  INFISICAL_PLATFORM_WALLET_SECRET_PATH: z.string().min(1).optional().default("/"),
 
   /** HMAC secret for business portal JWT (signup / dashboard session). Defaults to ENCRYPTION_KEY. */
   BUSINESS_PORTAL_JWT_SECRET: z.string().min(32).optional(),
@@ -333,8 +357,20 @@ function mergeRedisAuthIntoUrl(redisUrl: string, d: ParsedEnv): string {
 
 let env: Env;
 
+/** Copy `process.env` and map common Infisical typos / alternate names into canonical keys. */
+function buildEnvInputForParse(): NodeJS.ProcessEnv {
+  const e: NodeJS.ProcessEnv = { ...process.env };
+  if (!e.INFISICAL_SERVICE_TOKEN?.trim() && e.NFISICAL_SERVICE_TOKEN?.trim()) {
+    e.INFISICAL_SERVICE_TOKEN = e.NFISICAL_SERVICE_TOKEN;
+  }
+  if (!e.INFISICAL_PROJECT_ID?.trim() && e.NFISICAL_PROJECT_ID?.trim()) {
+    e.INFISICAL_PROJECT_ID = e.NFISICAL_PROJECT_ID;
+  }
+  return e;
+}
+
 export function loadEnv(): Env {
-  const parsed = envSchema.safeParse(process.env);
+  const parsed = envSchema.safeParse(buildEnvInputForParse());
   if (!parsed.success) {
     const msg = parsed.error.errors
       .map((issue) => `${issue.path.join(".")}: ${issue.message}`)

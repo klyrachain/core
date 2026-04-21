@@ -5,8 +5,8 @@
  * Menu:
  *  (1) Make a payment request — requester asks payer for money; notify payer by email (link/code).
  *  (2) Pay a request — payer enters link/code, pays (fiat or crypto); request auto-settles to requester.
- *  (3) Make a payment — sender sends funds; recipient gets a claim (code + OTP) and chooses payout (use app/API).
- *  (4) Claim — recipient enters claim code, verifies OTP, completes claim (crypto address or fiat target).
+ *  (3) Make a payment — sender sends funds; recipient gets a claim (opaque link + code + OTP) and chooses payout (use app/API).
+ *  (4) Claim — recipient uses 16-hex claim link id (or legacy 6-char code), verifies recipient + OTP + share code, then completes payout.
  *
  * Rules: no fiat-to-fiat; crypto not same chain+token. Receiver wants crypto ⇒ payer can pay fiat (onramp) or crypto.
  *        Receiver wants fiat ⇒ payer pays crypto (offramp + payout to receiver).
@@ -245,6 +245,7 @@ async function runMakeRequest(): Promise<void> {
     linkId?: string;
     transactionId?: string;
     claimCode?: string;
+    claimLinkId?: string;
     payLink?: string;
     notification?: Record<string, { ok?: boolean; error?: string }>;
   };
@@ -252,7 +253,8 @@ async function runMakeRequest(): Promise<void> {
   console.log("  requestId:", d.id);
   console.log("  linkId:", d.linkId);
   console.log("  payLink:", d.payLink);
-  console.log("  claimCode (for recipient):", d.claimCode);
+  console.log("  claimLinkId (recipient claim URL path /claim/<id>):", d.claimLinkId);
+  console.log("  claimCode (6-char share code; not in URL):", d.claimCode);
   if (d.notification) {
     console.log("  notification:", Object.entries(d.notification).map(([k, v]) => `${k}: ${v?.ok ? "ok" : v?.error ?? "—"}`).join(", "));
   }
@@ -666,19 +668,141 @@ async function runMakePayment(): Promise<void> {
   if (payoutTarget?.trim().startsWith("0x")) {
     console.log("  Payment confirmed. Sent to recipient; both parties notified by email.");
   } else {
-    console.log("  Payment confirmed. Recipient will get claim (code + OTP) by email. They use menu (4) Claim to receive.");
+    console.log("  Payment confirmed. Recipient will get claim link + code + OTP by email. They use menu (4) Claim with the 16-char claim link id.");
   }
 }
 
 // --- (4) Claim ---
 async function runClaim(): Promise<void> {
   console.log("\n--- Claim (recipient) ---");
-  const claimCode = await question("Claim code (6 characters, e.g. T8NWAZ): ");
-  if (!claimCode || claimCode.length < 4) {
-    console.error("Valid claim code required.");
+  const first = await question("Claim link id (16 hex from /claim/...) or legacy 6-char claim code: ");
+  const trimmed = first.trim();
+  if (!trimmed) {
+    console.error("Input required.");
     return;
   }
-  const codeNorm = claimCode.trim().toUpperCase();
+
+  const isClaimLinkId = /^[0-9a-f]{16}$/i.test(trimmed);
+
+  if (isClaimLinkId) {
+    const claimLinkId = trimmed.toLowerCase();
+    const probe = await fetchJson(`/api/claims/by-link/${claimLinkId}`);
+    if (!probe.ok) {
+      console.error("Claim link not found:", probe.error);
+      return;
+    }
+    const recipient = await question("Your email or phone (must match the claim): ");
+    if (!recipient?.trim()) {
+      console.error("Recipient required.");
+      return;
+    }
+    const vr = await fetchJson("/api/claims/verify-recipient", {
+      method: "POST",
+      body: JSON.stringify({ claim_link_id: claimLinkId, recipient: recipient.trim() }),
+    });
+    if (!vr.ok) {
+      console.error("Recipient check failed:", (vr.data as { error?: string })?.error ?? vr.error);
+      return;
+    }
+    const otp = await question("6-digit OTP from email/SMS: ");
+    if (!otp?.trim()) {
+      console.error("OTP required.");
+      return;
+    }
+    const verifyRes = await fetchJson("/api/claims/verify-otp", {
+      method: "POST",
+      body: JSON.stringify({
+        claim_link_id: claimLinkId,
+        recipient: recipient.trim(),
+        otp: otp.trim(),
+      }),
+    });
+    if (!verifyRes.ok) {
+      console.error("Verify OTP failed:", (verifyRes.data as { error?: string })?.error ?? verifyRes.error);
+      return;
+    }
+    const shareCode = await question("6-character claim code (alphanumeric): ");
+    const codeNorm = (shareCode ?? "").trim().toUpperCase();
+    if (codeNorm.length !== 6) {
+      console.error("Claim code must be 6 characters.");
+      return;
+    }
+    const codeRes = await fetchJson("/api/claims/verify-claim-code", {
+      method: "POST",
+      body: JSON.stringify({
+        claim_link_id: claimLinkId,
+        recipient: recipient.trim(),
+        code: codeNorm,
+      }),
+    });
+    if (!codeRes.ok) {
+      console.error("Claim code failed:", (codeRes.data as { error?: string })?.error ?? codeRes.error);
+      return;
+    }
+    const unlockToken = (codeRes.data as { unlock_token?: string })?.unlock_token?.trim();
+    if (!unlockToken) {
+      console.error("No unlock_token in response.");
+      return;
+    }
+    const detRes = await fetchJson(`/api/claims/unlocked/${encodeURIComponent(unlockToken)}`);
+    if (!detRes.ok) {
+      console.error("Could not load claim details:", detRes.error);
+      return;
+    }
+    const det = detRes.data as { value?: string; token?: string; payer_identifier?: string };
+    console.log("  Amount:", det.value, det.token);
+    console.log("  From:", det.payer_identifier);
+
+    const payoutType = await question("Payout type: (1) crypto  (2) fiat [1]: ") || "1";
+    const payoutTypeVal = payoutType === "2" ? "fiat" : "crypto";
+    let claimBody: Record<string, unknown> = {
+      unlock_token: unlockToken,
+      recipient: recipient.trim(),
+      payout_type: payoutTypeVal,
+    };
+    if (payoutTypeVal === "crypto") {
+      const payoutTarget = await question("Receiving wallet address (0x...): ");
+      if (!payoutTarget?.trim()) {
+        console.error("Wallet required.");
+        return;
+      }
+      claimBody.payout_target = payoutTarget.trim();
+    } else {
+      const currency = (await question("Currency [GHS]: ")) || "GHS";
+      const accountName = await question("Account name: ");
+      const accountNumber = await question("Account number: ");
+      const bankCode = await question("Bank / provider code: ");
+      const fiatType = ((await question("Type (1) mobile_money  (2) nuban [1]: ")) || "1") === "2" ? "nuban" : "mobile_money";
+      if (!accountName?.trim() || !accountNumber?.trim() || !bankCode?.trim()) {
+        console.error("Fiat fields required.");
+        return;
+      }
+      claimBody.payout_fiat = {
+        type: fiatType,
+        account_name: accountName.trim(),
+        account_number: accountNumber.trim(),
+        bank_code: bankCode.trim(),
+        currency: currency.trim(),
+      };
+    }
+
+    const claimRes = await fetchJson("/api/claims/claim", {
+      method: "POST",
+      body: JSON.stringify(claimBody),
+    });
+    if (!claimRes.ok) {
+      console.error("Claim failed:", (claimRes.data as { error?: string })?.error ?? claimRes.error);
+      return;
+    }
+    const result = claimRes.data as { claim_id?: string; transaction_id?: string; message?: string };
+    console.log("  Claim completed.");
+    console.log("  claim_id:", result.claim_id);
+    console.log("  transaction_id:", result.transaction_id);
+    console.log("  message:", result.message);
+    return;
+  }
+
+  const codeNorm = trimmed.toUpperCase();
   const byCodeRes = await fetchJson(`/api/claims/by-code/${codeNorm}`);
   if (!byCodeRes.ok) {
     console.error("Claim not found:", byCodeRes.error);

@@ -153,6 +153,7 @@ export async function requestsApiRoutes(app: FastifyInstance): Promise<void> {
           transactionId: data.transactionId,
           claimId: data.claimId,
           claimCode: data.claimCode,
+          claimLinkId: data.claimLinkId,
           payLink: data.payLink,
           notification: data.notification,
         },

@@ -7,6 +7,12 @@
  */
 export const INTERNAL_CHAIN_ID_SOLANA = 101;
 
+/** Internal Stellar chain id (see `app-transfer` / checkout non-EVM ids). */
+export const INTERNAL_CHAIN_ID_STELLAR = 148;
+
+/** Internal Bitcoin chain id. */
+export const INTERNAL_CHAIN_ID_BITCOIN = 8332;
+
 /** LiFi `fromChainId` / `toChainId` for Solana mainnet (SVM). */
 export const LIFI_CHAIN_ID_SOLANA = 1151111081099710;
 

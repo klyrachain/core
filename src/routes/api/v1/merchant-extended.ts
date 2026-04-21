@@ -148,6 +148,7 @@ export function registerMerchantExtendedRoutes(app: FastifyInstance): void {
           transactionId: data.transactionId,
           claimId: data.claimId,
           claimCode: data.claimCode,
+          claimLinkId: data.claimLinkId,
           payLink: data.payLink,
           notification: data.notification,
         },

@@ -1,4 +1,10 @@
-import { INTERNAL_CHAIN_ID_SOLANA } from "./aggregator-chain-ids.js";
+import {
+  INTERNAL_CHAIN_ID_BITCOIN,
+  INTERNAL_CHAIN_ID_SOLANA,
+  INTERNAL_CHAIN_ID_STELLAR,
+} from "./aggregator-chain-ids.js";
+import { isValidReceiverForEcosystem } from "./payment-address-validation.js";
+import { getCachedPlatformQuoteWallet } from "./platform-quote-wallets.js";
 
 /**
  * Server-side swap quote estimates when no user wallet is connected.
@@ -31,6 +37,8 @@ function isSolanaPubkeyLike(v: string): boolean {
 export function getSwapQuoteEstimateFromAddress(): string {
   const env = process.env.QUOTE_ESTIMATE_FROM_ADDRESS?.trim();
   if (env && isEvmAddress(env)) return env;
+  const fromVault = getCachedPlatformQuoteWallet("evm");
+  if (fromVault && isEvmAddress(fromVault)) return fromVault;
   return SWAP_QUOTE_ESTIMATE_FROM_ADDRESS;
 }
 
@@ -41,6 +49,8 @@ export function getSwapQuoteEstimateFromAddress(): string {
 export function getSwapQuoteEstimateFromAddressSolana(): string {
   const env = process.env.QUOTE_ESTIMATE_FROM_ADDRESS_SOLANA?.trim();
   if (env && isSolanaPubkeyLike(env)) return env;
+  const fromVault = getCachedPlatformQuoteWallet("solana");
+  if (fromVault && isSolanaPubkeyLike(fromVault)) return fromVault;
   return SWAP_QUOTE_ESTIMATE_FROM_ADDRESS_SOLANA;
 }
 
@@ -55,15 +65,32 @@ export function resolveSwapQuoteFromAddress(params: {
   hint?: string | null;
 }): string {
   const hint = params.hint?.trim();
-  const usesSol =
-    params.from_chain === INTERNAL_CHAIN_ID_SOLANA ||
-    params.to_chain === INTERNAL_CHAIN_ID_SOLANA;
+  const chainIds = [params.from_chain, params.to_chain];
+
+  const usesSol = chainIds.includes(INTERNAL_CHAIN_ID_SOLANA);
   if (usesSol && hint && isSolanaPubkeyLike(hint)) {
     return hint;
   }
   if (usesSol) {
     return getSwapQuoteEstimateFromAddressSolana();
   }
+
+  const usesStellar = chainIds.includes(INTERNAL_CHAIN_ID_STELLAR);
+  if (usesStellar) {
+    if (hint && isValidReceiverForEcosystem("STELLAR", hint)) return hint;
+    const w = getCachedPlatformQuoteWallet("stellar");
+    if (w && isValidReceiverForEcosystem("STELLAR", w)) return w;
+    return getSwapQuoteEstimateFromAddress();
+  }
+
+  const usesBitcoin = chainIds.includes(INTERNAL_CHAIN_ID_BITCOIN);
+  if (usesBitcoin) {
+    if (hint && isValidReceiverForEcosystem("BITCOIN", hint)) return hint;
+    const w = getCachedPlatformQuoteWallet("bitcoin");
+    if (w && isValidReceiverForEcosystem("BITCOIN", w)) return w;
+    return getSwapQuoteEstimateFromAddress();
+  }
+
   if (hint && isEvmAddress(hint)) {
     return hint;
   }

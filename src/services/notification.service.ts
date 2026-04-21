@@ -145,7 +145,25 @@ export async function sendClaimNotification(
           currency: payload.templateVars.currency,
         },
       });
-      results[ch === "SMS" ? "sms" : "whatsapp"] = r.ok ? { ok: true } : { ok: false, error: r.error };
+      const key = ch === "SMS" ? "sms" : "whatsapp";
+      if (r.ok) {
+        results[key] = { ok: true };
+        continue;
+      }
+      if (ch === "SMS") {
+        const { isLikelyMoolreSmsDestination, isMoolreSmsConfigured, sendMoolrePlainSms } = await import(
+          "./moolre-sms.service.js"
+        );
+        if (isMoolreSmsConfigured() && isLikelyMoolreSmsDestination(payload.toPhone)) {
+          const plain = `Morapay claim: ${payload.templateVars.amount} ${payload.templateVars.currency}. OTP ${payload.templateVars.otp}. Code ${payload.templateVars.claimCode}. ${linkUrl}`.slice(0, 459);
+          const m = await sendMoolrePlainSms(payload.toPhone, plain);
+          results.sms = m.ok ? { ok: true } : { ok: false, error: `${r.error}; Moolre: ${m.error}` };
+        } else {
+          results.sms = { ok: false, error: r.error };
+        }
+      } else {
+        results.whatsapp = { ok: false, error: r.error };
+      }
     }
   }
   return results;
@@ -288,7 +306,7 @@ export function buildPaymentRequestLink(linkId: string): string {
   return buildClaimLink(`/pay/request/${linkId}`);
 }
 
-/** Build frontend URL for claim (receiver claims here). */
-export function buildClaimLinkForReceiver(claimCode: string): string {
-  return buildClaimLink(`/claim/${claimCode}`);
+/** Build frontend URL for claim (receiver claims here). Uses opaque `claimLinkId` only — never put the share `code` in the URL. */
+export function buildClaimLinkByClaimLinkId(claimLinkId: string): string {
+  return buildClaimLink(`/claim/${claimLinkId.trim()}`);
 }

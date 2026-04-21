@@ -506,8 +506,9 @@ async function seedKalcorpDemoData(
       payerIdentifier: "invoice@client.com",
       toIdentifier: charlie.email ?? "",
       code: "KAL123",
+      claimLinkId: "a1b2c3d4e5f60708",
     },
-    update: {},
+    update: { claimLinkId: "a1b2c3d4e5f60708" },
   });
 
   const kalWebhook = await prismaClient.webhookEndpoint.upsert({
@@ -1222,8 +1223,9 @@ async function main() {
       payerIdentifier: "233201111111",
       toIdentifier: charlie.email ?? "",
       code: "123456",
+      claimLinkId: "feedfacecafe0001",
     },
-    update: {},
+    update: { claimLinkId: "feedfacecafe0001" },
   });
 
   await seedKalcorpDemoData(prisma, kalcorp.id, alice, bob, charlie);
